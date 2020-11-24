@@ -1,4 +1,5 @@
 import numpy as np
+import torch
 from torch.distributions.gamma import Gamma
 from torch.distributions.normal import Normal
 from Bio.Align import substitution_matrices
@@ -10,9 +11,10 @@ class GraphKernel:
                     σ_E=0.0, σ_S=0.0, t=0.0, w=0.0, γ=0.0):
         self.protein = cm_protein
         self.protein_variant = cm_protein_variant
-        self.blosum62 = self.scale_substitution_matrix(substitution_matrices.load("BLOSUM62"))
-        self.blosum50 = self.scale_substitution_matrix(substitution_matrices.load("BLOSUM50"))
-        self.blosum45 = self.scale_substitution_matrix(substitution_matrices.load("BLOSUM45"))
+        # TODO import alphabet and replace constant 21 in the code with length of alphabet
+        self.blosum62 = self.scale_substitution_matrix(substitution_matrices.load("BLOSUM62").values())
+        self.bl osum50 = self.scale_substitution_matrix(substitution_matrices.load("BLOSUM50").values())
+        self.blosum45 = self.scale_substitution_matrix(substitution_matrices.load("BLOSUM45").values())
         self.kernel = self.compute_normalized_k()
         self.w = torch.rand(21) if not w else w
         self.γ = torch.rand(21) if not γ else γ
@@ -21,7 +23,8 @@ class GraphKernel:
         self.K_ϕ = self.compute_MKL()
 
     @staticmethod
-    def scale_substitution_matrix(mat):
+    def scale_substitution_matrix(mat) -> np.ndarray:
+        """scale input substitution matrix between zero and one"""
         return (mat - np.min(mat) + 1)/(np.max(mat)-np.min(mat) + 1)
 
     @staticmethod
@@ -63,9 +66,8 @@ class GraphKernel:
         β_S = Normal(0, σ_S)
         α_E = Normal(0, σ_E)
         β_E = Normal(0, σ_E)
+        σ = np.array([0]) # joint variance parameterized by (σ_S, σ_E, t) - TODO how to put this together?
 
-        marginal_log_likelihood = α - 0.5*y.T*(self.K_ϕ) + np.log(Gamma(α_E, β_E)) + np.log(Gamma(α_S, β_S))
-
-    
-        
+        marginal_log_likelihood = α - 0.5*y.T*(self.K_ϕ + σ.diagonal()) - 0.5*np.log(K_ϕ + σ.diagonal()) + np.log(Gamma(α_E, β_E).sample()) + np.log(Gamma(α_S, β_S).sample())
+        return marginal_log_likelihood
 

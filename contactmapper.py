@@ -11,14 +11,20 @@ from time import time
 
 
 class ContactMapper:
-    def __init__(self, pdb_file: str, pdb_ID: str=None, tri_dist=False, angstrom_threshold: float=5.):
+    def __init__(self, pdb_file: str, pdb_ID: str=None, tri_dist: bool=False, angstrom_threshold: float=5., 
+                check_AA: bool=True):
         self.pdb_file = pdb_file
         self.pdb_ID = basename(self.pdb_file).split(".")[0].upper() if not pdb_ID else pdb_ID
         self.tri_dist = tri_dist
         self.angstrom_threshold = angstrom_threshold
+        self.check_AA = check_AA
         self.structure = Bio.PDB.PDBParser().get_structure(self.pdb_ID, self.pdb_file)
         self.model_obj: Model = self.structure[0]
-        self.chains = [chain for chain in self.model_obj]
+        # self.chains = [chain for chain in self.model_obj]
+        # only Chain-A is used
+        self.chains = self.model_obj[0]
+        # TODO: add Sequence information
+        self.sequence = None
         self.dim = len(self.chains)
         self.centers: list = []
         self.all_coordinates: list = []
@@ -55,7 +61,11 @@ class ContactMapper:
         t_coord_X = []
         coord_X = []
         for res_X_pos, res_X in enumerate(chain_X):
+            if not Bio.PDB.is_aa(res_X_pos) and self.check_AA:
+                continue
             for res_Y_pos, res_Y in enumerate(chain_Y):
+                if not Bio.PDB.is_aa(res_Y_pos) and self.check_AA:
+                    continue
                 if tri_res_calculation:
                     t_coord_X = self.get_RES_coords(res_X)
                     t_coord_Y = self.get_RES_coords(res_Y)
