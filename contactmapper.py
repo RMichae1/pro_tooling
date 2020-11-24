@@ -20,9 +20,9 @@ class ContactMapper:
         self.check_AA = check_AA
         self.structure = Bio.PDB.PDBParser().get_structure(self.pdb_ID, self.pdb_file)
         self.model_obj: Model = self.structure[0]
-        # self.chains = [chain for chain in self.model_obj]
+        self.chains = [chain for chain in self.model_obj]
         # only Chain-A is used
-        self.chains = self.model_obj[0]
+        self.chains = [self.chains[0]]
         # TODO: add Sequence information
         self.sequence = None
         self.dim = len(self.chains)
@@ -60,11 +60,13 @@ class ContactMapper:
         mat = np.zeros((len(chain_X), len(chain_Y)), np.float)
         t_coord_X = []
         coord_X = []
+        skipped_res = 0
         for res_X_pos, res_X in enumerate(chain_X):
-            if not Bio.PDB.is_aa(res_X_pos) and self.check_AA:
+            if not Bio.PDB.is_aa(res_X) and self.check_AA:
+                skipped_res += 1
                 continue
             for res_Y_pos, res_Y in enumerate(chain_Y):
-                if not Bio.PDB.is_aa(res_Y_pos) and self.check_AA:
+                if not Bio.PDB.is_aa(res_Y) and self.check_AA:
                     continue
                 if tri_res_calculation:
                     t_coord_X = self.get_RES_coords(res_X)
@@ -76,7 +78,11 @@ class ContactMapper:
                     mat[res_X_pos, res_Y_pos] = euclidean(coord_X, coord_Y)
             self.centers.append(coord_X)
             self.all_coordinates.append(t_coord_X)
-        return mat
+        # with 1 chain this is quadratic - WARN: does not work for multiple chains
+        dim_X = len(chain_X) - skipped_res
+        mat_resized = np.zeros((dim_X, dim_X), np.float)
+        mat_resized = mat[:dim_X, :dim_X].copy()
+        return mat_resized
 
     def calc_distance_matrix(self, tri_dist) -> np.array:
         """
@@ -139,31 +145,35 @@ if __name__ == "__main__":
     cm_tri = ContactMapper(pdb_file="/home/rcml/pdb/1pga.pdb", tri_dist=True)
     cm_tri.plot_distance_matrix(save_fig="/home/rcml/pro_tooling/fig/")
     cm_tri.plot_contact_map(save_fig="/home/rcml/pro_tooling/fig/")
-
-    # example case 1LZI - CA-distance
-    cm = ContactMapper(pdb_file="/home/rcml/pdb/1lzi.pdb")
-    print(cm.contact_maps)
-    print(cm.distance_matrices)
-    print(len(cm.distance_matrices))
-    for d in cm.distance_matrices:
-        print(len(d))
-    cm.plot_distance_matrix(save_fig="/home/rcml/pro_tooling/fig/")
-    cm.plot_contact_map(save_fig="/home/rcml/pro_tooling/fig/")
-    # example case 1LZI - residue distance
-    cm_tri = ContactMapper(pdb_file="/home/rcml/pdb/1lzi.pdb", tri_dist=True)
+    # example case 1PGA - residue distance - with non AAs
+    cm_tri = ContactMapper(pdb_file="/home/rcml/pdb/1pga.pdb", tri_dist=True, check_AA=False)
     cm_tri.plot_distance_matrix(save_fig="/home/rcml/pro_tooling/fig/")
     cm_tri.plot_contact_map(save_fig="/home/rcml/pro_tooling/fig/")
 
-    # example case 2LZM - CA-distance
-    cm = ContactMapper(pdb_file="/home/rcml/pdb/2lzm.pdb")
-    print(cm.contact_maps)
-    print(cm.distance_matrices)
-    print(len(cm.distance_matrices))
-    for d in cm.distance_matrices:
-        print(len(d))
-    cm.plot_distance_matrix(save_fig="/home/rcml/pro_tooling/fig/")
-    cm.plot_contact_map(save_fig="/home/rcml/pro_tooling/fig/")
-    # example case 2LZM - residue distance
-    cm_tri = ContactMapper(pdb_file="/home/rcml/pdb/2lzm.pdb", tri_dist=True)
-    cm_tri.plot_distance_matrix(save_fig="/home/rcml/pro_tooling/fig/")
-    cm_tri.plot_contact_map(save_fig="/home/rcml/pro_tooling/fig/")
+    # # example case 1LZI - CA-distance
+    # cm = ContactMapper(pdb_file="/home/rcml/pdb/1lzi.pdb")
+    # print(cm.contact_maps)
+    # print(cm.distance_matrices)
+    # print(len(cm.distance_matrices))
+    # for d in cm.distance_matrices:
+    #     print(len(d))
+    # cm.plot_distance_matrix(save_fig="/home/rcml/pro_tooling/fig/")
+    # cm.plot_contact_map(save_fig="/home/rcml/pro_tooling/fig/")
+    # # example case 1LZI - residue distance
+    # cm_tri = ContactMapper(pdb_file="/home/rcml/pdb/1lzi.pdb", tri_dist=True)
+    # cm_tri.plot_distance_matrix(save_fig="/home/rcml/pro_tooling/fig/")
+    # cm_tri.plot_contact_map(save_fig="/home/rcml/pro_tooling/fig/")
+
+    # # example case 2LZM - CA-distance
+    # cm = ContactMapper(pdb_file="/home/rcml/pdb/2lzm.pdb")
+    # print(cm.contact_maps)
+    # print(cm.distance_matrices)
+    # print(len(cm.distance_matrices))
+    # for d in cm.distance_matrices:
+    #     print(len(d))
+    # cm.plot_distance_matrix(save_fig="/home/rcml/pro_tooling/fig/")
+    # cm.plot_contact_map(save_fig="/home/rcml/pro_tooling/fig/")
+    # # example case 2LZM - residue distance
+    # cm_tri = ContactMapper(pdb_file="/home/rcml/pdb/2lzm.pdb", tri_dist=True)
+    # cm_tri.plot_distance_matrix(save_fig="/home/rcml/pro_tooling/fig/")
+    # cm_tri.plot_contact_map(save_fig="/home/rcml/pro_tooling/fig/")
