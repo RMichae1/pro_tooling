@@ -8,40 +8,62 @@ from contactmapper import ContactMapper
 
 class GraphKernel:
     def __init__(self, cm_protein: ContactMapper, cm_protein_variant: ContactMapper,
-                    σ_E=0.0, σ_S=0.0, t=0.0, w=0.0, γ=0.0):
+                    depth: int=1, σ_E=0.0, σ_S=0.0, t=0.0, w=0.0, γ=0.0):
         self.protein = cm_protein
         self.protein_variant = cm_protein_variant
-        # TODO import alphabet and replace constant 21 in the code with length of alphabet
-        self.blosum62 = self.scale_substitution_matrix(substitution_matrices.load("BLOSUM62").values())
-        self.bl osum50 = self.scale_substitution_matrix(substitution_matrices.load("BLOSUM50").values())
-        self.blosum45 = self.scale_substitution_matrix(substitution_matrices.load("BLOSUM45").values())
+        self.adjacency_list = self.generate_adjacency()
+        self.depth = depth # not used downstream - define neighbors of neighbors
+        self.sub_mat_list = ["BLOSUM62", "BLOSUM50", "BLOSUM45", "BLOSUM80"]
+        self.substitution_matrices = self.get_substitution_matrices()
+        self.n_S = len(self.substitution_matrices.keys())
         self.kernel = self.compute_normalized_k()
-        self.w = torch.rand(21) if not w else w
-        self.γ = torch.rand(21) if not γ else γ
+        self.w = torch.rand(self.n_S) if not w else w
+        self.γ = torch.rand(self.n_S) if not γ else γ
         self.kernel_parameters: dict = {"σ_E": σ_E, "σ_S": σ_S,
                                 "t": t, "w": self.w, "γ": self.γ}
         self.K_ϕ = self.compute_MKL()
 
+    def get_substitution_matrices(self) -> dict:
+        s_dict = {mat: self.scale_substitution_matrix(substitution_matrices.load(mat)) for mat in self.sub_mat_list}
+        return s_dict
+
+    def generate_adjacency(self) -> list:
+        """compute adjacency from contact map by retrieving indices"""
+        contact_indices = [np.where(row==1) for row in self.protein.contact_maps]
+        adj_res_list = self.protein.sequence[contact_indices]
+        return adj_res_list
+
     @staticmethod
-    def scale_substitution_matrix(mat) -> np.ndarray:
+    def scale_substitution_matrix(mat):
         """scale input substitution matrix between zero and one"""
-        return (mat - np.min(mat) + 1)/(np.max(mat)-np.min(mat) + 1)
+        # TODO apply exp instead, since it is a log Likelihood
+        mat_val = np.array(mat.values())
+        normalized_vals = (mat_val - np.min(mat_val) + 1)/(np.max(mat_val)-np.min(mat_val) + 1)
+        # substitution matrix object requires iterable dict for update
+        update_dict = {pos: val for pos, val in zip(mat.keys(), normalized_vals)}
+        mat.update(update_dict)
+        return mat
 
-    @staticmethod
-    def compute_neighborhood(pos_x: int, pos_y: int) -> float:
+    def compute_neighborhood(self, res, res_idx) -> float:
         neighborhood_sum = 0.
-        # do something
-        return neighborhood_sum
+        neighborhood = []
+        for neighbor in self.adjacency_list[res_idx]:
+            neighborhood_sum += self.S(res, neighbor)
+            neighborhood.append(self.S(res, neighbor))
+        neighborhood_mean = np.mean(np.array(neighborhood))
+        # compute sum averaged sum over adjacent positions 
+        # TODO averaged substitution matrix
+        return neighborhood_sum, neighborhood_mean
 
-    @staticmethod
-    def k(x, x_) -> np.ndarray:
-        k = np.zeros((len(x), len(x_)))
+    def k(self, x, x_) -> np.ndarray:
+        N = x.shape[0]
+        k = np.zeros((N, N))
         for i, res_x in enumerate(x):
-            for j, res_x_ in enumerate(x_):
+            for j, res_y in enumerate(x_):
                 s = self.S(res_x, res_y)
-                for res in neighborhood(x):
-                neighborhood = n_sum(res, ?)
-            k[idx:?] = (s * neighborhood)
+                neighborhood_res_x = self.compute_neighborhood(res_x, i)
+                neighborhood_res_y = self.compute_neighborhood(res_y, j)
+            k[i:j] = (s * np.mean(neighborhood_res_x, neighborhood_res_y))
         return k
 
     @staticmethod
@@ -55,19 +77,21 @@ class GraphKernel:
         return normalized_k
 
     def compute_MKL(self) -> np.ndarray:
-        K_ = self.kernel.shape()
-        for m in range(21):
-            K_= self.w[m] * self.kernel[m]**self.γ[m]
+        K_ = 0.
+        # weighted kernel by n of internal matrices
+        for m in range(self.n_S):
+            K_ += self.w[m] * self.kernel[m]**self.γ[m]
         return K_
 
-
     def parameter_inference(self):
-        α_S = Normal(0, σ_S)
-        β_S = Normal(0, σ_S)
-        α_E = Normal(0, σ_E)
-        β_E = Normal(0, σ_E)
+        α_S = Normal(0, self.kernel_parameters.get("σ_S"))
+        β_S = Normal(0, self.kernel_parameters.get("σ_S"))
+        α_E = Normal(0, self.kernel_parameters.get("σ_E"))
+        β_E = Normal(0, self.kernel_parameters.get("σ_E"))
         σ = np.array([0]) # joint variance parameterized by (σ_S, σ_E, t) - TODO how to put this together?
 
-        marginal_log_likelihood = α - 0.5*y.T*(self.K_ϕ + σ.diagonal()) - 0.5*np.log(K_ϕ + σ.diagonal()) + np.log(Gamma(α_E, β_E).sample()) + np.log(Gamma(α_S, β_S).sample())
-        return marginal_log_likelihood
+        # TODO no marg. log likelihood here - this is for GP inference
+        # TODO how do I pass around these parameters?
+        #marginal_log_likelihood = α - 0.5*y.T*(self.K_ϕ + σ.diagonal()) - 0.5*np.log(K_ϕ + σ.diagonal()) + np.log(Gamma(α_E, β_E).sample()) + np.log(Gamma(α_S, β_S).sample())
+        return #marginal_log_likelihood
 
