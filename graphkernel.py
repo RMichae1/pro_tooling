@@ -8,13 +8,16 @@ from contactmapper import ContactMapper
 
 class GraphKernel:
     def __init__(self, cm_protein: ContactMapper, cm_protein_variant: ContactMapper,
-                    depth: int=1, σ_E=0.0, σ_S=0.0, t=0.0, w=0.0, γ=0.0):
+                    depth: int=1, default_matrix="BLOSUM62", σ_E=0.0, σ_S=0.0, t=0.0, w=0.0, γ=0.0):
         self.protein = cm_protein
         self.protein_variant = cm_protein_variant
         self.adjacency_list = self.generate_adjacency()
         self.depth = depth # not used downstream - define neighbors of neighbors
+        self.default_matrix = default_matrix
         self.sub_mat_list = ["BLOSUM62", "BLOSUM50", "BLOSUM45", "BLOSUM80"]
-        self.substitution_matrices = self.get_substitution_matrices()
+        if self.default_matrix not in self.sub_mat_list:
+            raise RuntimeWarning(f"Substitutionmatrix default_matrix={default_matrix} unknown!")
+        self.substitution_matrices: dict = self.get_substitution_matrices()
         self.n_S = len(self.substitution_matrices.keys())
         self.kernel = self.compute_normalized_k()
         self.w = torch.rand(self.n_S) if not w else w
@@ -27,30 +30,38 @@ class GraphKernel:
         s_dict = {mat: self.scale_substitution_matrix(substitution_matrices.load(mat)) for mat in self.sub_mat_list}
         return s_dict
 
-    def generate_adjacency(self) -> list:
-        """compute adjacency from contact map by retrieving indices"""
-        contact_indices = [np.where(row==1) for row in self.protein.contact_maps]
-        adj_res_list = self.protein.sequence[contact_indices]
-        return adj_res_list
-
     @staticmethod
-    def scale_substitution_matrix(mat):
+    def scale_substitution_matrix(mat: SArray) -> SArray:
         """scale input substitution matrix between zero and one"""
         # TODO apply exp instead, since it is a log Likelihood
         mat_val = np.array(mat.values())
         normalized_vals = (mat_val - np.min(mat_val) + 1)/(np.max(mat_val)-np.min(mat_val) + 1)
-        # substitution matrix object requires iterable dict for update
-        update_dict = {pos: val for pos, val in zip(mat.keys(), normalized_vals)}
-        mat.update(update_dict)
+        # substitution matrix object requires iterable object for update
+        mat.update(zip(mat.keys(), normalized_vals))
         return mat
+
+    def generate_adjacency(self) -> np.array:
+        """compute adjacency from contact map by retrieving indices"""
+        contact_indices = [np.where(np.array(row)==True)[0] for row in self.protein.contact_map]
+        neighborhoods_array = np.array(list(zip(self.protein.sequence, contact_indices)))
+        # build tuple of adjacent residues (residue, contacts: list)
+        return neighborhoods_array
 
     def compute_neighborhood(self, res, res_idx) -> float:
         neighborhood_sum = 0.
         neighborhood = []
-        for neighbor in self.adjacency_list[res_idx]:
-            neighborhood_sum += self.S(res, neighbor)
-            neighborhood.append(self.S(res, neighbor))
+        print(self.adjacency_list[res_idx])
+        _res, neighbors = self.adjacency_list[res_idx]
+        # residue from sequence should be the same as in the adjacency list iterated at that position
+        assert(_res == res)
+        neighbor_residues = np.array(self.protein.sequence)[neighbors]
+        print(neighbor_residues)
+        for neighbor in neighbor_residues:
+            neighborhood_sum += self.substitution_matrices.get("BLOSUM62").get(res).get(neighbor)
+            neighborhood.append(self.substitution_matrices.get("BLOSUM62").get(res).get(neighbor))
         neighborhood_mean = np.mean(np.array(neighborhood))
+        print(f"n mean: {neighborhood_mean}")
+        print(f"n sum: {neighborhood_sum}")
         # compute sum averaged sum over adjacent positions 
         # TODO averaged substitution matrix
         return neighborhood_sum, neighborhood_mean
@@ -60,19 +71,16 @@ class GraphKernel:
         k = np.zeros((N, N))
         for i, res_x in enumerate(x):
             for j, res_y in enumerate(x_):
-                s = self.S(res_x, res_y)
+                # TODO for all matrices in matrix list
+                s = self.substitution_matrices.get("BLOSUM62").get(res_x).get(res_y)
                 neighborhood_res_x = self.compute_neighborhood(res_x, i)
                 neighborhood_res_y = self.compute_neighborhood(res_y, j)
             k[i:j] = (s * np.mean(neighborhood_res_x, neighborhood_res_y))
         return k
 
-    @staticmethod
-    def S(x: str, x_: str, matrix: SArray) -> float:
-        # lookup in Blosum Matrix
-        return matrix.get(x).get(x_)
 
     def compute_normalized_k(self) -> np.ndarray:
-        norm_factor = np.sqrt(self.k(self.protein, self.protein)*self.k(self.protein_variant, self.protein_variant))
+        norm_factor = np.sqrt(self.k(self.protein.sequence, self.protein.sequence)*self.k(self.protein_variant, self.protein_variant))
         normalized_k = self.k(self.protein, self.protein_variant) / norm_factor
         return normalized_k
 
