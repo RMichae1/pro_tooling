@@ -2,13 +2,14 @@ import Bio.PDB
 from Bio.PDB.Residue import Residue
 from Bio.PDB.Chain import Chain
 from Bio.PDB.Model import Model
+from Bio.SeqUtils import seq1
 from os.path import basename 
 import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
 from scipy.spatial.distance import squareform, pdist, euclidean
 from time import time
-
+from typing import List, Tuple
 
 class ContactMapper:
     def __init__(self, pdb_file: str, pdb_ID: str=None, tri_dist: bool=False, angstrom_threshold: float=5., 
@@ -23,13 +24,21 @@ class ContactMapper:
         self.chains = [chain for chain in self.model_obj]
         # only Chain-A is used
         self.chains = [self.chains[0]]
-        # TODO: add Sequence information
-        self.sequence = None
+        self.sequence = []
         self.dim = len(self.chains)
         self.centers: list = []
         self.all_coordinates: list = []
         self.distance_matrices: list = self.calc_distance_matrix(tri_dist=tri_dist)
         self.contact_maps: list = [distance_matrix < self.angstrom_threshold for distance_matrix in self.distance_matrices]
+        self.contact_map = self.contact_maps[0]
+        self.adjacency: List[Tuple[str, List[int]]] = self.generate_adjacency()
+
+    def generate_adjacency(self) -> np.array:
+        """compute adjacency from contact map by retrieving indices"""
+        contact_indices = [np.where(np.array(row)==True)[0] for row in self.contact_map]
+        neighbors = list(zip(self.sequence, contact_indices))
+        # build tuple of adjacent residues (residue, contacts: list)
+        return neighbors
 
     @staticmethod
     def get_CA_coords(res: Residue) -> np.ndarray:
@@ -62,8 +71,10 @@ class ContactMapper:
         coord_X = []
         skipped_res = 0
         for res_X_pos, res_X in enumerate(chain_X):
+            self.sequence.append(seq1(res_X.get_resname()))
             if not Bio.PDB.is_aa(res_X) and self.check_AA:
                 skipped_res += 1
+                self.sequence.pop()
                 continue
             for res_Y_pos, res_Y in enumerate(chain_Y):
                 if not Bio.PDB.is_aa(res_Y) and self.check_AA:
@@ -82,6 +93,7 @@ class ContactMapper:
         dim_X = len(chain_X) - skipped_res
         mat_resized = np.zeros((dim_X, dim_X), np.float)
         mat_resized = mat[:dim_X, :dim_X].copy()
+        self.sequence = np.array(self.sequence)
         return mat_resized
 
     def calc_distance_matrix(self, tri_dist) -> np.array:
@@ -93,8 +105,7 @@ class ContactMapper:
         for idx, chain_X in enumerate(self.chains):
             # calculate distance for each residue in all the given chains
             for idy, chain_Y in enumerate(self.chains[idx:]):
-                dist_matrix.append(self.calculate_chain_distance(chain_X, chain_Y,
-                                    tri_res_calculation=tri_dist))
+                dist_matrix.append(self.calculate_chain_distance(chain_X, chain_Y, tri_res_calculation=tri_dist))
         return dist_matrix
 
     def get_min_distance(self):
@@ -110,6 +121,11 @@ class ContactMapper:
                 d_mat = self.distance_matrices[i+j]
                 ax_ = ax[i, j] if isinstance(ax, np.ndarray) else ax
                 sns.heatmap(d_mat, cmap="coolwarm_r", ax=ax_)
+                ax_.set_xticks(np.arange(len(self.sequence)))
+                ax_.set_xticklabels(self.sequence)
+                ax_.set_yticks(np.arange(len(self.sequence)))
+                ax_.set_yticklabels(self.sequence)
+                ax_.tick_params(rotation=45, labelsize=5)
                 ax_.set_title(f"Distances for chain {i+j}")
         plt.suptitle(f"Distance Map for {self.pdb_ID}")
         plt.tight_layout()
@@ -125,6 +141,11 @@ class ContactMapper:
                 c_mat = self.contact_maps[i+j]
                 ax_ = ax[i,j] if isinstance(ax, np.ndarray) else ax
                 sns.heatmap(c_mat, vmin=0, vmax=1, cmap=sns.cm.rocket_r, ax=ax_)
+                ax_.set_xticks(np.arange(len(self.sequence)))
+                ax_.set_xticklabels(self.sequence)
+                ax_.set_yticks(np.arange(len(self.sequence)))
+                ax_.set_yticklabels(self.sequence)
+                ax_.tick_params(rotation=45, labelsize=5)
                 ax_.set_title(f"Contacts for chain {i} with {j}")       
         plt.suptitle(f"Contact Map for {self.pdb_ID}")
         plt.tight_layout()
@@ -132,48 +153,3 @@ class ContactMapper:
             d_measure = "tri_dist" if self.tri_dist else "ca_dist"
             plt.savefig(f"{save_fig}/{self.pdb_ID}_cmap{d_measure}_{self.angstrom_threshold}.png")
         plt.show()
-        
-
-if __name__ == "__main__":
-    # example case 1PGA - CA-distance
-    cm = ContactMapper(pdb_file="/home/rcml/pdb/1pga.pdb")
-    print(cm.contact_maps)
-    print(cm.distance_matrices)
-    cm.plot_distance_matrix(save_fig="/home/rcml/pro_tooling/fig/")
-    cm.plot_contact_map(save_fig="/home/rcml/pro_tooling/fig/")
-    # example case 1PGA - residue distance
-    cm_tri = ContactMapper(pdb_file="/home/rcml/pdb/1pga.pdb", tri_dist=True)
-    cm_tri.plot_distance_matrix(save_fig="/home/rcml/pro_tooling/fig/")
-    cm_tri.plot_contact_map(save_fig="/home/rcml/pro_tooling/fig/")
-    # example case 1PGA - residue distance - with non AAs
-    cm_tri = ContactMapper(pdb_file="/home/rcml/pdb/1pga.pdb", tri_dist=True, check_AA=False)
-    cm_tri.plot_distance_matrix(save_fig="/home/rcml/pro_tooling/fig/")
-    cm_tri.plot_contact_map(save_fig="/home/rcml/pro_tooling/fig/")
-
-    # # example case 1LZI - CA-distance
-    # cm = ContactMapper(pdb_file="/home/rcml/pdb/1lzi.pdb")
-    # print(cm.contact_maps)
-    # print(cm.distance_matrices)
-    # print(len(cm.distance_matrices))
-    # for d in cm.distance_matrices:
-    #     print(len(d))
-    # cm.plot_distance_matrix(save_fig="/home/rcml/pro_tooling/fig/")
-    # cm.plot_contact_map(save_fig="/home/rcml/pro_tooling/fig/")
-    # # example case 1LZI - residue distance
-    # cm_tri = ContactMapper(pdb_file="/home/rcml/pdb/1lzi.pdb", tri_dist=True)
-    # cm_tri.plot_distance_matrix(save_fig="/home/rcml/pro_tooling/fig/")
-    # cm_tri.plot_contact_map(save_fig="/home/rcml/pro_tooling/fig/")
-
-    # # example case 2LZM - CA-distance
-    # cm = ContactMapper(pdb_file="/home/rcml/pdb/2lzm.pdb")
-    # print(cm.contact_maps)
-    # print(cm.distance_matrices)
-    # print(len(cm.distance_matrices))
-    # for d in cm.distance_matrices:
-    #     print(len(d))
-    # cm.plot_distance_matrix(save_fig="/home/rcml/pro_tooling/fig/")
-    # cm.plot_contact_map(save_fig="/home/rcml/pro_tooling/fig/")
-    # # example case 2LZM - residue distance
-    # cm_tri = ContactMapper(pdb_file="/home/rcml/pdb/2lzm.pdb", tri_dist=True)
-    # cm_tri.plot_distance_matrix(save_fig="/home/rcml/pro_tooling/fig/")
-    # cm_tri.plot_contact_map(save_fig="/home/rcml/pro_tooling/fig/")
