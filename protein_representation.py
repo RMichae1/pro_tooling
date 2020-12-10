@@ -1,9 +1,11 @@
 import re
 import numpy as np
+import pandas as pd
 from copy import deepcopy
 from contact_mapper import ContactMapper
-from graphkernel import WeightedDecompositionKernel
+from graphkernel import MatrixKernel
 from typing import Tuple
+import matplotlib.pyplot as plt
 
 
 class ProteinCollection:
@@ -12,13 +14,13 @@ class ProteinCollection:
         self.wt_contactmap = contactmap
         self.wt_adjacency = self.wt_contactmap.adjacency
         self.wt_sequence = self.wt_contactmap.sequence
-        self.wt_ΔΔg = 0
         assert self.pdb_ID == self.wt_contactmap.pdb_ID
         self.mutation_dict = pdb_mutations.get(pdb_ID)
-        self.mutation_ids = []
-        self.ΔΔg = []
+        self.mutation_ids = ["WT"]
+        self.ΔΔg = [0]
         self.mutated_sequences, self.mutated_adjacencies = self.derive_mutations()
         self.wdk_kernels: dict = self.compute_wdk()
+        self.wdk_df: pd.DataFrame = self.generate_df_representation() 
 
     def parse_and_assert_mutations(self, mutation) -> Tuple[str, int, str]:
         mutation_tuples = []
@@ -58,12 +60,53 @@ class ProteinCollection:
         eval_sequences = [self.wt_sequence] + self.mutated_sequences
         eval_adjacencies = [self.wt_adjacency] + self.mutated_adjacencies
         for idx, (p_seq, p_adj) in enumerate(zip(eval_sequences, eval_adjacencies)):
-            print(f"MUTATION {self.mutation_ids[idx]}")
+            print(f"MUTATION {self.mutation_ids[idx]}") # N = wt+mutations
             sub_wdks = []
             for q_seq, q_adj in zip(eval_sequences[idx:], eval_adjacencies[idx:]):
-                wdk = WeightedDecompositionKernel(p_sequence=p_seq, p_adjacency=p_adj, 
+                wdk = MatrixKernel(p_sequence=p_seq, p_adjacency=p_adj, 
                                         q_sequence=q_seq, q_adjacency=q_adj)
-                sub_wdks.append(wdk)
-            print(f"SUB WDKS {sub_wdks}")
-            wdks[self.mutation_ids[idx]] = sub_wdks
+            wdks[self.mutation_ids[idx]] = wdk
         return wdks
+
+    def extract_sub_matrix(self):
+        """
+        For df representation convert MUT: MAT: k_val to MAT: MUT: k_val
+        """
+        matrix_extract = {mat: [] for mat in self.wdk_kernels.keys()}
+        for mut, wdk in self.wdk_kernels.items():
+            for mat, values in wdk.items():
+                print(values)
+                m_vals = [val.numpy() for val in values]
+            flat_vals = [val for sub in m_vals for val in sub]
+            matrix_extract[mat][mut] = flat_vals
+        print(matrix_extract)
+        return matrix_extract
+
+    def build_df_from_mk(seld, matrix_kernel) -> pd.DataFrame:
+        df = pd.DataFrame(0, index=self.mutation_ids, columns=self.mutation_ids)
+        for wdk, val in matrix_kernel.kernel.items():
+            ref_len = max(map(len, matrix_kernel.values()))
+            zero_padded = [0 for _ in range(ref_len-len(val))]
+            data_row = zero_padded + val
+            df.loc[wdk] = data_row
+        return df
+
+
+    def generate_df_representation(self) -> pd.DataFrame:
+        df_list = []
+        matrix_kernels = self.extract_sub_matrix()
+        for matrix_kernel in matrix_kernels:
+            mk_df = self.build_df_from_mk(matrix_kernel)
+            df_list.append(mk_df)
+        total_df = pd.DataFrame({'idx': np.arange(len(matrix_kernels)), 'mat': df_list})
+        return total_df
+
+    def plot_wdks(self):
+        _, ax = plt.subplots(1,1, figsize=(15,10))
+        ax.imshow(self.wdk_df.values)
+        ax.set_yticks(np.arange(len(self.wdk_df.columns)))
+        ax.set_yticklabels(self.wdk_df.columns)
+        ax.set_xticks(np.arange(len(self.wdk_df.columns)))
+        ax.set_xticklabels(self.wdk_df.columns)
+        plt.title("BLOSUM62 Covariance Matrix")
+        plt.show()

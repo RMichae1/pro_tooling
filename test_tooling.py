@@ -1,6 +1,6 @@
 from contact_mapper import ContactMapper
 from protein_representation import ProteinCollection
-from graphkernel import WeightedDecompositionKernel
+from graphkernel import MatrixKernel
 from data_handler import parse_mutations
 
 if __name__ == "__main__":
@@ -47,11 +47,12 @@ if __name__ == "__main__":
 
     # Create and test Graph Kernel
 
-    wdk = WeightedDecompositionKernel(p_sequence=cm_tri.sequence, p_adjacency=cm_tri.adjacency,
+    wdk = MatrixKernel(p_sequence=cm_tri.sequence, p_adjacency=cm_tri.adjacency,
                                         q_sequence=cm_tri.sequence, q_adjacency=cm_tri.adjacency)
     print(wdk.kernel)
     #print(wdk.K_ϕ)
 
     mutational_dict = parse_mutations("./data/ddg_protherm.mat", query="ddg_protherm")
     pcol = ProteinCollection(cm_tri, pdb_ID="1PGA", pdb_mutations=mutational_dict)
-    print(pcol.wdk_kernels[0].kernel.items())
+    print(pcol.wdk_df)
+    pcol.plot_wdks()
