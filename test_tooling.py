@@ -46,10 +46,9 @@ if __name__ == "__main__":
     # cm_tri.plot_contact_map(save_fig="/home/rcml/pro_tooling/fig/")
 
     # Create and test Graph Kernel
-
     wdk = MatrixKernel(p_sequence=cm_tri.sequence, p_adjacency=cm_tri.adjacency,
-                                        q_sequence=cm_tri.sequence, q_adjacency=cm_tri.adjacency)
-    print(wdk.kernel)
+                                        q_sequence=cm_tri.sequence, q_adjacency=cm_tri.adjacency, sub_matrix="BLOSUM62")
+    print("Computed Kernel Value - WT w/ BLOSUM 62 {}".format(wdk.kernel_value))
     #print(wdk.K_ϕ)
 
     mutational_dict = parse_mutations("./data/ddg_protherm.mat", query="ddg_protherm")
