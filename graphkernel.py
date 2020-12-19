@@ -1,4 +1,5 @@
 import numpy as np
+import pandas as pd
 import torch
 from torch import Tensor, rand
 from torch.nn.parameter import Parameter
@@ -10,19 +11,20 @@ from Bio.Align.substitution_matrices import Array as SArray
 from contact_mapper import ContactMapper  
 
 class WeightedDecompositionKernel:
-    def __init__(self, kernels, t=0.0, w=0.0, γ=1.0):
+    def __init__(self, kernels: pd.DataFrame, t=0.0, w=None, γ=1.0):
         self.kernels = kernels
-        self.w = Parameter(rand(len(self.kernels.keys()))) if not w else w
-        assert len(self.w) == len(self.kernels.keys())
+        self.kernel_dim = len(self.kernels.mat[0])
+        self.w = Parameter(rand(len(self.kernels.mat))) if not w else w
         self.γ = γ
         self.kernel_parameters: dict = {"t": t, "w": self.w, "γ": self.γ}
         self.K_ϕ = self.compute_MKL()
 
     def compute_MKL(self) -> Tensor:
-        K_ = Tensor([0.])
+        K_ = torch.zeros([self.kernel_dim, self.kernel_dim])
         # weighted kernel by n of internal matrices
-        for i, m in enumerate(self.kernels.keys()):
-            K_ += self.w[i] * self.kernels[m]**self.γ
+        # TODO more efficient sum over kernels with trainable weights
+        for i, mat in enumerate(self.kernels.mat):
+            K_ += self.w[i] * torch.Tensor(mat.to_numpy())**self.γ
         return K_
 
 class KernelFactory:

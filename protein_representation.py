@@ -5,7 +5,7 @@ from os.path import isfile
 import pickle
 from copy import deepcopy
 from contact_mapper import ContactMapper
-from graphkernel import MatrixKernel
+from graphkernel import MatrixKernel, WeightedDecompositionKernel
 from graphkernel import KernelFactory
 from typing import Tuple
 import matplotlib.pyplot as plt
@@ -25,16 +25,15 @@ class ProteinCollection:
         self.mutated_sequences, self.mutated_adjacencies = self.derive_mutations()
         # TODO For testing compute once and save result as pickle
         if not isfile('test_wdk.pickle'):
-            self.wdk_kernels: dict = self.compute_wdk()
+            self.matrix_kernels: dict = self.compute_matrices()
             with open('test_wdk.pickle', 'wb') as file_handle:
-                pickle.dump(self.wdk_kernels, file_handle)
+                pickle.dump(self.matrix_kernels, file_handle)
         else:
             with open('test_wdk.pickle', 'rb') as file_handle:
-                self.wdk_kernels = pickle.load(file_handle) 
-        # TODO remove after testing
-        self.wdk_df: pd.DataFrame = self.generate_df_representation()
-        # TODO write kernel output in df representation
-        # TODO plot result
+                self.matrix_kernels = pickle.load(file_handle)
+        self.matrices_df: pd.DataFrame = self.generate_df_representation()
+        self.mWDK = WeightedDecompositionKernel(kernels=self.matrices_df)
+        self.mwdk_df: pd.DataFrame = pd.DataFrame(self.mWDK.K_ϕ.detach().numpy(), index=self.mutation_ids, columns=self.mutation_ids)
 
     def parse_and_assert_mutations(self, mutation) -> Tuple[str, int, str]:
         mutation_tuples = []
@@ -70,7 +69,7 @@ class ProteinCollection:
             mutated_adjacencies.append(adjacency)
         return mutated_sequences, mutated_adjacencies
 
-    def compute_wdk(self) -> dict:
+    def compute_matrices(self) -> dict:
         """
         evaluate all mutations with one-another
         """
@@ -114,23 +113,33 @@ class ProteinCollection:
 
     def generate_df_representation(self) -> pd.DataFrame:
         df_list = []
-        for mat_type, matrix_kernel in self.wdk_kernels.items():
+        for mat_type, matrix_kernel in self.matrix_kernels.items():
             mk_df = self.build_df_from_mk(matrix_kernel)
             df_list.append(mk_df)
-        total_df = pd.DataFrame({'idx': self.wdk_kernels.keys(), 'mat': df_list})
+        total_df = pd.DataFrame({'idx': self.matrix_kernels.keys(), 'mat': df_list})
         return total_df
 
-    def plot_wdks(self):
-        _, ax = plt.subplots(1, len(self.wdk_kernels.items()), figsize=(20,10))
-        for idx, wdk in enumerate(self.wdk_df['mat']):
-            ax[idx].imshow(wdk.values)
+    def plot_sub_matrices(self):
+        _, ax = plt.subplots(1, len(self.matrix_kernels.items()), figsize=(30,20))
+        for idx, wdk in enumerate(self.matrices_df['mat']):
+            ax[idx].imshow(wdk.to_numpy())
             ax[idx].set_yticks(np.arange(len(wdk.columns)))
-            ax[idx].set_yticklabels(wdk.columns)
+            ax[idx].set_yticklabels(wdk.columns, size=5)
             ax[idx].set_xticks(np.arange(len(wdk.columns)))
-            ax[idx].set_xticklabels(wdk.columns)
-            plt.xticks(rotation=90)
+            ax[idx].set_xticklabels(wdk.columns, rotation=90, size=5)
             if idx > 0:
                 ax[idx].set_yticks([])
             ax[idx].set_title("{}".format(self.kernel_factory.sub_matrices[idx]))
         plt.savefig("./fig/mat_viz.png")
+        plt.show()
+
+    def plot_mwdk(self):
+        _, ax = plt.subplots(1, 1, figsize=(20, 10))
+        ax.imshow(self.mwdk_df.to_numpy())
+        ax.set_yticks(np.arange(len(self.mwdk_df.columns)))
+        ax.set_xticks(np.arange(len(self.mwdk_df.columns)))
+        ax.set_yticklabels(self.mwdk_df.columns, size=5)
+        ax.set_xticklabels(self.mwdk_df.columns, rotation=90, size=5)
+        ax.set_title("mWDK values")
+        plt.savefig("./fig/mwdk.png")
         plt.show()
