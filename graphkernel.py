@@ -1,6 +1,6 @@
 import numpy as np
 import torch
-from torch import Tensor
+from torch import Tensor, rand
 from torch.nn.parameter import Parameter
 from torch.distributions.gamma import Gamma
 from torch.distributions.normal import Normal
@@ -10,11 +10,12 @@ from Bio.Align.substitution_matrices import Array as SArray
 from contact_mapper import ContactMapper  
 
 class WeightedDecompositionKernel:
-    def __init__(self, kernels, σ_E=0.0, σ_S=0.0, t=0.0, w=0.0, γ=1.0):
+    def __init__(self, kernels, t=0.0, w=0.0, γ=1.0):
         self.kernels = kernels
         self.w = Parameter(rand(len(self.kernels.keys()))) if not w else w
+        assert len(self.w) == len(self.kernels.keys())
         self.γ = γ
-        self.kernel_parameters: dict = {"σ_E": σ_E, "σ_S": σ_S, "t": t, "w": self.w, "γ": self.γ}
+        self.kernel_parameters: dict = {"t": t, "w": self.w, "γ": self.γ}
         self.K_ϕ = self.compute_MKL()
 
     def compute_MKL(self) -> Tensor:
