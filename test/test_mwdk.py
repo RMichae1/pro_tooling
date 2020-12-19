@@ -23,7 +23,7 @@ x_wild_type, X_wetlab, X_insilico, y_wild_type, y_wetlab, y_scaled, scaling_std,
             X_test, y_test = get_preprocessed_training_and_test_data("1PGA")
 ref_mat = MGPFusionKernel(adjacency_graph=contact_graph)
 for m, n, _ in ref_mat.matrices:
-    if n == 'BENS940102':
+    if n == 'HENS920102': # ID for BLOSUM62
         break
 gpm_wdk = WeightedDecomposition(substitution_matrix=m, contact_map=contact_graph)
 
@@ -35,10 +35,6 @@ def test_mat_kernel_to_contactmap():
 def test_reference_kernel_exists():
     assert gpm_wdk is not None
 
-def test_parse_reference_matrix():
-    # TODO implement parser to work with reference matlab S matrices
-    assert False
-
-def test_reference_BENS94_kernel():
+def test_reference_BLOSUM62_kernel():
     # TODO compare parsed S_matrix with gp_modeling reference handling
-    assert False
+    assert gpm_wdk == wdk
