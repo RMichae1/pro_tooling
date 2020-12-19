@@ -103,6 +103,13 @@ class ProteinCollection:
             zero_padded = [0 for _ in range(ref_len-len(val))]
             data_row = zero_padded + val
             df.loc[mutation] = data_row
+        val_mat = df.to_numpy()
+        # complete matrix from upper triangle
+        complete_mat = val_mat + val_mat.T
+        # overwrite diagonal values, since they are doubled
+        idx = np.arange(val_mat.shape[0])
+        complete_mat[idx, idx] = val_mat[idx, idx]
+        df.iloc[:, :] = complete_mat
         return df
 
     def generate_df_representation(self) -> pd.DataFrame:
