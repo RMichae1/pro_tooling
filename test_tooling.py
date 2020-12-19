@@ -53,5 +53,7 @@ if __name__ == "__main__":
 
     mutational_dict = parse_mutations("./data/ddg_protherm.mat", query="ddg_protherm")
     pcol = ProteinCollection(cm_tri, pdb_ID="1PGA", pdb_mutations=mutational_dict)
-    print(pcol.wdk_df)
-    pcol.plot_wdks()
+    print(pcol.matrices_df)
+    pcol.plot_sub_matrices()
+    print(pcol.mwdk_df)
+    pcol.plot_mwdk()
