@@ -4,23 +4,21 @@ from pyro.infer import MCMC, NUTS
 import pyro.poutine as poutine
 import pyro.distributions as d
 
-class IS_Scaler:
+class BayesScaler:
     """
     Bayesian In Silico Scaling for Rosetta simulated data
     """
-    def __init__(self, protein, a, b, c, d, 
-                α_a=2., β_a=1.5, α_b=1.3, β_b=2., α_c=2, β_c=5., σ_d=0.15, σ_n=0.5):
+    def __init__(self, ΔΔg, protein=None, 
+                    α_a=2., β_a=1.5, α_b=1.3, β_b=2., α_c=2, β_c=5., σ_d=0.15, σ_n=0.5):
         self.protein = protein
         self.samples_N = 10000
         self.warmup_N = 500
         self.chains_N = 1
-        self.y = None # TODO read out from IS mat data
-        self.a, self.b, self.c, self.d = a, b, c, d
+        self.y = ΔΔg
         self.α_a, self.β_a = α_b, β_b
         self.α_b, self.β_b = α_a, β_a
         self.α_c, self.β_c = α_c, β_c
         self.σ_d, self.σ_n = σ_d, σ_n
-        self.θ = (self.a, self.b, self.c, self.d)
 
         self.mcmc = self.run_mcmc()
         self.y = self.mcmc.get_samples()['obs'].mean(0)
