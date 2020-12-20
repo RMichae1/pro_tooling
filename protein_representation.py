@@ -11,6 +11,7 @@ from data_scaler import BayesScaler
 from typing import Tuple
 import matplotlib.pyplot as plt
 from torch.distributions import Normal, Gamma
+from torch.nn import Parameter
 
 
 class ProteinCollection:
@@ -90,7 +91,6 @@ class ProteinCollection:
                     kernel.p_adjacency = p_adj
                     kernel.q_adjacency = q_adj
                     mat_vals.append(kernel.k())
-                    # TODO invoke WDK instead of regular kernels
                 wdks[k_name][self.mutation_ids[idx]] = mat_vals
         return wdks
 
@@ -147,14 +147,15 @@ class ProteinCollection:
         plt.savefig("./fig/mwdk.png")
         plt.show()
 
+
 class ProteinCollectionSimulated(ProteinCollection):
     """
     Subclass of ProteinCollection for (scaled) Rosetta simulated input
     """
-    def __init__(self):
-        super().__init__()
+    def __init__(self, contactmap: ContactMapper, pdb_ID: str, pdb_mutations: dict):
+        super().__init__(contactmap, pdb_ID, pdb_mutations)
         self.scaler = BayesScaler(self.ΔΔg)
-        self.ΔΔg = self.scalar.y
+        self.ΔΔg = self.scaler.y
         
 
 class AdditiveNoiseRepresentation:
@@ -167,9 +168,10 @@ class AdditiveNoiseRepresentation:
             self.σ = self.σ_experimental
         elif protein_representation.__class__.__name__ == "ProteinCollectionSimulated":
             σ_T = protein_representation.scaler.σ_T
-            self.σ = self.σ_experimental + self.σ_simulated + σ_T
+            t = Parameter(1.1) # init t-value
+            self.σ = self.σ_experimental + self.σ_simulated + t*σ_T
         else:
-            raise RuntimeError("Protein Collection needs to be of type \{ProteinCollection ; ProteinCollectionSimulated\} !")
+            raise RuntimeError("Protein Collection needs to be of type : ProteinCollection || ProteinCollectionSimulated !")
         self.ε = Normal(0, self.σ)
         self.y_WT = np.array(protein_representation.ΔΔg[0]) + self.ε_0
         self.y = np.array(protein_representation.ΔΔg[1:])
