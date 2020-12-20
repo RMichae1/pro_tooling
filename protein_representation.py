@@ -7,8 +7,10 @@ from copy import deepcopy
 from contact_mapper import ContactMapper
 from graphkernel import MatrixKernel, WeightedDecompositionKernel
 from graphkernel import KernelFactory
+from data_scaler import BayesScaler
 from typing import Tuple
 import matplotlib.pyplot as plt
+from torch.distributions import Normal, Gamma
 
 
 class ProteinCollection:
@@ -31,6 +33,7 @@ class ProteinCollection:
         else:
             with open('test_wdk.pickle', 'rb') as file_handle:
                 self.matrix_kernels = pickle.load(file_handle)
+        #self.matrix_kernels = self.compute_matrices()
         self.matrices_df: pd.DataFrame = self.generate_df_representation()
         self.mWDK = WeightedDecompositionKernel(kernels=self.matrices_df)
         self.mwdk_df: pd.DataFrame = pd.DataFrame(self.mWDK.K_ϕ.detach().numpy(), index=self.mutation_ids, columns=self.mutation_ids)
@@ -143,3 +146,35 @@ class ProteinCollection:
         ax.set_title("mWDK values")
         plt.savefig("./fig/mwdk.png")
         plt.show()
+
+class ProteinCollectionSimulated(ProteinCollection):
+    """
+    Subclass of ProteinCollection for (scaled) Rosetta simulated input
+    """
+    def __init__(self):
+        super().__init__()
+        self.scaler = BayesScaler(self.ΔΔg)
+        self.ΔΔg = self.scalar.y
+        
+
+class AdditiveNoiseRepresentation:
+    def __init__(self, protein_representation: ProteinCollection, σ_0=1e-6, 
+                α_E=2.5, β_E=0.02, α_S=50., β_S=0.007):
+        self.ε_0 = Normal(0, σ_0)
+        self.σ_experimental = Gamma(α_E, β_E)
+        self.σ_simulated = Gamma(α_S, β_S)
+        if protein_representation.__class__.__name__ == "ProteinCollection":
+            self.σ = self.σ_experimental
+        elif protein_representation.__class__.__name__ == "ProteinCollectionSimulated":
+            σ_T = protein_representation.scaler.σ_T
+            self.σ = self.σ_experimental + self.σ_simulated + σ_T
+        else:
+            raise RuntimeError("Protein Collection needs to be of type \{ProteinCollection ; ProteinCollectionSimulated\} !")
+        self.ε = Normal(0, self.σ)
+        self.y_WT = np.array(protein_representation.ΔΔg[0]) + self.ε_0
+        self.y = np.array(protein_representation.ΔΔg[1:])
+        ε_exp = np.array([self.ε.sample() for _ in range(self.y)])
+        self.y += ε_exp
+        self.y = np.append(self.y_WT, self.y)
+
+
