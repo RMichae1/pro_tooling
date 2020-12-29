@@ -8,16 +8,17 @@ from protein_representation import ProteinCollection, AdditiveNoiseRepresentatio
 
 class GPRegression:
     def __init__(self, protein_representation: ProteinCollection, noise_factor: AdditiveNoiseRepresentation, n_samples=100):
-        # TODO: mutation-lvl CV: randomly select mutations for train, test
         self.X = protein_representation.mutation_ids
+        # TODO: mutation-lvl CV: randomly select mutations for train, test
         self.X_train, self.x_test = protein_representation.mutation_ids[:-10], protein_representation.mutation_ids[-10:]
         self.σ = noise_factor.σ
         self.N = len(self.X)
 
-        self.y = protein_representation.ΔΔg[:-10, np.newaxis]
+        # TODO: mutation-lvl CV: randomly select mutations for train, test
+        self.y = protein_representation.ΔΔg[:-10, np.newaxis] # -10 index as example
         self.y_test = protein_representation.ΔΔg[-10:, np.newaxis]
         self.kernel = protein_representation.mWDK.K_ϕ
-        self.p_sample = None`
+        self.p_sample = None
         self.n_samples = n_samples
         self.K_XX = self.kernel(self.X_train, self.X_train)
         self.K_xX = self.kernel(self.x_test, self.x_test)
