@@ -10,6 +10,7 @@ from graphkernel import KernelFactory
 from data_scaler import BayesScaler
 from typing import Tuple
 import matplotlib.pyplot as plt
+import torch
 from torch.distributions import Normal, Gamma
 from torch.nn import Parameter
 
@@ -161,9 +162,10 @@ class ProteinCollectionSimulated(ProteinCollection):
 class AdditiveNoiseRepresentation:
     def __init__(self, protein_representation: ProteinCollection, σ_0=1e-6, 
                 α_E=2.5, β_E=0.02, α_S=50., β_S=0.007):
-        self.ε_0 = Normal(0, σ_0)
-        self.σ_experimental = Gamma(α_E, β_E)
-        self.σ_simulated = Gamma(α_S, β_S)
+        # TODO find out how .sample needs to be called...
+        self.ε_0 = Normal(0, torch.tensor(σ_0)).sample()
+        self.σ_experimental = Gamma(torch.tensor(α_E), torch.tensor(β_E)).sample()
+        self.σ_simulated = Gamma(torch.tensor(α_S), torch.tensor(β_S)).sample()
         if protein_representation.__class__.__name__ == "ProteinCollection":
             self.σ = self.σ_experimental
         elif protein_representation.__class__.__name__ == "ProteinCollectionSimulated":
@@ -173,9 +175,9 @@ class AdditiveNoiseRepresentation:
         else:
             raise RuntimeError("Protein Collection needs to be of type : ProteinCollection or ProteinCollectionSimulated !")
         self.ε = Normal(0, self.σ)
-        self.y_WT = np.array(protein_representation.ΔΔg[0]) + self.ε_0
+        self.y_WT = np.array(protein_representation.ΔΔg[0]) + self.ε_0.numpy()
         self.y = np.array(protein_representation.ΔΔg[1:])
-        ε_exp = np.array([self.ε.sample() for _ in range(self.y)])
+        ε_exp = np.array([self.ε.sample() for _ in range(len(self.y))])
         self.y += ε_exp
         self.y = np.append(self.y_WT, self.y)
 

@@ -50,7 +50,8 @@ class BayesScaler:
         d = self.mcmc.get('d').mean(0).numpy()
         self.θ = a * np.exp(np.dot(c,ΔΔg)) + np.dot(b, ΔΔg) + d
         
-        self.σ_T = np.sum(np.square(self.θ - ΔΔg)) / len(ΔΔg) # TODO check correctness w.r.t. gp_modeling
+        self.σ_T = np.square(self.θ - ΔΔg)
+        self.σ_T_mean = np.sum(np.square(self.θ - ΔΔg)) / len(ΔΔg) # TODO check correctness w.r.t. gp_modeling
 
     def _model(self, ΔΔg):
         a = pyro.sample('a', dist.Gamma(self.α_a, self.β_a))
@@ -87,15 +88,16 @@ class BayesScaler:
 
     def plot_scaling(self):
         fig, ax = plt.subplots(1,2 ,figsize=(5,1))
-        sns.scatter(x=self.ΔΔg, y=self.θ, ax=ax[0])
+        sns.scatterplot(x=self.ΔΔg.numpy(), y=self.θ, ax=ax[0])
         # TODO add green interval for sampling posterior
         # barplot over scaled y values
         sns.barplot(x=self.σ_T, y=self.θ, ax=ax[1])
-        ax[0].set_xaxis("ΔΔG original")
-        ax[1].set_xaxis("σT")
-        ax[0].set_yaxis("ΔΔG yE, yS")
+        ax[0].set_xlabel("ΔΔG original")
+        ax[1].set_xlabel("σT")
+        ax[0].set_ylabel("ΔΔG yE, yS")
+        ax[0].set_ylim((-6, 4))
+        ax[0].set_xlim((-20, 4))
         plt.suptitle("Stability Transformation")
         plt.savefig("./fig/bayes_scaling.png")
+        plt.show()
        
-
-
