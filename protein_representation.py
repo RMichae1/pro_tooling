@@ -171,7 +171,7 @@ class AdditiveNoiseRepresentation:
             t = Parameter(1.1) # init t-value
             self.σ = self.σ_experimental + self.σ_simulated + t*σ_T
         else:
-            raise RuntimeError("Protein Collection needs to be of type : ProteinCollection || ProteinCollectionSimulated !")
+            raise RuntimeError("Protein Collection needs to be of type : ProteinCollection or ProteinCollectionSimulated !")
         self.ε = Normal(0, self.σ)
         self.y_WT = np.array(protein_representation.ΔΔg[0]) + self.ε_0
         self.y = np.array(protein_representation.ΔΔg[1:])
