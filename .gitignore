@@ -7,4 +7,7 @@ serialized/
 *.log
 *.pyc
 
+*.pickle
+*.pkl
+
 __pycache__/
