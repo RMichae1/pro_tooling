@@ -87,17 +87,23 @@ class BayesScaler:
             print(values, "\n")
 
     def plot_scaling(self):
-        fig, ax = plt.subplots(1,2 ,figsize=(5,1))
-        sns.scatterplot(x=self.ΔΔg.numpy(), y=self.θ, ax=ax[0])
+        fig, ax = plt.subplots(1,2 ,figsize=(25,10))
+        sns.scatterplot(x=self.ΔΔg.numpy(), y=self.θ, ci=self.σ_T, color=".2", marker=".", ax=ax[0])
+        ci_pos = self.θ + self.σ_T * 2
+        ci_neg = self.θ - self.σ_T * 2
+        ax[0].plot(self.ΔΔg.numpy(), ci_pos, "r.") # TODO order points for smoother plotting
+        ax[0].plot(self.ΔΔg.numpy(), ci_neg, "r.")
         # TODO add green interval for sampling posterior
         # barplot over scaled y values
-        sns.barplot(x=self.σ_T, y=self.θ, ax=ax[1])
+        sns.histplot(self.σ_T, ax=ax[1], label="σ_T distribution", stat="density", log_scale=True)
+        #ax[1].bar(x=self.σ_T, height=self.θ, width=0.2, label="θ values")
         ax[0].set_xlabel("ΔΔG original")
         ax[1].set_xlabel("σT")
         ax[0].set_ylabel("ΔΔG yE, yS")
-        ax[0].set_ylim((-6, 4))
+        ax[0].set_ylim((-15, 4))
         ax[0].set_xlim((-20, 4))
         plt.suptitle("Stability Transformation")
         plt.savefig("./fig/bayes_scaling.png")
+        plt.legend()
         plt.show()
        
