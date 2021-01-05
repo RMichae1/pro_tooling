@@ -76,9 +76,6 @@ class GPRegression:
         f_μ = torch.matmul(self.K_xX, α)
         v = cholesky_solve(self.K_xX.T, L)
         cov = self.K_xx - torch.matmul(self.K_xX, v)
-        # TODO PyTorch MultivariateNormal behaved numerically unstable hence np
-        #p_sample = multivariate_normal(f_μ[0].detach().numpy(), cov.detach().numpy(), 
-        #                                    size=self.n_samples)
         mN = MultivariateNormal(f_μ, cov)
         p_sample = mN.sample_n(self.n_samples)
         #log_marg_likelihood = mN.log_prob(p_sample)
