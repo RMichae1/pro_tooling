@@ -49,31 +49,31 @@ if __name__ == "__main__":
     # cm_tri.plot_contact_map(save_fig="/home/rcml/pro_tooling/fig/")
 
     # Create and test Graph Kernel
-    wdk = MatrixKernel(p_sequence=cm_tri.sequence, p_adjacency=cm_tri.adjacency,
+    kernel = MatrixKernel(p_sequence=cm_tri.sequence, p_adjacency=cm_tri.adjacency,
                                         q_sequence=cm_tri.sequence, q_adjacency=cm_tri.adjacency, sub_matrix="BLOSUM62")
-    print("Computed Kernel Value - WT w/ BLOSUM 62 {}".format(wdk.kernel_value))
-    #print(wdk.K_ϕ)
+    print("Computed Kernel Value - WT w/ BLOSUM 62 {}".format(kernel.kernel_value))
 
     mutational_dict = parse_mutations("./data/ddg_protherm.mat", query="ddg_protherm")
     pcol = ProteinCollection(cm_tri, pdb_ID="1PGA", pdb_mutations=mutational_dict)
-    print(pcol.matrices_df)
+    # print(pcol.matrices_df)
     # pcol.plot_sub_matrices()
-    print(pcol.mwdk_df)
+    # print(pcol.mwdk_df)
     # pcol.plot_mwdk()
+    print(pcol.mWDK.K_ϕ) # TODO normalize this appropriately
 
     # ros_mut_dict = parse_mutations("./data/ddg_rosetta_single.mat", query="ddg_rosetta_single")
 
-    # # instantiate and parse IS data
+    # instantiate and parse IS data
     # rosetta_collection = ProteinCollection(cm_tri, pdb_ID="1PGA", pdb_mutations=ros_mut_dict)
-    # # scale using Bayesian Scaling
+    # rosetta_collection.plot_mwdk()
+    # scale using Bayesian Scaling
     # bs_rosetta = BayesScaler(ΔΔg=rosetta_collection.ΔΔg)
     # print(bs_rosetta.θ)
     # print(bs_rosetta.ΔΔg)
-    # #print(bs_rosetta.mcmc_samples)
+    # print(bs_rosetta.mcmc_samples)
     # print(bs_rosetta.print_summary())
     # print(bs_rosetta.σ_T)
-    # print(len(bs_rosetta.σ_T))
-    # #print(bs_rosetta.plot_scaling())
+    # print(bs_rosetta.plot_scaling())
     # #rosetta_collection = ProteinCollectionSimulated(cm_tri, pdb_ID="1PGA", pdb_mutations=ros_mut_dict)
     # #print(rosetta_collection.ΔΔg)
 
@@ -81,3 +81,4 @@ if __name__ == "__main__":
 
     gpr = GPRegression(protein_representation=pcol, noise_factor=noisy_protein)
     print(gpr.p_sample)
+    gpr.plot()
