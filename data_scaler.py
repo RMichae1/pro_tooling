@@ -15,7 +15,7 @@ class BayesScaler:
     Bayesian In Silico Scaling for Rosetta simulated data.
     Using MCMC (w/ NUTS sampler)
     """
-    def __init__(self, ΔΔg, 
+    def __init__(self, ΔΔg, experimentally_observed_ΔΔg,
                     α_a=2., β_a=1.5, α_b=1.3, β_b=2., α_c=2, β_c=5., σ_d=0.15, σ_n=0.5,
                     samples_N=10000, warmup_N=500):
         pyro.set_rng_seed(42)
@@ -23,6 +23,7 @@ class BayesScaler:
         self.samples_N = samples_N
         self.warmup_N = warmup_N
         self.chains_N = 1
+        ΔΔg = self._check_observed(ΔΔg, experimentally_observed_ΔΔg) # TODO does not check if mutations align
         self.ΔΔg = torch.Tensor(ΔΔg)
         self.α_a, self.β_a = α_b, β_b
         self.α_b, self.β_b = α_a, β_a
@@ -48,15 +49,21 @@ class BayesScaler:
         b = self.mcmc.get('b').mean(0).numpy()
         c = self.mcmc.get('c').mean(0).numpy()
         d = self.mcmc.get('d').mean(0).numpy()
-        self.θ = a * np.exp(np.dot(c,ΔΔg)) + np.dot(b, ΔΔg) + d
+        self.θ = a * np.exp(np.dot(c, ΔΔg)) + np.dot(b, ΔΔg) + d
         
         self.σ_T = np.square(self.θ - ΔΔg)
         self.σ_T_mean = np.sum(np.square(self.θ - ΔΔg)) / len(ΔΔg) # TODO check correctness w.r.t. gp_modeling
+    
+    def _check_observed(ΔΔg, experimentally_observed_ΔΔg) -> np.array:
+        # TODO do the mutations have to align as well?? not mentioned in the paper
+        experimental = set(experimentally_observed_ΔΔg)
+        observed_ΔΔg = [val for val in ΔΔg if val in experimental]
+        return observed_ΔΔg
 
     def _model(self, ΔΔg):
         a = pyro.sample('a', dist.Gamma(self.α_a, self.β_a))
         b = 0.5 * pyro.sample('b', dist.Beta(self.α_b, self.β_b))
-        c = (10/3) * pyro.sample('c', dist.Beta(self.α_c, self.β_c))
+        c = 3.33 * pyro.sample('c', dist.Beta(self.α_c, self.β_c))
         d = pyro.sample('d', dist.Normal(-a, self.σ_d))
         θ = a * torch.exp(c*ΔΔg) + b*ΔΔg + d
         with pyro.plate("data", ΔΔg.shape[0]):
@@ -64,6 +71,7 @@ class BayesScaler:
     
     def run_mcmc(self):
         nuts_kernel = NUTS(self._model, jit_compile=True)
+        # TODO Hamiltonian Scaling also
         mcmc = MCMC(nuts_kernel, num_samples=self.samples_N, warmup_steps=self.warmup_N)
         mcmc.run(self.ΔΔg)
         return mcmc

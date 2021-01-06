@@ -9,6 +9,16 @@ def test_cm_tri_distance_matrix_dim():
     len_N = len(cm_tri.sequence)
     assert len(cm_tri.distance_matrices[0]) == len_N
 
-# TODO test if contact map is binary
+def test_cm_binary():
+    for r in cm_tri.contact_maps:
+        for val in r:
+            if not val != 0 or val != 1:
+                return False
+    return True
 
 # TODO test if distance map is continuous
+def test_dist_mat_continuous():
+    print(cm.distance_matrices)
+    pass 
+
+# TODO test against reference
