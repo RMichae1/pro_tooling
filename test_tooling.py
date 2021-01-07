@@ -2,7 +2,7 @@ from contact_mapper import ContactMapper
 from protein_representation import ProteinCollection, ProteinCollectionSimulated
 from protein_representation import AdditiveNoiseRepresentation
 from graphkernel import MatrixKernel
-from data_handler import parse_mutations
+from data_utility import parse_mutations
 from data_scaler import BayesScaler
 from gp_regression import GPRegression
 
@@ -11,15 +11,16 @@ if __name__ == "__main__":
     # Create and test Contact Mapper
     # # example case 1PGA - CA-distance
 
-    # # example case 1PGA - residue distance
+    # example case 1PGA - residue distance
     cm_tri = ContactMapper(pdb_file="/home/rcml/pdb/1pga.pdb", tri_dist=True)
     
     mutational_dict_exp = parse_mutations("./data/ddg_protherm.mat", query="ddg_protherm")
     mutational_dict_is = parse_mutations("./data/ddg_rosetta_single.mat", query="ddg_rosetta_single")
 
     pcol = ProteinCollection(cm_tri, pdb_ID="1PGA", 
-                    mutations_exp=mutational_dict_exp, mutations_sim=mutational_dict_is)
-    # print(pcol.matrices_df)
+                    mutations_exp=mutational_dict_exp, mutations_sim=mutational_dict_is,
+                    TESTING=True)
+    print(pcol.matrices_df)
     pcol.plot_sub_matrices()
     print(pcol.mwdk_df)
     pcol.plot_mwdk()

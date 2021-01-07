@@ -5,9 +5,8 @@ from torch import Tensor, rand
 from torch.nn.parameter import Parameter
 from torch.distributions.gamma import Gamma
 from torch.distributions.normal import Normal
-from Bio.Align import substitution_matrices
-from Bio.Align.substitution_matrices import Array as SArray
-
+from scipy.io import loadmat
+from data_utility import aa2index
 from contact_mapper import ContactMapper  
 
 class WeightedDecompositionKernel:
@@ -27,85 +26,69 @@ class WeightedDecompositionKernel:
             K_ += self.w[i] * torch.Tensor(mat.to_numpy())**self.γ
         return K_
 
-class KernelFactory:
-    def __init__(self, sub_matrices=["BLOSUM62", "BLOSUM50", "BLOSUM45", "BLOSUM80"]):
+class KernelLoader:
+    def __init__(self, sub_matrices: list=["BLOSUM62", "BLOSUM50", "BLOSUM45", "BLOSUM80"], sub_mat_ids:list = []):
         """
         Interface to MatrixKernel that encapsulates the collection of substitution matrices
         used. 
         Has list of kernels as class property.
+        sub_mat_ids takes IDs from SubMat Matlab
         """
-        self.elements = len(sub_matrices)
-        self.sub_matrices = sub_matrices
-        self.kernels = [self._construct_kernel(mat) for mat in self.sub_matrices]
-
-    def _construct_kernel(self, matrix):
-        return MatrixKernel(sub_matrix=matrix)
-    
+        matrices = loadmat("./data/subMats.mat").get('subMats')
+        s_mat = []
+        # check for provided sub_matrices in data subMat
+        for m_vals, m_id, m_info in matrices:
+            for s in sub_matrices:
+                if m_id in sub_mat_ids or s in str(m_info):
+                    s_mat.append(m_vals)
+        self.kernels: list = [MatrixKernel(matrix=s) for s in s_mat]
+        self.sub_matrices_names: list = sub_matrices
+        print(len(self.kernels))
+        assert len(self.kernels) == len(self.sub_matrices_names)
     
 class MatrixKernel:
-    def __init__(self,  sub_matrix: str, p_sequence: list=None, p_adjacency:tuple=None,
-        q_sequence: list=None, q_adjacency: tuple=None, depth: int=1):
+    def __init__(self, matrix: np.array, depth: int=1):
         """
         Matrix Kernel class takes substitution matrix with which to compute the kernel.
         Takes sequences and list of adjacencies over which to compute the kernel value.
         """
-        self.p_sequence = p_sequence
-        self.p_adjacency = p_adjacency
-        self.q_sequence = q_sequence
-        self.q_adjacency = q_adjacency
         self.depth: int = depth # not used downstream
-        self.sub_matrix_str: str = sub_matrix
-        self.sub_matrix: SArray = self.get_substitution_matrix()
-        self.kernel_value = self.k()
+        self.matrix = matrix
 
-    def get_substitution_matrix(self) -> SArray:
-        return self.scale_substitution_matrix(substitution_matrices.load(self.sub_matrix_str)) 
-
-    @staticmethod
-    def scale_substitution_matrix(mat: SArray) -> SArray:
-        """scale input substitution matrix between zero and one"""
-        # TODO test to apply exp instead, since it is a log Likelihood
-        mat_val = np.array(mat.values())
-        normalized_vals = (mat_val - np.min(mat_val) + 1)/(np.max(mat_val)-np.min(mat_val) + 1)
-        # substitution matrix object requires iterable for update
-        mat.update(zip(mat.keys(), normalized_vals))
-        return mat
-
-    def averaged_neighborhood(self, p, q, idx: int) -> float:
+    def averaged_neighborhood(self, p_res, q_res, p_seq, q_seq, p_adj, q_adj) -> float:
         """computes sum over neighborhood (Eq. 7) for both residue chains"""
-        # self.p_adjacency = [self.p_adjacency] if len(self.p_adjacency) == 1 else self.p_adjacency
-        res_p, neighbors_p = self.p_adjacency[idx]
-        res_q, neighbors_q = self.q_adjacency[idx]
-        # check if retrived residues are the same
-        # TODO this check is false for k_pp and k_qq where checks are different @!!!
-        # assert(p == res_p and q == res_q)
         # Point for Improvement: Eq. 7 assumes neighborhoods are equal
         # implication graph structure stays the same during mutations 
-        assert(np.all(neighbors_p == neighbors_q))
-        n_sum = 0.
-        for n_res in neighbors_p:
-            # convert indices of neighbors to Sequence string
-            n_res = self.p_sequence[n_res]
-            n_sum += self.sub_matrix.get(n_res).get(n_res)
+        # test residue is the correct in adjacency
+        # TODO conflicting only working with 1 sequence - should work with both ??
+        p, p_neighborhood = p_adj
+        q, q_neighborhood = q_adj
+        # assert(np.all(p_neighborhood == q_neighborhood))
+        # assert(p_res == p and q_res == q)
+        n_sum = np.sum([self.matrix[aa2index(p_seq[n])][aa2index(q_seq[n])] for n in p_neighborhood])
         return n_sum
 
-    def k(self) -> float:
+    def k(self, p_sequence, q_sequence, p_adjacency, q_adjacency) -> float:
+        """
+        Eq. 7
+        Compute kernel value w.r.t. neighborhood normalized.
+        """
         k = 0.
-        # test if parameters have been set
-        if self.p_sequence is None or self.q_sequence is None:
-            return k
-        assert(self.p_sequence.shape[0] == self.q_sequence.shape[0])
-        for idx, (res_x, res_y) in enumerate(zip(self.p_sequence, self.q_sequence)):
-            s_val = self.sub_matrix.get(res_x).get(res_y)
-            k_val = s_val * self.averaged_neighborhood(p=res_x, q=res_y, idx=idx)
+        assert(p_sequence.shape[0] == q_sequence.shape[0])
+        for idx, (res_x, res_y) in enumerate(zip(p_sequence, q_sequence)):
+            x_idx, y_idx = aa2index(res_x), aa2index(res_y)
+            k_xy = self.matrix[x_idx][y_idx] * self.averaged_neighborhood(p_res=res_x, q_res=res_y, 
+                            p_seq=p_sequence, q_seq=q_sequence, 
+                            p_adj=p_adjacency[idx], q_adj=q_adjacency[idx])
             # compute for normalization
-            k_pp = self.sub_matrix.get(res_x).get(res_x) 
-            k_qq = self.sub_matrix.get(res_y).get(res_y)
-            k_pp *= self.averaged_neighborhood(p=res_x, q=res_x, idx=idx)
-            k_qq *= self.averaged_neighborhood(p=res_y, q=res_y, idx=idx)
-            # normalized_k = k_val / np.sqrt(k_pp*k_qq)
-            # TODO normalized value always 1 - since there are no mutations yet
-            # k += normalized_k
-            k += k_val
+            k_xx = self.matrix[x_idx][x_idx] * self.averaged_neighborhood(p_res=res_x, q_res=res_x, 
+                                p_seq=p_sequence, q_seq=p_sequence,
+                                p_adj=p_adjacency[idx], q_adj=p_adjacency[idx])
+            k_yy = self.matrix[y_idx][y_idx] * self.averaged_neighborhood(p_res=res_y, q_res=res_y, 
+                                p_seq=q_sequence, q_seq=q_sequence, 
+                                p_adj=q_adjacency[idx], q_adj=q_adjacency[idx])
+            normalized_k = k_xy / np.sqrt(k_xx*k_yy)
+            k += normalized_k
+        # print(k)
         return k
 

@@ -1,4 +1,5 @@
 import re
+from random import sample
 import numpy as np
 import pandas as pd
 from os.path import isfile
@@ -6,7 +7,7 @@ import pickle
 from copy import deepcopy
 from contact_mapper import ContactMapper
 from graphkernel import MatrixKernel, WeightedDecompositionKernel
-from graphkernel import KernelFactory
+from graphkernel import KernelLoader
 from data_scaler import BayesScaler
 from typing import Tuple
 import matplotlib.pyplot as plt
@@ -24,7 +25,7 @@ class ProteinCollection:
     computed covariance matrices
     """
     def __init__(self, contactmap: ContactMapper, pdb_ID: str, 
-            mutations_exp: dict={}, mutations_sim: dict={}):
+            mutations_exp: dict={}, mutations_sim: dict={}, TESTING=False):
         self.pdb_ID = pdb_ID
         self.contactmap = contactmap
         self.adjacency = contactmap.adjacency
@@ -32,21 +33,26 @@ class ProteinCollection:
         assert self.pdb_ID == self.contactmap.pdb_ID
         self.mutations_exp = mutations_exp.get(pdb_ID)
         self.mutations_sim = mutations_sim.get(pdb_ID)
+        if TESTING:
+            # reduce complexity by sampling simulations
+            print(f"TESTING: Selecting {int(0.5*len(self.mutations_sim))} in silico mutations")
+            self.mutations_sim = sample(self.mutations_sim, int(0.5*len(self.mutations_sim)))
         self.mutation_ids = ["WT"]
         self.ΔΔg = [0]
-        self.kernel_factory = KernelFactory()
+        # TODO testing with one sub-matrix
+        self.kernels = KernelLoader(sub_matrices=["BLOSUM62", "BLOSUM45"])
         self.mut_S_exp, self.mut_adj_exp, self.mut_S_is, self.mut_adj_is = self.derive_mutations()
         self.mutated_sequences = self.mut_S_exp + self.mut_S_is
         self.mutated_adjacencies = self.mut_adj_exp + self.mut_adj_is
         self.ΔΔg_exp = self.ΔΔg[:len(self.mut_S_exp)]
         self.ΔΔg_is = self.ΔΔg[len(self.mut_S_exp):]
         # TODO For testing compute once and save result as pickle
-        if not isfile('test_wdk.pickle'):
+        if not isfile(f'test_wdk_{self.pdb_ID}.pickle'):
             self.matrix_kernels: dict = self.compute_matrices()
-            with open('test_wdk.pickle', 'wb') as file_handle:
+            with open(f'test_wdk_{self.pdb_ID}.pickle', 'wb') as file_handle:
                 pickle.dump(self.matrix_kernels, file_handle)
         else:
-            with open('test_wdk.pickle', 'rb') as file_handle:
+            with open(f'test_wdk_{self.pdb_ID}.pickle', 'rb') as file_handle:
                 self.matrix_kernels = pickle.load(file_handle)
         #self.matrix_kernels = self.compute_matrices()
         self.matrices_df: pd.DataFrame = self.generate_df_representation()
@@ -110,22 +116,15 @@ class ProteinCollection:
         compute substitution over all mutations with one-another
         """
         print("Computing kernel matrices ...")
-        wdks = {kernel: {} for kernel in self.kernel_factory.sub_matrices}
-        for k_name, kernel in zip(self.kernel_factory.sub_matrices, self.kernel_factory.kernels):
-            sequences = [self.sequence] + self.mutated_sequences
-            adjacencies = [self.adjacency] + self.mutated_adjacencies
-            pbar = tqdm(enumerate(zip(sequences, adjacencies)))
-            for idx, (p_seq, p_adj) in pbar:
-                pbar.set_description(f"MUTATION {self.mutation_ids[idx]}") # N = wt+mutations
-                mat_vals = []
-                for q_seq, q_adj in zip(sequences[idx:], adjacencies[idx:]):
-                    # set object properties before computation
-                    kernel.p_sequence = p_seq
-                    kernel.q_sequence = q_seq
-                    kernel.p_adjacency = p_adj
-                    kernel.q_adjacency = q_adj
-                    mat_vals.append(kernel.k())
-                wdks[k_name][self.mutation_ids[idx]] = mat_vals
+        wdks = {kernel: {} for kernel in self.kernels.sub_matrices_names}
+        sequences = [self.sequence] + self.mutated_sequences
+        adjacencies = [self.adjacency] + self.mutated_adjacencies
+        for k_name, kernel in zip(self.kernels.sub_matrices_names, self.kernels.kernels):
+            # N = wt+mutations
+            wdks[k_name] = {self.mutation_ids[idx]: 
+                [kernel.k(p_sequence=p_seq, q_sequence=q_seq, p_adjacency=p_adj, q_adjacency=q_adj)
+                for q_seq, q_adj in zip(sequences[idx:], adjacencies[idx:])]
+                    for idx, (p_seq, p_adj) in tqdm(enumerate(zip(sequences, adjacencies)))}
         return wdks
 
     def build_df_from_mk(self, matrix_kernel) -> pd.DataFrame:
@@ -166,7 +165,7 @@ class ProteinCollection:
             ax[idx].set_xticklabels(wdk.columns, rotation=90, size=5)
             if idx > 0:
                 ax[idx].set_yticks([])
-            ax[idx].set_title("{}".format(self.kernel_factory.sub_matrices[idx]))
+            ax[idx].set_title("{}".format(self.kernels.sub_matrices_names[idx]))
         plt.savefig("./fig/mat_viz.png")
         plt.legend()
         plt.show()
