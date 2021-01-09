@@ -5,6 +5,7 @@ from torch import Tensor, rand
 from torch.nn.parameter import Parameter
 from torch.distributions.gamma import Gamma
 from torch.distributions.normal import Normal
+from tqdm import tqdm
 from scipy.io import loadmat
 from data_utility import aa2index
 from contact_mapper import ContactMapper  
@@ -65,30 +66,47 @@ class MatrixKernel:
         q, q_neighborhood = q_adj
         # assert(np.all(p_neighborhood == q_neighborhood))
         # assert(p_res == p and q_res == q)
-        n_sum = np.sum([self.matrix[aa2index(p_seq[n])][aa2index(q_seq[n])] for n in p_neighborhood])
+        n_sum = np.sum([self.matrix[p_seq[n]][q_seq[n]] for n in p_neighborhood])
         return n_sum
 
-    def k(self, p_sequence, q_sequence, p_adjacency, q_adjacency) -> float:
+    #def k(self, p_sequence, q_sequence, p_adjacency, q_adjacency) -> float:
+    def k(self, sequences, adjacencies) -> float:
         """
         Eq. 7
         Compute kernel value w.r.t. neighborhood normalized.
+        N = num of mutational variants
+        D = sequence length
+        Input: sequences: NxD, 
+            adjacencies: NxD as list of AA integers
+        p_adjacency, q_adjacency list of neighbors per position
+
+        return NxN Matrix 
         """
-        k = 0.
-        assert(p_sequence.shape[0] == q_sequence.shape[0])
-        for idx, (res_x, res_y) in enumerate(zip(p_sequence, q_sequence)):
-            x_idx, y_idx = aa2index(res_x), aa2index(res_y)
-            k_xy = self.matrix[x_idx][y_idx] * self.averaged_neighborhood(p_res=res_x, q_res=res_y, 
-                            p_seq=p_sequence, q_seq=q_sequence, 
-                            p_adj=p_adjacency[idx], q_adj=q_adjacency[idx])
-            # compute for normalization
-            k_xx = self.matrix[x_idx][x_idx] * self.averaged_neighborhood(p_res=res_x, q_res=res_x, 
-                                p_seq=p_sequence, q_seq=p_sequence,
-                                p_adj=p_adjacency[idx], q_adj=p_adjacency[idx])
-            k_yy = self.matrix[y_idx][y_idx] * self.averaged_neighborhood(p_res=res_y, q_res=res_y, 
-                                p_seq=q_sequence, q_seq=q_sequence, 
-                                p_adj=q_adjacency[idx], q_adj=q_adjacency[idx])
-            normalized_k = k_xy / np.sqrt(k_xx*k_yy)
-            k += normalized_k
-        # print(k)
-        return k
+        N = sequences.shape[0]
+        k = np.zeros([N, N])
+        neighborhoods = np.array([contacts for res, contacts in adjacencies])
+        for idx, neighbors in tqdm(enumerate(neighborhoods)):
+            for contacts in neighbors:
+                # WARN: assumption is that neighborhood does NOT change
+                k += self.matrix[sequences[:, contacts], :][:, sequences[:, contacts]]
+            k *= self.matrix[sequences[:, idx], :][:, sequences[:, idx]]
+        norm = np.sqrt(np.diag(k))[:, np.newaxis]
+        k_hat = k / norm.dot(norm.T)
+
+            # TODO inperformant and deprecated
+            # k_xy = self.matrix[x_idx][y_idx] * self.averaged_neighborhood(p_res=res_x, q_res=res_y, 
+            #                 p_seq=p_sequence, q_seq=q_sequence, 
+            #                 p_adj=p_adjacency[idx], q_adj=q_adjacency[idx])
+            # TODO this is how normalization is described in the paper, but not how it is done in practice!
+            # # compute for normalization
+            # k_xx = self.matrix[x_idx][x_idx] * self.averaged_neighborhood(p_res=res_x, q_res=res_x, 
+            #                     p_seq=p_sequence, q_seq=p_sequence,
+            #                     p_adj=p_adjacency[idx], q_adj=p_adjacency[idx])
+            # k_yy = self.matrix[y_idx][y_idx] * self.averaged_neighborhood(p_res=res_y, q_res=res_y, 
+            #                     p_seq=q_sequence, q_seq=q_sequence, 
+            #                     p_adj=q_adjacency[idx], q_adj=q_adjacency[idx])
+            # normalized_k = k_xy / np.sqrt(k_xx*k_yy)
+            # k += normalized_k
+        print(k_hat)
+        return k_hat
 

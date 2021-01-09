@@ -9,6 +9,7 @@ from contact_mapper import ContactMapper
 from graphkernel import MatrixKernel, WeightedDecompositionKernel
 from graphkernel import KernelLoader
 from data_scaler import BayesScaler
+from data_utility import aa2index
 from typing import Tuple
 import matplotlib.pyplot as plt
 from tqdm import tqdm
@@ -43,17 +44,12 @@ class ProteinCollection:
         self.kernels = KernelLoader(sub_matrices=["BLOSUM62", "BLOSUM45"])
         self.mut_S_exp, self.mut_adj_exp, self.mut_S_is, self.mut_adj_is = self.derive_mutations()
         self.mutated_sequences = self.mut_S_exp + self.mut_S_is
+        # TODO mutated adjacencies not used downstream
         self.mutated_adjacencies = self.mut_adj_exp + self.mut_adj_is
+
         self.ΔΔg_exp = self.ΔΔg[:len(self.mut_S_exp)]
         self.ΔΔg_is = self.ΔΔg[len(self.mut_S_exp):]
-        # TODO For testing compute once and save result as pickle
-        if not isfile(f'test_wdk_{self.pdb_ID}.pickle'):
-            self.matrix_kernels: dict = self.compute_matrices()
-            with open(f'test_wdk_{self.pdb_ID}.pickle', 'wb') as file_handle:
-                pickle.dump(self.matrix_kernels, file_handle)
-        else:
-            with open(f'test_wdk_{self.pdb_ID}.pickle', 'rb') as file_handle:
-                self.matrix_kernels = pickle.load(file_handle)
+        self.matrix_kernels: dict = self.compute_matrices()
         #self.matrix_kernels = self.compute_matrices()
         self.matrices_df: pd.DataFrame = self.generate_df_representation()
         self.mWDK = WeightedDecompositionKernel(kernels=self.matrices_df)
@@ -61,6 +57,7 @@ class ProteinCollection:
         # TODO scaling quickfix
         scaler.fit(mwdk_values)
         scaled_mwdk_values = scaler.transform(mwdk_values)
+        
         ##
         self.mwdk_df: pd.DataFrame = pd.DataFrame(scaled_mwdk_values, index=self.mutation_ids, columns=self.mutation_ids)
 
@@ -118,47 +115,28 @@ class ProteinCollection:
         print("Computing kernel matrices ...")
         wdks = {kernel: {} for kernel in self.kernels.sub_matrices_names}
         sequences = [self.sequence] + self.mutated_sequences
-        adjacencies = [self.adjacency] + self.mutated_adjacencies
+        sequences = np.array([np.array([aa2index(aa) for aa in seq], dtype=np.int64) for seq in sequences], dtype=np.int64)
+        # Changes in adjacencies are not accounted for !
+        # adjacencies = [self.adjacency] + self.mutated_adjacencies
+        adjacencies = self.adjacency
         for k_name, kernel in zip(self.kernels.sub_matrices_names, self.kernels.kernels):
             # N = wt+mutations
-            wdks[k_name] = {self.mutation_ids[idx]: 
-                [kernel.k(p_sequence=p_seq, q_sequence=q_seq, p_adjacency=p_adj, q_adjacency=q_adj)
-                for q_seq, q_adj in zip(sequences[idx:], adjacencies[idx:])]
-                    for idx, (p_seq, p_adj) in tqdm(enumerate(zip(sequences, adjacencies)))}
+            wdks[k_name] = kernel.k(sequences, adjacencies)
         return wdks
-
-    def build_df_from_mk(self, matrix_kernel) -> pd.DataFrame:
-        """
-        Build diagonal matrix from the provided matrix_kernel.
-        Account for diagonal through zero-padding as a difference from max.
-        """
-        df = pd.DataFrame(0, index=self.mutation_ids, columns=self.mutation_ids)
-        for mutation, val in matrix_kernel.items():
-            ref_len = max(map(len, matrix_kernel.values()))
-            zero_padded = [0 for _ in range(ref_len-len(val))]
-            data_row = zero_padded + val
-            df.loc[mutation] = data_row
-        val_mat = df.to_numpy()
-        # complete matrix from upper triangle
-        complete_mat = val_mat + val_mat.T
-        # overwrite diagonal values, since they are doubled
-        idx = np.arange(val_mat.shape[0])
-        complete_mat[idx, idx] = val_mat[idx, idx]
-        df.iloc[:, :] = complete_mat
-        return df
 
     def generate_df_representation(self) -> pd.DataFrame:
         df_list = []
         for mat_type, matrix_kernel in self.matrix_kernels.items():
-            mk_df = self.build_df_from_mk(matrix_kernel)
+            # mk_df = self.build_df_from_mk(matrix_kernel)
+            mk_df = pd.DataFrame(matrix_kernel, columns=self.mutation_ids)
             df_list.append(mk_df)
         total_df = pd.DataFrame({'idx': self.matrix_kernels.keys(), 'mat': df_list})
         return total_df
 
     def plot_sub_matrices(self):
-        _, ax = plt.subplots(1, len(self.matrix_kernels.items()), figsize=(30,20))
+        fig, ax = plt.subplots(1, len(self.matrix_kernels.items()), figsize=(30,20))
         for idx, wdk in enumerate(self.matrices_df['mat']):
-            ax[idx].imshow(wdk.to_numpy())
+            mat = ax[idx].imshow(wdk.to_numpy())
             ax[idx].set_yticks(np.arange(len(wdk.columns)))
             ax[idx].set_yticklabels(wdk.columns, size=5)
             ax[idx].set_xticks(np.arange(len(wdk.columns)))
@@ -166,6 +144,7 @@ class ProteinCollection:
             if idx > 0:
                 ax[idx].set_yticks([])
             ax[idx].set_title("{}".format(self.kernels.sub_matrices_names[idx]))
+        fig.colorbar(mat, ax=ax[idx])
         plt.savefig("./fig/mat_viz.png")
         plt.legend()
         plt.show()
