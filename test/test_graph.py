@@ -18,7 +18,7 @@ def test_cm_binary():
 
 # TODO test if distance map is continuous
 def test_dist_mat_continuous():
-    print(cm.distance_matrices)
-    pass 
+    print(cm_tri.distance_matrices)
+    assert cm_tri.distance_matrices != None # TODO is between 0, 1
 
 # TODO test against reference
