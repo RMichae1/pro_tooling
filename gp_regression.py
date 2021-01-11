@@ -1,5 +1,7 @@
 import numpy as np
 from numpy.random import multivariate_normal
+from scipy.stats import norm
+
 import torch
 from torch import cholesky, cholesky_solve
 from torch.distributions import MultivariateNormal, Gamma
@@ -45,7 +47,6 @@ class GPRegression:
             self.y_train, self.y_test = self.y[np.arange(self.y.shape[0])!=idx], self.y[idx]
             self.y_train = torch.Tensor(self.y_train[:, np.newaxis]) 
             #self.y_test = torch.Tensor(self.y_test[:, np.newaxis])
-            kernel_size = self.kernel.shape[0]
             # use np slicing index to cut out testing mutation from training kernel
             drop_mutation_row = torch.vstack((self.kernel[:idx, :], self.kernel[idx+1:,]))
             drop_mutation = torch.hstack((drop_mutation_row[:, :idx], drop_mutation_row[:, idx+1:]))
@@ -55,7 +56,6 @@ class GPRegression:
             assert(self.K_XX.shape == (self.N, self.N))
             assert(self.K_xX.shape == (1, self.N))
             assert(self.K_xx.shape == (1, 1))
-
             μ, cov, lml, p_sample = self._fit()
             mutation_lvl_dict['μ_list'].append(μ)
             mutation_lvl_dict['cov_list'].append(cov)
@@ -80,6 +80,7 @@ class GPRegression:
         p_sample = mN.sample_n(self.n_samples)
         #log_marg_likelihood = mN.log_prob(p_sample)
         log_marg_likelihood = mN.log_prob(self.y_train)
+        # TODO add Gamma prior to marginal likelihood
         return f_μ, cov, log_marg_likelihood, p_sample
 
     def predict(self):
@@ -90,9 +91,14 @@ class GPRegression:
         for idx, mutation in enumerate(self.X):
             samples = self.mutation_level_dict.get('samples')[idx]
             μ = self.mutation_level_dict.get('μ_list')[idx].squeeze().detach().numpy()
+            cov = self.mutation_level_dict.get('cov_list')[idx].squeeze().detach().numpy()
             y_test = self.y[idx]
             for s in samples:
                 ax.scatter(y_test, s, color="indianred", alpha=0.3)
+            # plot gaussian from computed mean and covariance
+            xx = np.arange(-5, 5, 0.1)
+            f = norm.pdf(xx, μ, cov)
+            ax.plot(y_test+f, xx, "k-")
             ax.scatter(y_test, μ, color="darkred")
             # annotate mutations at test point
             ax.annotate(mutation, xy=(y_test, μ), xycoords="data", xytext=(10,10), 
