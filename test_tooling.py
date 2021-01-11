@@ -21,15 +21,18 @@ if __name__ == "__main__":
                     mutations_exp=mutational_dict_exp, mutations_sim=mutational_dict_is,
                     TESTING=True)
     print(pcol.matrices_df)
-    pcol.plot_sub_matrices()
     print(pcol.mwdk_df)
-    pcol.plot_mwdk()
     print(pcol.mWDK.K_ϕ) # TODO normalize this appropriately
 
     # instantiate and parse IS data
 
     # scale using Bayesian Scaling
-    bs_rosetta = BayesScaler(ΔΔg=pcol.ΔΔg_is, experimentally_observed_ΔΔg=pcol.ΔΔg_exp)
+    exp_mutation_ids = pcol.mutation_ids[:len(pcol.mut_S_exp)] # includes WT??
+    is_mutation_ids = pcol.mutation_ids[len(pcol.mut_S_exp):]
+    bs_rosetta = BayesScaler(is_mutations=is_mutation_ids, ΔΔg=pcol.ΔΔg_is, 
+                        exp_mutations=exp_mutation_ids, experimentally_observed_ΔΔg=pcol.ΔΔg_exp, 
+                        TESTING=False)
+
     print(bs_rosetta.θ)
     # print(bs_rosetta.ΔΔg)
     # print(bs_rosetta.mcmc_samples)
