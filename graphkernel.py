@@ -42,19 +42,20 @@ class KernelLoader:
             for s in sub_matrices:
                 if m_id in sub_mat_ids or s in str(m_info):
                     s_mat.append(m_vals)
-        self.kernels: list = [MatrixKernel(matrix=s) for s in s_mat]
+        self.kernels: list = [MatrixKernel(matrix=s, matrix_id=m_id) for s, m_id in zip(s_mat, sub_matrices)]
         self.sub_matrices_names: list = sub_matrices
         print(len(self.kernels))
         assert len(self.kernels) == len(self.sub_matrices_names)
     
 class MatrixKernel:
-    def __init__(self, matrix: np.array, depth: int=1):
+    def __init__(self, matrix: np.array, matrix_id: str, depth: int=1):
         """
         Matrix Kernel class takes substitution matrix with which to compute the kernel.
         Takes sequences and list of adjacencies over which to compute the kernel value.
         """
         self.depth: int = depth # not used downstream
         self.matrix = matrix
+        self.matrix_id = matrix_id
 
     def averaged_neighborhood(self, p_res, q_res, p_seq, q_seq, p_adj, q_adj) -> float:
         """computes sum over neighborhood (Eq. 7) for both residue chains"""
@@ -85,7 +86,9 @@ class MatrixKernel:
         N = sequences.shape[0]
         k = np.zeros([N, N])
         neighborhoods = np.array([contacts for res, contacts in adjacencies])
-        for idx, neighbors in tqdm(enumerate(neighborhoods)):
+        neighborhood_iterator = tqdm(enumerate(neighborhoods))
+        for idx, neighbors in neighborhood_iterator:
+            neighborhood_iterator.set_description(f"Matrix: {self.matrix_id}")
             for contacts in neighbors:
                 # WARN: assumption is that neighborhood does NOT change
                 k += self.matrix[sequences[:, contacts], :][:, sequences[:, contacts]]

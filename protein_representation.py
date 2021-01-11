@@ -41,7 +41,7 @@ class ProteinCollection:
         self.mutation_ids = ["WT"]
         self.ΔΔg = [0]
         # TODO testing with one sub-matrix
-        self.kernels = KernelLoader(sub_matrices=["BLOSUM62", "BLOSUM45"])
+        self.kernels = KernelLoader()
         self.mut_S_exp, self.mut_adj_exp, self.mut_S_is, self.mut_adj_is = self.derive_mutations()
         self.mutated_sequences = self.mut_S_exp + self.mut_S_is
         # TODO mutated adjacencies not used downstream
@@ -103,8 +103,8 @@ class ProteinCollection:
             seq_res = s_mutations[i]
             seq_idx = int(s_mutations[i+1])-1 # offset - PDB-format counts from 1
             seq_mut = s_mutations[i+2]
-            assert self.sequence[seq_idx] == seq_res
-            assert self.contactmap.adjacency[seq_idx][0] == seq_res 
+            #assert self.sequence[seq_idx] == seq_res
+            #assert self.contactmap.adjacency[seq_idx][0] == seq_res 
             mutation_tuples.append((seq_res, seq_idx, seq_mut))
         return mutation_tuples
 
@@ -133,7 +133,8 @@ class ProteinCollection:
         total_df = pd.DataFrame({'idx': self.matrix_kernels.keys(), 'mat': df_list})
         return total_df
 
-    def plot_sub_matrices(self):
+    def plot_sub_matrices(self, savefig="./fig/"):
+        filename = f"{savefig}/sub_matrices_{self.pdb_ID}.png"
         fig, ax = plt.subplots(1, len(self.matrix_kernels.items()), figsize=(30,20))
         for idx, wdk in enumerate(self.matrices_df['mat']):
             mat = ax[idx].imshow(wdk.to_numpy())
@@ -144,12 +145,13 @@ class ProteinCollection:
             if idx > 0:
                 ax[idx].set_yticks([])
             ax[idx].set_title("{}".format(self.kernels.sub_matrices_names[idx]))
-        fig.colorbar(mat, ax=ax[idx])
-        plt.savefig("./fig/mat_viz.png")
+        fig.colorbar(mat, ax=ax[idx], fraction=0.046, pad=0.04)
+        plt.savefig(filename)
         plt.legend()
         plt.show()
 
-    def plot_mwdk(self):
+    def plot_mwdk(self, savefig="./fig/"):
+        filename = f"{savefig}/sub_matrices_{self.pdb_ID}.png"
         _, ax = plt.subplots(1, 1, figsize=(20, 10))
         im = ax.imshow(self.mwdk_df.to_numpy())
         ax.set_yticks(np.arange(len(self.mwdk_df.columns)))
@@ -159,7 +161,7 @@ class ProteinCollection:
         ax.set_title("mWDK values")
         cbar = ax.figure.colorbar(im, ax=ax)
         cbar.ax.set_ylabel("", rotation=-90, va="bottom")
-        plt.savefig("./fig/mwdk.png")
+        plt.savefig(filename)
         plt.show()
 
 
