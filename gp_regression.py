@@ -1,6 +1,7 @@
 import numpy as np
 from numpy.random import multivariate_normal
 from scipy.stats import norm
+from scipy.optimize import minimize
 
 import torch
 from torch import cholesky, cholesky_solve
@@ -16,13 +17,16 @@ np.random.seed(42)
 class GPRegression:
     def __init__(self, protein_representation: ProteinCollection, noise_factor: AdditiveNoiseRepresentation, n_samples=100):
         self.id = protein_representation.pdb_ID
+        self.noise = noise_factor
         self.X = np.array(protein_representation.mutation_ids)
         # TODO: mutation-lvl CV: randomly select mutations for train, test
         self.X_train, self.x_test = None, None
         self.y_train, self.y_test = None, None
         self.K_XX, self.K_xX, self.K_xx = None, None, None
+        self.μ, self.cov, self.lml, self.p_sample = None, None, None, None
         self.σ = noise_factor.σ
         self.N = 0
+        self.mWDK = protein_representation.mWDK
 
         # TODO: mutation-lvl CV: randomly select mutations for train, test
         # TODO  for now cutoff at -10 elem
@@ -30,7 +34,16 @@ class GPRegression:
         self.kernel = protein_representation.mWDK.K_ϕ
         self.p_sample = None
         self.n_samples = n_samples
-        self.mutation_level_dict = self.mutation_level_GPR()
+        self.mutation_level_GPR()
+        self.multiple_kernel_learning()
+
+    def neg_lml(self):
+        return -self.lml
+
+    def multiple_kernel_learning(self) -> None:
+        min_w = minimize(self.neg_lml, x0=self.mWDK.w, callback=self._fit())
+        self.mWDK.w = min_w
+        return
 
     def mutation_level_GPR(self) -> dict:
         """
@@ -39,7 +52,6 @@ class GPRegression:
         This trains on N-1 data and includes the excluded for test
         TODO not optimal - different approaches needed
         """
-        mutation_lvl_dict = dict(μ_list = [], cov_list = [], lml_list = [], samples=[])
         for idx, _ in enumerate(self.X):
             # assign each mutation to testing split 
             self.X_train, self.x_test = self.X[np.arange(self.X.shape[0])!=idx], self.X[idx]
@@ -56,12 +68,8 @@ class GPRegression:
             assert(self.K_XX.shape == (self.N, self.N))
             assert(self.K_xX.shape == (1, self.N))
             assert(self.K_xx.shape == (1, 1))
-            μ, cov, lml, p_sample = self._fit()
-            mutation_lvl_dict['μ_list'].append(μ)
-            mutation_lvl_dict['cov_list'].append(cov)
-            mutation_lvl_dict['lml_list'].append(lml)
-            mutation_lvl_dict['samples'].append(p_sample)
-        return mutation_lvl_dict
+            self.μ, self.cov, self.lml, self.p_sample = self._fit()
+        return
 
     def cumulative_mutation_split(self):
         # TODO ? start with 1 mutation in training and increase until all except one mutation (sample)
@@ -77,10 +85,9 @@ class GPRegression:
         v = cholesky_solve(self.K_xX.T, L)
         cov = self.K_xx - torch.matmul(self.K_xX, v)
         mN = MultivariateNormal(f_μ, cov)
-        p_sample = mN.sample_n(self.n_samples)
-        #log_marg_likelihood = mN.log_prob(p_sample)
-        log_marg_likelihood = mN.log_prob(self.y_train)
-        # TODO add Gamma prior to marginal likelihood
+        p_sample = mN.sample((self.n_samples,))
+        # added gamma prior from noise representation as in (Eq. 10) mGPfusion
+        log_marg_likelihood = mN.log_prob(self.y_train) + self.noise.σ_E.log_prob(self.noise.σ_E.sample()) + self.noise.σ_S.log_prob(self.noise.σ_S.sample())
         return f_μ, cov, log_marg_likelihood, p_sample
 
     def predict(self):
