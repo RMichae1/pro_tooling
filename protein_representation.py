@@ -16,9 +16,8 @@ from tqdm import tqdm
 import torch
 from torch.distributions import Normal, Gamma
 from torch.nn import Parameter
-from sklearn.preprocessing import StandardScaler ## TODO take out this quickfix
+from data_scaler import BayesScaler
 
-scaler = StandardScaler()
 
 class ProteinCollection:
     """
@@ -26,8 +25,9 @@ class ProteinCollection:
     computed covariance matrices
     """
     def __init__(self, contactmap: ContactMapper, pdb_ID: str, 
-            mutations_exp: dict={}, mutations_sim: dict={}, TESTING=False):
-        self.pdb_ID = pdb_ID
+            mutations_exp: dict={}, mutations_sim: dict={}, scaling=False, 
+            TESTING=False):
+        self.pdb_ID: str = pdb_ID
         self.contactmap = contactmap
         self.adjacency = contactmap.adjacency
         self.sequence = contactmap.sequence
@@ -46,6 +46,8 @@ class ProteinCollection:
         self.mutated_sequences = self.mut_S_exp + self.mut_S_is
         # TODO mutated adjacencies not used downstream
         self.mutated_adjacencies = self.mut_adj_exp + self.mut_adj_is
+        self.mut_ids_exp = self.mutation_ids[:len(self.mut_S_exp)]
+        self.mut_ids_is = self.mutation_ids[len(self.mut_S_exp):]
 
         self.ΔΔg_exp = self.ΔΔg[:len(self.mut_S_exp)]
         self.ΔΔg_is = self.ΔΔg[len(self.mut_S_exp):]
@@ -53,13 +55,15 @@ class ProteinCollection:
         #self.matrix_kernels = self.compute_matrices()
         self.matrices_df: pd.DataFrame = self.generate_df_representation()
         self.mWDK = WeightedDecompositionKernel(kernels=self.matrices_df)
-        mwdk_values = self.mWDK.K_ϕ.detach().numpy()
-        # TODO scaling quickfix
-        scaler.fit(mwdk_values)
-        scaled_mwdk_values = scaler.transform(mwdk_values)
         
         ##
-        self.mwdk_df: pd.DataFrame = pd.DataFrame(scaled_mwdk_values, index=self.mutation_ids, columns=self.mutation_ids)
+        self.mwdk_df: pd.DataFrame = pd.DataFrame(self.mWDK.K_ϕ.detach().numpy(), 
+                                index=self.mutation_ids, columns=self.mutation_ids)
+        self.scaler = None
+        if scaling:
+            self.scaler = BayesScaler(is_mutations=self.mut_ids_is, exp_mutations=self.mut_ids_exp, 
+            ΔΔg=self.ΔΔg_is, experimentally_observed_ΔΔg=self.ΔΔg_exp)
+            self.ΔΔg_is = self.scaler.transform(self.ΔΔg_is)
 
     def derive_mutations(self) -> Tuple[list, list, list, list]:
         """
@@ -163,16 +167,6 @@ class ProteinCollection:
         cbar.ax.set_ylabel("", rotation=-90, va="bottom")
         plt.savefig(filename)
         plt.show()
-
-
-class ProteinCollectionSimulated(ProteinCollection):
-    """
-    Subclass of ProteinCollection for (scaled) Rosetta simulated input
-    """
-    def __init__(self, contactmap: ContactMapper, pdb_ID: str, pdb_mutations: dict):
-        super().__init__(contactmap, pdb_ID, pdb_mutations)
-        self.scaler = BayesScaler(self.ΔΔg)
-        self.ΔΔg = self.scaler.y
         
 
 class AdditiveNoiseRepresentation:
@@ -180,16 +174,13 @@ class AdditiveNoiseRepresentation:
                 α_E=2.5, β_E=0.02, α_S=50., β_S=0.007):
         # TODO find out how .sample needs to be called...
         self.ε_0 = Normal(0, torch.tensor(σ_0)).sample()
-        self.σ_experimental = Gamma(torch.tensor(α_E), torch.tensor(β_E)).sample()
-        self.σ_simulated = Gamma(torch.tensor(α_S), torch.tensor(β_S)).sample()
-        if protein_representation.__class__.__name__ == "ProteinCollection":
-            self.σ = self.σ_experimental
-        elif protein_representation.__class__.__name__ == "ProteinCollectionSimulated":
+        self.σ_E = Gamma(torch.tensor(α_E), torch.tensor(β_E))
+        self.σ_S = Gamma(torch.tensor(α_S), torch.tensor(β_S))
+        self.σ = self.σ_E.sample() + self.σ_S.sample()
+        if protein_representation.scaler:
             σ_T = protein_representation.scaler.σ_T
             t = Parameter(1.1) # init t-value
-            self.σ = self.σ_experimental + self.σ_simulated + t*σ_T
-        else:
-            raise RuntimeError("Protein Collection needs to be of type : ProteinCollection or ProteinCollectionSimulated !")
+            self.σ += t*σ_T
         self.ε = Normal(0, self.σ)
         self.y_WT = np.array(protein_representation.ΔΔg[0]) + self.ε_0.numpy()
         self.y = np.array(protein_representation.ΔΔg[1:])

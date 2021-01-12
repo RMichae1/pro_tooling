@@ -44,7 +44,6 @@ class KernelLoader:
                     s_mat.append(m_vals)
         self.kernels: list = [MatrixKernel(matrix=s, matrix_id=m_id) for s, m_id in zip(s_mat, sub_matrices)]
         self.sub_matrices_names: list = sub_matrices
-        print(len(self.kernels))
         assert len(self.kernels) == len(self.sub_matrices_names)
     
 class MatrixKernel:
