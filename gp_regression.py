@@ -1,7 +1,6 @@
 import numpy as np
 from numpy.random import multivariate_normal
 from scipy.stats import norm
-from scipy.optimize import minimize
 
 import torch
 from torch import cholesky, cholesky_solve
@@ -15,7 +14,9 @@ torch.manual_seed(42)
 np.random.seed(42)
 
 class GPRegression:
-    def __init__(self, protein_representation: ProteinCollection, noise_factor: AdditiveNoiseRepresentation, n_samples=100):
+    def __init__(self, protein_representation: ProteinCollection, noise_factor: AdditiveNoiseRepresentation, 
+                n_samples=100, n_optimization=100):
+        self.n_optimization = n_optimization
         self.id = protein_representation.pdb_ID
         self.noise = noise_factor
         self.X = np.array(protein_representation.mutation_ids)
@@ -31,18 +32,50 @@ class GPRegression:
         # TODO: mutation-lvl CV: randomly select mutations for train, test
         # TODO  for now cutoff at -10 elem
         self.y = np.array(protein_representation.ΔΔg)
-        self.kernel = protein_representation.mWDK.K_ϕ
+        self.kernel = protein_representation.mWDK.K_ϕ()
         self.p_sample = None
         self.n_samples = n_samples
-        self.mutation_level_GPR()
-        self.multiple_kernel_learning()
+        # self.mutation_level_GPR()
+        # self.multiple_kernel_learning()
+        # TODO get sigmas and t
+        self.params = [self.constrain(protein_representation.mWDK.w, 0, 1)]#, sigma_E, simga_IS, t]
+        self.mutation_split_GPR()
 
-    def neg_lml(self):
-        return -self.lml
+    @staticmethod
+    def constrain(val, lower, upper):
+        """
+        constrain through σ function
+        """
+        return lower + (upper-lower) * (torch.exp(val)/ (1+torch.exp(val)))
 
-    def multiple_kernel_learning(self) -> None:
-        min_w = minimize(self.neg_lml, x0=self.mWDK.w, callback=self._fit())
-        self.mWDK.w = min_w
+    def neg_ll(self):
+        n = self.X_train.shape[0]
+        zero_μ = torch.zeros(n, dtype=torch.float64)
+        K_XX = self.kernel[:n, :n]
+        nll = - MultivariateNormal(zero_μ, covariance_matrix=K_XX).log_prob(self.y_train)
+        # TODO compute log-marginal likelihood from K params and split
+        return nll
+
+    def parameter_optimization(self) -> None:
+        self.params.requires_grad_(True)
+        optimizer = torch.optim.LBFGS([self.params])
+        # internal optimization call
+        def closure():
+            optimizer.zero_grad()
+            loss = self.neg_ll()
+            loss.backward()
+            return loss
+        for n in range(self.n_optimization):
+            optimizer.step(closure)
+        return
+    
+    def mutation_split_GPR(self, training=0.75) -> None:
+        """
+        Split mutations into 75:25 train test split
+        """ 
+        cutoff = int(training*self.X.shape[0])
+        self.X_train, x_test = self.X[:cutoff], self.X[cutoff:]
+        self.y_train, y_test = self.y[:cutoff], self.y[cutoff:]
         return
 
     def mutation_level_GPR(self) -> dict:
@@ -75,23 +108,32 @@ class GPRegression:
         # TODO ? start with 1 mutation in training and increase until all except one mutation (sample)
         pass
 
-    def _fit(self) -> Tuple[torch.Tensor, torch.Tensor, float, np.array]:
+    def _fit(self, mu, cov, K, ) -> Tuple[torch.Tensor, torch.Tensor, float, np.array]:
         """Alg. 2.1 Rasmussen *GPs in ML* """
-        A = self.K_XX + self.σ * torch.eye(self.N)
+        A = self.K_XX + self.σ * torch.eye(self.N) # TODO add sigma_E add sigma_
+        ## 0,0 sigma
+        ## diag in range exp + sigma_E
+        ## 
         L = cholesky(A)
         α = cholesky_solve(self.y_train, L)
+
+        # init fit
+        mean = 0
+        cov = A
+        # compute dist + lml
 
         f_μ = torch.matmul(self.K_xX, α)
         v = cholesky_solve(self.K_xX.T, L)
         cov = self.K_xx - torch.matmul(self.K_xX, v)
         mN = MultivariateNormal(f_μ, cov)
-        p_sample = mN.sample((self.n_samples,))
         # added gamma prior from noise representation as in (Eq. 10) mGPfusion
         log_marg_likelihood = mN.log_prob(self.y_train) + self.noise.σ_E.log_prob(self.noise.σ_E.sample()) + self.noise.σ_S.log_prob(self.noise.σ_S.sample())
-        return f_μ, cov, log_marg_likelihood, p_sample
+        return log_marg_likelihood
 
     def predict(self):
-        pass
+        return mu, cov, p_sample
+        p_sample = mN.sample((self.n_samples,))
+        
 
     def plot(self) -> None:
         _, ax = plt.subplots(1,1, figsize=(15,10))
