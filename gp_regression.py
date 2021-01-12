@@ -17,6 +17,7 @@ class GPRegression:
     def __init__(self, protein_representation: ProteinCollection, noise_factor: AdditiveNoiseRepresentation, 
                 n_samples=100, n_optimization=100):
         self.n_optimization = n_optimization
+        self.prot = protein_representation
         self.id = protein_representation.pdb_ID
         self.noise = noise_factor
         self.X = np.array(protein_representation.mutation_ids)
@@ -25,7 +26,19 @@ class GPRegression:
         self.y_train, self.y_test = None, None
         self.K_XX, self.K_xX, self.K_xx = None, None, None
         self.μ, self.cov, self.lml, self.p_sample = None, None, None, None
-        self.σ = noise_factor.σ
+
+        t = 1.1
+        self.σ_E = 0.075 # init sigmas
+        self.σ_S = 0.1
+        self.σ_0 = 1e-5 * torch.ones([1, 1], dtype=torch.float64)
+        # TODO+ t*self.σ_T init 
+        # TODO get this from BayesScaler
+        self.σ_T = torch.ones([len(self.prot.mut_ids_is), 1], dtype=torch.float64) * 0.02
+        self.σ = torch.cat((self.σ_0, 
+                        self.σ_E * torch.ones([len(self.prot.mut_ids_exp), 1], dtype=torch.float64), 
+                        (self.σ_E + self.σ_S) * torch.ones([len(self.prot.mut_ids_is), 1], dtype=torch.float64) + t*self.σ_T))
+        print(self.σ.shape)
+        # TODO add t*σ_T for scaled values
         self.N = 0
         self.mWDK = protein_representation.mWDK
 
@@ -38,7 +51,7 @@ class GPRegression:
         # self.mutation_level_GPR()
         # self.multiple_kernel_learning()
         # TODO get sigmas and t
-        self.params = [self.constrain(protein_representation.mWDK.w, 0, 1)]#, sigma_E, simga_IS, t]
+        self.params = [self.constrain(self.mWDK.w, 0, 1)]#, sigma_E, simga_IS, t]
         self.mutation_split_GPR()
 
     @staticmethod
@@ -46,13 +59,19 @@ class GPRegression:
         """
         constrain through σ function
         """
-        return lower + (upper-lower) * (torch.exp(val)/ (1+torch.exp(val)))
+        constrained = lower + (upper-lower) * (torch.exp(val) / (1+torch.exp(val)))
+        return constrained
 
     def neg_ll(self):
         n = self.X_train.shape[0]
+        print(self.params)
         zero_μ = torch.zeros(n, dtype=torch.float64)
-        K_XX = self.kernel[:n, :n]
+        K_mat = self.kernel()
+        K_XX = K_mat[:n, :n] + torch.diag(self.σ)
+        print(K_XX)
+        print(K_XX.shape)
         nll = - MultivariateNormal(zero_μ, covariance_matrix=K_XX).log_prob(self.y_train)
+        nll += self.noise.σ_E_prior.log_prob(self.σ_E) + self.noise.σ_S_prior.log_prob(self.σ_S)
         # TODO compute log-marginal likelihood from K params and split
         return nll
 
@@ -66,6 +85,7 @@ class GPRegression:
             loss.backward()
             return loss
         for n in range(self.n_optimization):
+            print(n)
             optimizer.step(closure)
         return
     

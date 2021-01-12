@@ -2,7 +2,7 @@ import numpy as np
 import pandas as pd
 import torch
 from torch import Tensor, rand
-from torch.nn.parameter import Parameter
+#from torch.nn.parameter import Parameter
 from torch.distributions.gamma import Gamma
 from torch.distributions.normal import Normal
 from tqdm import tqdm
@@ -13,8 +13,9 @@ from contact_mapper import ContactMapper
 class WeightedDecompositionKernel:
     def __init__(self, kernels: pd.DataFrame, t=0.0, w=None, γ=1.0):
         self.kernels = kernels
+        self.matrices = [torch.Tensor(mat.to_numpy()) for mat in self.kernels.mat] 
         self.kernel_dim = len(self.kernels.mat[0])
-        self.w = Parameter(w)
+        self.w = w 
         self.γ = γ
         self.t = t
     
@@ -23,9 +24,9 @@ class WeightedDecompositionKernel:
         Compute weighted Kernel Matrix Values
         """
         assert self.w.shape[0] == len(self.kernels)
-        mwdk = torch.zeros([self.kernel_dim, self.kernel_dim])
-        for i, mat in enumerate(self.kernels.mat):
-            mwdk += self.w[i] * torch.Tensor(mat.to_numpy())**self.γ
+        mwdk = torch.zeros([self.kernel_dim, self.kernel_dim], dtype=torch.float64)
+        for i, mat in enumerate(self.matrices):
+            mwdk += self.w[i] * mat**self.γ
         return mwdk
 
 

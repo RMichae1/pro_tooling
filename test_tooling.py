@@ -12,7 +12,7 @@ if __name__ == "__main__":
     # # example case 1PGA - CA-distance
 
     # example case 1PGA - residue distance
-    cm_tri = ContactMapper(pdb_file="/home/rcml/pdb/1pga.pdb", tri_dist=True)
+    cm_tri = ContactMapper(pdb_file="./pdb/1pga.pdb", tri_dist=True)
     
     mutational_dict_exp = parse_mutations("./data/ddg_protherm.mat", query="ddg_protherm")
     mutational_dict_is = parse_mutations("./data/ddg_rosetta_single.mat", query="ddg_rosetta_single")

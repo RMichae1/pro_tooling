@@ -54,7 +54,7 @@ class ProteinCollection:
         self.matrix_kernels: dict = self.compute_matrices()
         #self.matrix_kernels = self.compute_matrices()
         self.matrices_df: pd.DataFrame = self.generate_df_representation()
-        init_weights = torch.rand(len(self.matrix_kernels))
+        init_weights = torch.rand(len(self.matrix_kernels), dtype=torch.float64)
         self.mWDK = WeightedDecompositionKernel(kernels=self.matrices_df, w=init_weights)
         
         ##
@@ -178,18 +178,14 @@ class AdditiveNoiseRepresentation:
                 α_E=2.5, β_E=0.02, α_S=50., β_S=0.007):
         # TODO find out how .sample needs to be called...
         self.ε_0 = Normal(0, torch.tensor(σ_0)).sample()
-        self.σ_E = Gamma(torch.tensor(α_E), torch.tensor(β_E))
-        self.σ_S = Gamma(torch.tensor(α_S), torch.tensor(β_S))
-        self.σ = self.σ_E.sample() + self.σ_S.sample()
+        self.σ_E_prior = Gamma(torch.tensor(α_E), torch.tensor(β_E))
+        self.σ_S_prior = Gamma(torch.tensor(α_S), torch.tensor(β_S))
         if protein_representation.scaler:
             σ_T = protein_representation.scaler.σ_T
             t = Parameter(1.1) # init t-value
             self.σ += t*σ_T
-        self.ε = Normal(0, self.σ)
-        self.y_WT = np.array(protein_representation.ΔΔg[0]) + self.ε_0.numpy()
+        self.y_WT = np.array(protein_representation.ΔΔg[0])
         self.y = np.array(protein_representation.ΔΔg[1:])
-        ε_exp = np.array([self.ε.sample() for _ in range(len(self.y))])
-        self.y += ε_exp
         self.y = np.append(self.y_WT, self.y)
 
 
