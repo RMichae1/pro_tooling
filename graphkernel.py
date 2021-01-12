@@ -14,18 +14,20 @@ class WeightedDecompositionKernel:
     def __init__(self, kernels: pd.DataFrame, t=0.0, w=None, γ=1.0):
         self.kernels = kernels
         self.kernel_dim = len(self.kernels.mat[0])
-        self.w = Parameter(rand(len(self.kernels.mat))) if not w else w
+        self.w = Parameter(w)
         self.γ = γ
-        self.kernel_parameters: dict = {"t": t, "w": self.w, "γ": self.γ}
-        self.K_ϕ = self.compute_MKL()
-
-    def compute_MKL(self) -> Tensor:
-        K_ = torch.zeros([self.kernel_dim, self.kernel_dim])
-        # weighted kernel by n of internal matrices
-        # TODO more efficient sum over kernels with trainable weights
+        self.t = t
+    
+    def K_ϕ(self) -> torch.Tensor:
+        """
+        Compute weighted Kernel Matrix Values
+        """
+        assert self.w.shape[0] == len(self.kernels)
+        mwdk = torch.zeros([self.kernel_dim, self.kernel_dim])
         for i, mat in enumerate(self.kernels.mat):
-            K_ += self.w[i] * torch.Tensor(mat.to_numpy())**self.γ
-        return K_
+            mwdk += self.w[i] * torch.Tensor(mat.to_numpy())**self.γ
+        return mwdk
+
 
 class KernelLoader:
     def __init__(self, sub_matrices: list=["BLOSUM62", "BLOSUM50", "BLOSUM45", "BLOSUM80"], sub_mat_ids:list = []):

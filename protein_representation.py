@@ -54,16 +54,19 @@ class ProteinCollection:
         self.matrix_kernels: dict = self.compute_matrices()
         #self.matrix_kernels = self.compute_matrices()
         self.matrices_df: pd.DataFrame = self.generate_df_representation()
-        self.mWDK = WeightedDecompositionKernel(kernels=self.matrices_df)
+        init_weights = torch.rand(len(self.matrix_kernels))
+        self.mWDK = WeightedDecompositionKernel(kernels=self.matrices_df, w=init_weights)
         
         ##
-        self.mwdk_df: pd.DataFrame = pd.DataFrame(self.mWDK.K_ϕ.detach().numpy(), 
-                                index=self.mutation_ids, columns=self.mutation_ids)
+        mwdk_vals = self.mWDK.K_ϕ().detach().numpy()
+        self.mwdk_df: pd.DataFrame = pd.DataFrame(mwdk_vals,
+                                        index=self.mutation_ids, columns=self.mutation_ids)
         self.scaler = None
         if scaling:
             self.scaler = BayesScaler(is_mutations=self.mut_ids_is, exp_mutations=self.mut_ids_exp, 
             ΔΔg=self.ΔΔg_is, experimentally_observed_ΔΔg=self.ΔΔg_exp)
-            self.ΔΔg_is = self.scaler.transform(self.ΔΔg_is)
+            # overwrite in-silico data with scaled
+            self.ΔΔg[len(self.mut_S_exp):] = self.scaler.transform(self.ΔΔg_is)
 
     def derive_mutations(self) -> Tuple[list, list, list, list]:
         """
@@ -83,6 +86,7 @@ class ProteinCollection:
             print("WARNING: No mutations provided.")
             return mutated_sequences, mutated_adjacencies
         for (mutation, ddg) in tqdm(mutation_dict):
+            # TODO rewrite this, return list instead, in-place side-effects are ugly
             self.ΔΔg.append(ddg)
             self.mutation_ids.append(mutation)
             # deepcopy to ensure that the underlying wildtype is not overwritten
