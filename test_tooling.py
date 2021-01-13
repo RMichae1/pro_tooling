@@ -1,7 +1,7 @@
 from contact_mapper import ContactMapper
 from protein_representation import ProteinCollection
 from graphkernel import MatrixKernel
-from data_utility import parse_mutations
+from utility import parse_mutations
 from data_scaler import BayesScaler
 from gp_regression import GPRegression
 

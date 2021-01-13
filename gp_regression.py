@@ -8,10 +8,12 @@ from torch.distributions import MultivariateNormal, Gamma
 import matplotlib.pyplot as plt
 from typing import Tuple
 from protein_representation import ProteinCollection
+from utility import Variable
 
 # for reproducability:
 torch.manual_seed(42)
 np.random.seed(42)
+
 
 class GPRegression:
     def __init__(self, protein_representation: ProteinCollection, n_samples=100, n_optimization=20):
@@ -36,8 +38,10 @@ class GPRegression:
 
         self.t = 1.1
         # init noise terms
-        self.σ_E = 0.075 * torch.ones([1, 1], dtype=torch.float64)
-        self.σ_S = 0.1 * torch.ones([1, 1], dtype=torch.float64)
+        init_σ_E = 0.075 * torch.ones([1, 1], dtype=torch.float64)
+        init_σ_S = 0.1 * torch.ones([1, 1], dtype=torch.float64)
+        self.σ_E = Variable(init_σ_E, lower=0.001, upper=10)
+        self.σ_S = Variable(init_σ_S, lower=0.001, upper=10)
         self.σ_0 = 1e-5 * torch.ones([1, 1], dtype=torch.float64)
         # TODO+ t*self.σ_T init get this from BayesScaler instead !!
         self.σ_T = torch.ones([len(self.protein.mut_ids_is), 1], dtype=torch.float64) * 0.02
@@ -51,14 +55,14 @@ class GPRegression:
         # self.mutation_level_GPR()
         # self.multiple_kernel_learning()
         # init weights randomly
-        self.weights = torch.rand(len(self.protein.covariance_matrices), requires_grad=True) #, sigma_E, simga_IS, t] # TODO all parameters
-        # register hook for backprop callbacks
-        #self.h = self.weights.register_hook(lambda grad: torch.clamp(grad, 0, 1)) # only works on gradients
+        init_w = 0.9 * torch.ones([len(self.protein.covariance_matrices), 1], dtype=torch.float64)
+        self.weights = Variable(init_w, lower=0, upper=1) 
+        # TODO optimize t
         self.mutation_split_GPR()
     
     def set_noise_term(self):
-        σ_E = self.constrain(self.σ_E,  0.001, 10)
-        σ_S = self.constrain(self.σ_S, 0.001, 10)
+        σ_E = self.σ_E.get_value()
+        σ_S = self.σ_S.get_value()
         σ = torch.cat((self.σ_0, 
                     σ_E * torch.ones([len(self.protein.mut_ids_exp), 1], dtype=torch.float64), 
                     (σ_E + σ_S) * torch.ones([len(self.protein.mut_ids_is), 1], dtype=torch.float64) + self.t*self.σ_T))
@@ -72,16 +76,8 @@ class GPRegression:
         k = torch.zeros([n, n], dtype=torch.float64)
         for i, mat in enumerate(self.protein.covariance_matrices.values()):
             #k += self.weights[i].clamp(0,1) * mat[:n, :n]
-            k += self.constrain(self.weights[i], 0, 1) * mat[:n, :n]
+            k += self.weights.get_value()[i] * mat[:n, :n]
         return k
-
-    @staticmethod
-    def constrain(val, lower, upper):
-        """
-        constrain through σ function
-        """
-        constrained = lower + (upper-lower) * (torch.exp(val) / (1+torch.exp(val)))
-        return constrained
 
     def neg_ll(self):
         n = self.X_train.shape[0]
@@ -94,15 +90,12 @@ class GPRegression:
         # set diagonal to add noise
         # zero mean is consistent due to prior assumption
         nll = - (MultivariateNormal(zero_μ, covariance_matrix=K_XX).log_prob(torch.Tensor(self.y_train)) \
-            + self.σ_E_prior.log_prob(self.constrain(self.σ_E,  0.001, 10)) + self.σ_S_prior.log_prob(self.constrain(self.σ_S, 0.001, 10)))
+            + self.σ_E_prior.log_prob(self.σ_E.get_value()) + self.σ_S_prior.log_prob(self.σ_S.get_value()))
         nll.requires_grad_(True)
         return nll
 
     def parameter_optimization(self) -> None:
-        self.weights.requires_grad_(True)
-        self.σ_E.requires_grad_(True)
-        self.σ_S.requires_grad_(True)
-        optimizer = torch.optim.LBFGS([self.weights, self.σ_E, self.σ_S])
+        optimizer = torch.optim.LBFGS([self.weights.unconstrained, self.σ_E.unconstrained, self.σ_S.unconstrained])
         def closure():
             optimizer.zero_grad()
             loss = self.neg_ll()
@@ -115,22 +108,17 @@ class GPRegression:
             # self.weights.requires_grad_(True)
             print(f"iter: {n}")
             print("weights:")
-            print(self.weights)
-            print("sigmas")
-            print(self.σ_E)
-            print(self.σ_S)
+            print(self.weights.get_unconstrained())
+            print(self.weights.get_value())
+            print("sigmas E")
+            print(self.σ_E.get_unconstrained())
+            print(self.σ_E.get_value())
             optimizer.step(closure)
         # set weights after optimization
-        self.weights = self.constrain(self.weights, 0, 1)
-        self.σ_E = self.constrain(self.σ_E, 0.001, 10)
-        self.σ_S = self.constrain(self.σ_S, 0.001, 10)
         print("FINAL:")
         print("weights:")
-        print(self.weights)
-        print("sigmas")
-        print(self.σ_E)
-        print(self.σ_S)
-        return
+        print(self.weights.get_value())
+        return weights, σ_E, σ_S
     
     def mutation_split_GPR(self, training=0.75) -> None:
         """

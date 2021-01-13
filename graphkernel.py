@@ -8,7 +8,7 @@ from torch.distributions.gamma import Gamma
 from torch.distributions.normal import Normal
 from tqdm import tqdm
 from scipy.io import loadmat
-from data_utility import aa2index
+from utility import aa2index
 from contact_mapper import ContactMapper  
 
 

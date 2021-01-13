@@ -8,7 +8,7 @@ from copy import deepcopy
 from contact_mapper import ContactMapper
 from graphkernel import MatrixKernel, KernelLoader
 from data_scaler import BayesScaler
-from data_utility import aa2index
+from utility import aa2index
 from typing import Tuple
 import matplotlib.pyplot as plt
 from tqdm import tqdm
