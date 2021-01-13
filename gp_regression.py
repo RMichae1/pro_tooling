@@ -85,40 +85,40 @@ class GPRegression:
         # TODO for all element in unconstrained apply constrain
         zero_μ = torch.zeros(n, dtype=torch.float64) # TODO compute mean over all training data
         K_XX = self.mWDK()
-        noise = self.σ.squeeze()[:n]
+        noise = self.set_noise_term().squeeze()[:n]
+        #noise = self.σ.squeeze()[:n]
         K_XX = K_XX + torch.diag(noise) # TODO built new self sigma
         # set diagonal to add noise
         # zero mean is consistent due to prior assumption
+        # print(K_XX)
+        # print(f"noise: {noise}")
         nll = - (MultivariateNormal(zero_μ, covariance_matrix=K_XX).log_prob(torch.Tensor(self.y_train)) \
             + self.σ_E_prior.log_prob(self.σ_E.get_value()) + self.σ_S_prior.log_prob(self.σ_S.get_value()))
         nll.requires_grad_(True)
         return nll
 
     def parameter_optimization(self) -> None:
-        optimizer = torch.optim.LBFGS([self.weights.unconstrained, self.σ_E.unconstrained, self.σ_S.unconstrained])
+        optimizer = torch.optim.LBFGS([self.weights.unconstrained, self.σ_E.unconstrained, self.σ_S.unconstrained],
+                                        lr=0.99)
         def closure():
             optimizer.zero_grad()
             loss = self.neg_ll()
             loss.backward(retain_graph=True)
-            print(loss)
+            print(f"Loss: {loss}")
             return loss
         for n in range(self.n_optimization):
-            # with torch.no_grad():
-            #     self.weights[:] = self.weights.clamp(0.,1.)
-            # self.weights.requires_grad_(True)
             print(f"iter: {n}")
-            print("weights:")
-            print(self.weights.get_unconstrained())
-            print(self.weights.get_value())
-            print("sigmas E")
-            print(self.σ_E.get_unconstrained())
-            print(self.σ_E.get_value())
+            # print(f"weights: {self.weights.get_unconstrained()} <= {self.weights.get_value()}")
+            # print(f"sigmas E: {self.σ_E.get_unconstrained()} <= {self.σ_E.get_value()}")
             optimizer.step(closure)
         # set weights after optimization
         print("FINAL:")
         print("weights:")
         print(self.weights.get_value())
-        return weights, σ_E, σ_S
+        print("sigma:")
+        print(self.σ_S.get_value())
+        print(self.σ_E.get_value())
+        return 
     
     def mutation_split_GPR(self, training=0.75) -> None:
         """
