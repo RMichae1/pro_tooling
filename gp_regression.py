@@ -50,7 +50,10 @@ class GPRegression:
         self.n_samples = n_samples
         # self.mutation_level_GPR()
         # self.multiple_kernel_learning()
-        self.weights = torch.rand(len(self.protein.covariance_matrices))#, sigma_E, simga_IS, t] # TODO all parameters
+        # init weights randomly
+        self.weights = torch.rand(len(self.protein.covariance_matrices), requires_grad=True) #, sigma_E, simga_IS, t] # TODO all parameters
+        # register hook for backprop callbacks
+        #self.h = self.weights.register_hook(lambda grad: torch.clamp(grad, 0, 1)) # only works on gradients
         self.mutation_split_GPR()
     
     def set_noise_term(self):
@@ -59,16 +62,15 @@ class GPRegression:
                     (self.σ_E + self.σ_S) * torch.ones([len(self.protein.mut_ids_is), 1], dtype=torch.float64) + self.t*self.σ_T))
         return σ
 
-
     def mWDK(self):
         """
         compute weighted kernel value from existing covariance matrix
         """
         n = self.X_train.shape[0]
-        k = torch.zeros([n, n])
+        k = torch.zeros([n, n], dtype=torch.float64)
         for i, mat in enumerate(self.protein.covariance_matrices.values()):
-            k += self.weights[i] * mat[:n, :n]
-        print(k.shape)
+            #k += self.weights[i].clamp(0,1) * mat[:n, :n]
+            k += self.constrain(self.weights[i], 0, 1) * mat[:n, :n]
         return k
 
     @staticmethod
@@ -95,19 +97,22 @@ class GPRegression:
 
     def parameter_optimization(self) -> None:
         self.weights.requires_grad_(True)
-        optimizer = torch.optim.LBFGS([self.weights])
-        # internal optimization call
+        optimizer = torch.optim.LBFGS([self.weights], max_iter=10)
         def closure():
-            self.weights = torch.Tensor([torch.clamp(w, 0, 1) for w in self.weights])
             optimizer.zero_grad()
             loss = self.neg_ll()
-            loss.backward()
+            loss.backward(retain_graph=True)
             print(loss)
             return loss
         for n in range(self.n_optimization):
+            # with torch.no_grad():
+            #     self.weights[:] = self.weights.clamp(0.,1.)
+            # self.weights.requires_grad_(True)
             print(n)
             print(self.weights)
             optimizer.step(closure)
+        self.weights = self.constrain(self.weights, 0, 1)
+        print(self.weights)
         return
     
     def mutation_split_GPR(self, training=0.75) -> None:
