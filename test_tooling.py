@@ -1,6 +1,5 @@
 from contact_mapper import ContactMapper
 from protein_representation import ProteinCollection
-from protein_representation import AdditiveNoiseRepresentation
 from graphkernel import MatrixKernel
 from data_utility import parse_mutations
 from data_scaler import BayesScaler
@@ -20,8 +19,7 @@ if __name__ == "__main__":
     pcol = ProteinCollection(cm_tri, pdb_ID="1PGA", mutations_exp=mutational_dict_exp, mutations_sim=mutational_dict_is,
                     TESTING=True)
     print(pcol.matrices_df)
-    print(pcol.mwdk_df)
-    print(pcol.mWDK.K_ϕ()) # TODO normalize this appropriately
+    # print(pcol.plot_sub_matrices())
 
     # instantiate and parse IS data
 
@@ -37,17 +35,13 @@ if __name__ == "__main__":
     # print(bs_rosetta.σ_T)
     # print("sigma sampled")
     # print(bs_rosetta.σ_T_sampled)
-    # # print(bs_rosetta.ΔΔg)
-    # # print(bs_rosetta.mcmc_samples)
-    # # print(bs_rosetta.print_summary())
-    # # print(bs_rosetta.plot_scaling())
+    # print(bs_rosetta.θ)
+    # print(bs_rosetta.print_summary())
+    # print(bs_rosetta.plot_scaling())
 
-    # TODO redo noise representation
-    noisy_protein = AdditiveNoiseRepresentation(protein_representation=pcol)
-
-    gpr = GPRegression(protein_representation=pcol, noise_factor=noisy_protein)
+    gpr = GPRegression(protein_representation=pcol)
     print(gpr.neg_ll())
-    gpr.optimize()
+    gpr.parameter_optimization()
     print(gpr.neg_ll())
     # gpr.plot_log_prob()
     # gpr.plot()

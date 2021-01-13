@@ -6,8 +6,7 @@ from os.path import isfile
 import pickle
 from copy import deepcopy
 from contact_mapper import ContactMapper
-from graphkernel import MatrixKernel, WeightedDecompositionKernel
-from graphkernel import KernelLoader
+from graphkernel import MatrixKernel, KernelLoader
 from data_scaler import BayesScaler
 from data_utility import aa2index
 from typing import Tuple
@@ -21,7 +20,7 @@ from data_scaler import BayesScaler
 
 class ProteinCollection:
     """
-    Class that captures protein properties and observed values,
+    Class that captures protein properties Sequence, adjacecny, mutations and
     computed covariance matrices
     """
     def __init__(self, contactmap: ContactMapper, pdb_ID: str, 
@@ -40,8 +39,7 @@ class ProteinCollection:
             self.mutations_sim = sample(self.mutations_sim, int(0.5*len(self.mutations_sim)))
         self.mutation_ids = ["WT"]
         self.ΔΔg = [0]
-        # TODO testing with one sub-matrix
-        self.kernels = KernelLoader()
+        self._kernels = KernelLoader()
         self.mut_S_exp, self.mut_adj_exp, self.mut_S_is, self.mut_adj_is = self.derive_mutations()
         self.mutated_sequences = self.mut_S_exp + self.mut_S_is
         # TODO mutated adjacencies not used downstream
@@ -51,16 +49,9 @@ class ProteinCollection:
 
         self.ΔΔg_exp = self.ΔΔg[:len(self.mut_S_exp)]
         self.ΔΔg_is = self.ΔΔg[len(self.mut_S_exp):]
-        self.matrix_kernels: dict = self.compute_matrices()
-        #self.matrix_kernels = self.compute_matrices()
+        self.covariance_matrices: dict = self.compute_matrices()
         self.matrices_df: pd.DataFrame = self.generate_df_representation()
-        init_weights = torch.rand(len(self.matrix_kernels), dtype=torch.float64)
-        self.mWDK = WeightedDecompositionKernel(kernels=self.matrices_df, w=init_weights)
         
-        ##
-        mwdk_vals = self.mWDK.K_ϕ().detach().numpy()
-        self.mwdk_df: pd.DataFrame = pd.DataFrame(mwdk_vals,
-                                        index=self.mutation_ids, columns=self.mutation_ids)
         self.scaler = None
         if scaling:
             self.scaler = BayesScaler(is_mutations=self.mut_ids_is, exp_mutations=self.mut_ids_exp, 
@@ -121,71 +112,40 @@ class ProteinCollection:
         compute substitution over all mutations with one-another
         """
         print("Computing kernel matrices ...")
-        wdks = {kernel: {} for kernel in self.kernels.sub_matrices_names}
+        ks_dict = {kernel: {} for kernel in self._kernels.sub_matrices_names}
         sequences = [self.sequence] + self.mutated_sequences
         sequences = np.array([np.array([aa2index(aa) for aa in seq], dtype=np.int64) for seq in sequences], dtype=np.int64)
-        # Changes in adjacencies are not accounted for !
+        # TODO Changes in adjacencies are not accounted for !
         # adjacencies = [self.adjacency] + self.mutated_adjacencies
         adjacencies = self.adjacency
-        for k_name, kernel in zip(self.kernels.sub_matrices_names, self.kernels.kernels):
+        for k_name, kernel in zip(self._kernels.sub_matrices_names, self._kernels.kernels):
             # N = wt+mutations
-            wdks[k_name] = kernel.k(sequences, adjacencies)
-        return wdks
+            ks_dict[k_name] = torch.Tensor(kernel.k(sequences, adjacencies))
+        return ks_dict
 
     def generate_df_representation(self) -> pd.DataFrame:
         df_list = []
-        for mat_type, matrix_kernel in self.matrix_kernels.items():
-            # mk_df = self.build_df_from_mk(matrix_kernel)
-            mk_df = pd.DataFrame(matrix_kernel, columns=self.mutation_ids)
+        for mat_type, matrix_kernel in self.covariance_matrices.items():
+            mk_df = pd.DataFrame(matrix_kernel.detach().numpy(), columns=self.mutation_ids)
             df_list.append(mk_df)
-        total_df = pd.DataFrame({'idx': self.matrix_kernels.keys(), 'mat': df_list})
+        total_df = pd.DataFrame({'idx': self.covariance_matrices.keys(), 'mat': df_list})
         return total_df
 
     def plot_sub_matrices(self, savefig="./fig/"):
+        # TODO plot only range of matrices (e.g. 10 mutations)
         filename = f"{savefig}/sub_matrices_{self.pdb_ID}.png"
-        fig, ax = plt.subplots(1, len(self.matrix_kernels.items()), figsize=(30,20))
-        for idx, wdk in enumerate(self.matrices_df['mat']):
-            mat = ax[idx].imshow(wdk.to_numpy())
-            ax[idx].set_yticks(np.arange(len(wdk.columns)))
-            ax[idx].set_yticklabels(wdk.columns, size=5)
-            ax[idx].set_xticks(np.arange(len(wdk.columns)))
-            ax[idx].set_xticklabels(wdk.columns, rotation=90, size=5)
+        fig, ax = plt.subplots(1, len(self.covariance_matrices.items()), figsize=(30,20))
+        for idx, mat in enumerate(self.matrices_df['mat']):
+            matplot = ax[idx].imshow(mat.to_numpy())
+            ax[idx].set_yticks(np.arange(len(mat.columns)))
+            ax[idx].set_yticklabels(mat.columns, size=5)
+            ax[idx].set_xticks(np.arange(len(mat.columns)))
+            ax[idx].set_xticklabels(mat.columns, rotation=90, size=5)
             if idx > 0:
                 ax[idx].set_yticks([])
-            ax[idx].set_title("{}".format(self.kernels.sub_matrices_names[idx]))
-        fig.colorbar(mat, ax=ax[idx], fraction=0.046, pad=0.04)
+            ax[idx].set_title("{}".format(self._kernels.sub_matrices_names[idx]))
+        fig.colorbar(matplot, ax=ax[idx], fraction=0.046, pad=0.04)
         plt.savefig(filename)
         plt.legend()
         plt.show()
-
-    def plot_mwdk(self, savefig="./fig/"):
-        filename = f"{savefig}/sub_matrices_{self.pdb_ID}.png"
-        _, ax = plt.subplots(1, 1, figsize=(20, 10))
-        im = ax.imshow(self.mwdk_df.to_numpy())
-        ax.set_yticks(np.arange(len(self.mwdk_df.columns)))
-        ax.set_xticks(np.arange(len(self.mwdk_df.columns)))
-        ax.set_yticklabels(self.mwdk_df.columns, size=5)
-        ax.set_xticklabels(self.mwdk_df.columns, rotation=90, size=5)
-        ax.set_title("mWDK values")
-        cbar = ax.figure.colorbar(im, ax=ax)
-        cbar.ax.set_ylabel("", rotation=-90, va="bottom")
-        plt.savefig(filename)
-        plt.show()
-        
-
-class AdditiveNoiseRepresentation:
-    def __init__(self, protein_representation: ProteinCollection, σ_0=1e-6, 
-                α_E=2.5, β_E=0.02, α_S=50., β_S=0.007):
-        # TODO find out how .sample needs to be called...
-        self.ε_0 = Normal(0, torch.tensor(σ_0)).sample()
-        self.σ_E_prior = Gamma(torch.tensor(α_E), torch.tensor(β_E))
-        self.σ_S_prior = Gamma(torch.tensor(α_S), torch.tensor(β_S))
-        if protein_representation.scaler:
-            σ_T = protein_representation.scaler.σ_T
-            t = Parameter(1.1) # init t-value
-            self.σ += t*σ_T
-        self.y_WT = np.array(protein_representation.ΔΔg[0])
-        self.y = np.array(protein_representation.ΔΔg[1:])
-        self.y = np.append(self.y_WT, self.y)
-
 

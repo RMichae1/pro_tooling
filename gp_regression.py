@@ -7,52 +7,69 @@ from torch import cholesky, cholesky_solve
 from torch.distributions import MultivariateNormal, Gamma
 import matplotlib.pyplot as plt
 from typing import Tuple
-from protein_representation import ProteinCollection, AdditiveNoiseRepresentation
+from protein_representation import ProteinCollection
 
 # for reproducability:
 torch.manual_seed(42)
 np.random.seed(42)
 
 class GPRegression:
-    def __init__(self, protein_representation: ProteinCollection, noise_factor: AdditiveNoiseRepresentation, 
-                n_samples=100, n_optimization=100):
+    def __init__(self, protein_representation: ProteinCollection, n_samples=100, n_optimization=20):
+        # set hyperparameters - see Appendix mGPfusion
+        σ_0=1e-6 
+        α_E=2.5
+        β_E=0.02
+        α_S=50.
+        β_S=0.007
+
         self.n_optimization = n_optimization
-        self.prot = protein_representation
+        self.protein = protein_representation
         self.id = protein_representation.pdb_ID
-        self.noise = noise_factor
         self.X = np.array(protein_representation.mutation_ids)
-        # TODO: mutation-lvl CV: randomly select mutations for train, test
+        # TODO: position-lvl CV: randomly select mutations for train, test
         self.X_train, self.x_test = None, None
         self.y_train, self.y_test = None, None
         self.K_XX, self.K_xX, self.K_xx = None, None, None
         self.μ, self.cov, self.lml, self.p_sample = None, None, None, None
+        self.σ_E_prior = Gamma(torch.tensor(α_E), torch.tensor(β_E))
+        self.σ_S_prior = Gamma(torch.tensor(α_S), torch.tensor(β_S))
 
-        t = 1.1
-        self.σ_E = 0.075 # init sigmas
-        self.σ_S = 0.1
+        self.t = 1.1
+        # init noise terms
+        self.σ_E = 0.075 * torch.ones([1, 1], dtype=torch.float64)
+        self.σ_S = 0.1 * torch.ones([1, 1], dtype=torch.float64)
         self.σ_0 = 1e-5 * torch.ones([1, 1], dtype=torch.float64)
-        # TODO+ t*self.σ_T init 
-        # TODO get this from BayesScaler
-        self.σ_T = torch.ones([len(self.prot.mut_ids_is), 1], dtype=torch.float64) * 0.02
-        self.σ = torch.cat((self.σ_0, 
-                        self.σ_E * torch.ones([len(self.prot.mut_ids_exp), 1], dtype=torch.float64), 
-                        (self.σ_E + self.σ_S) * torch.ones([len(self.prot.mut_ids_is), 1], dtype=torch.float64) + t*self.σ_T))
-        print(self.σ.shape)
-        # TODO add t*σ_T for scaled values
-        self.N = 0
-        self.mWDK = protein_representation.mWDK
+        # TODO+ t*self.σ_T init get this from BayesScaler instead !!
+        self.σ_T = torch.ones([len(self.protein.mut_ids_is), 1], dtype=torch.float64) * 0.02
+        self.σ = self.set_noise_term()
 
         # TODO: mutation-lvl CV: randomly select mutations for train, test
         # TODO  for now cutoff at -10 elem
         self.y = np.array(protein_representation.ΔΔg)
-        self.kernel = protein_representation.mWDK.K_ϕ()
         self.p_sample = None
         self.n_samples = n_samples
         # self.mutation_level_GPR()
         # self.multiple_kernel_learning()
-        # TODO get sigmas and t
-        self.params = [self.constrain(self.mWDK.w, 0, 1)]#, sigma_E, simga_IS, t]
+        self.weights = torch.rand(len(self.protein.covariance_matrices))#, sigma_E, simga_IS, t] # TODO all parameters
         self.mutation_split_GPR()
+    
+    def set_noise_term(self):
+        σ = torch.cat((self.σ_0, 
+                    self.σ_E * torch.ones([len(self.protein.mut_ids_exp), 1], dtype=torch.float64), 
+                    (self.σ_E + self.σ_S) * torch.ones([len(self.protein.mut_ids_is), 1], dtype=torch.float64) + self.t*self.σ_T))
+        return σ
+
+
+    def mWDK(self):
+        """
+        compute weighted kernel value from existing covariance matrix
+        """
+        n = self.X_train.shape[0]
+        k = torch.zeros([n, n])
+        for i, mat in enumerate(self.protein.covariance_matrices.values()):
+            k += self.weights[i] * mat[:n, :n]
+        print(k.shape)
+        return k
 
     @staticmethod
     def constrain(val, lower, upper):
@@ -64,28 +81,32 @@ class GPRegression:
 
     def neg_ll(self):
         n = self.X_train.shape[0]
-        print(self.params)
-        zero_μ = torch.zeros(n, dtype=torch.float64)
-        K_mat = self.kernel()
-        K_XX = K_mat[:n, :n] + torch.diag(self.σ)
-        print(K_XX)
-        print(K_XX.shape)
-        nll = - MultivariateNormal(zero_μ, covariance_matrix=K_XX).log_prob(self.y_train)
-        nll += self.noise.σ_E_prior.log_prob(self.σ_E) + self.noise.σ_S_prior.log_prob(self.σ_S)
-        # TODO compute log-marginal likelihood from K params and split
+        # use unconstrained params
+        # TODO for all element in unconstrained apply constrain
+        zero_μ = torch.zeros(n, dtype=torch.float64) # TODO compute mean over all training data
+        K_XX = self.mWDK()
+        noise = self.σ.squeeze()[:n]
+        K_XX = K_XX + torch.diag(noise) # TODO built new self sigma
+        # set diagonal to add noise
+        # zero mean is consistent due to prior assumption
+        nll = - (MultivariateNormal(zero_μ, covariance_matrix=K_XX).log_prob(torch.Tensor(self.y_train)) + self.σ_E_prior.log_prob(self.σ_E) + self.σ_S_prior.log_prob(self.σ_S))
+        nll.requires_grad_(True)
         return nll
 
     def parameter_optimization(self) -> None:
-        self.params.requires_grad_(True)
-        optimizer = torch.optim.LBFGS([self.params])
+        self.weights.requires_grad_(True)
+        optimizer = torch.optim.LBFGS([self.weights])
         # internal optimization call
         def closure():
+            self.weights = torch.Tensor([torch.clamp(w, 0, 1) for w in self.weights])
             optimizer.zero_grad()
             loss = self.neg_ll()
             loss.backward()
+            print(loss)
             return loss
         for n in range(self.n_optimization):
             print(n)
+            print(self.weights)
             optimizer.step(closure)
         return
     
