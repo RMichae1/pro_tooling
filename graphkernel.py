@@ -23,14 +23,17 @@ class KernelLoader:
         """
         matrices = loadmat("./data/subMats.mat").get('subMats')
         s_mat = []
+        s_mat_id = []
         # check for provided sub_matrices in data subMat
         for m_vals, m_id, m_info in matrices:
-            for s in sub_matrices:
-                if m_id in sub_mat_ids or s in str(m_info):
-                    s_mat.append(m_vals)
-        self.kernels: list = [MatrixKernel(matrix=s, matrix_id=m_id) for s, m_id in zip(s_mat, sub_matrices)]
-        self.sub_matrices_names: list = sub_matrices
-        assert len(self.kernels) == len(self.sub_matrices_names)
+            # TODO make sub-matrices selectable
+            #for s in sub_matrices:
+                #if m_id in sub_mat_ids or s in str(m_info):
+            s_mat_id.append(m_id[0])
+            s_mat.append(m_vals)
+        self.kernels: list = [MatrixKernel(matrix=s, matrix_id=m_id) for s, m_id in zip(s_mat, s_mat_id)]
+        self.sub_matrices_ids = s_mat_id
+        assert len(self.kernels) == len(self.sub_matrices_ids)
     
 
 class MatrixKernel:

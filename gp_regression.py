@@ -59,6 +59,8 @@ class GPRegression:
         self.weights = Variable(init_w, lower=0, upper=1) 
         # TODO optimize t
         self.mutation_split_GPR()
+        # TODO for testing
+        self.trainable_parameters: list = [w for w in self.weights.get_value()] + [self.σ_E, self.σ_S, self.t]
     
     def set_noise_term(self):
         σ_E = self.σ_E.get_value()
@@ -68,14 +70,13 @@ class GPRegression:
                     (σ_E + σ_S) * torch.ones([len(self.protein.mut_ids_is), 1], dtype=torch.float64) + self.t*self.σ_T))
         return σ
 
-    def mWDK(self):
+    def mWDK(self, X):
         """
         compute weighted kernel value from existing covariance matrix
         """
-        n = self.X_train.shape[0]
+        n = X.shape[0]
         k = torch.zeros([n, n], dtype=torch.float64)
         for i, mat in enumerate(self.protein.covariance_matrices.values()):
-            #k += self.weights[i].clamp(0,1) * mat[:n, :n]
             k += self.weights.get_value()[i] * mat[:n, :n]
         return k
 
@@ -84,7 +85,7 @@ class GPRegression:
         # use unconstrained params
         # TODO for all element in unconstrained apply constrain
         zero_μ = torch.zeros(n, dtype=torch.float64) # TODO compute mean over all training data
-        K_XX = self.mWDK()
+        K_XX = self.mWDK(X=self.X_train)
         noise = self.set_noise_term().squeeze()[:n]
         #noise = self.σ.squeeze()[:n]
         K_XX = K_XX + torch.diag(noise) # TODO built new self sigma
@@ -92,7 +93,7 @@ class GPRegression:
         # zero mean is consistent due to prior assumption
         # print(K_XX)
         # print(f"noise: {noise}")
-        nll = - (MultivariateNormal(zero_μ, covariance_matrix=K_XX).log_prob(torch.Tensor(self.y_train)) \
+        nll = -(MultivariateNormal(zero_μ, covariance_matrix=K_XX).log_prob(torch.Tensor(self.y_train)) \
             + self.σ_E_prior.log_prob(self.σ_E.get_value()) + self.σ_S_prior.log_prob(self.σ_S.get_value()))
         nll.requires_grad_(True)
         return nll

@@ -112,13 +112,13 @@ class ProteinCollection:
         compute substitution over all mutations with one-another
         """
         print("Computing kernel matrices ...")
-        ks_dict = {kernel: {} for kernel in self._kernels.sub_matrices_names}
+        ks_dict = {kernel: {} for kernel in self._kernels.sub_matrices_ids}
         sequences = [self.sequence] + self.mutated_sequences
         sequences = np.array([np.array([aa2index(aa) for aa in seq], dtype=np.int64) for seq in sequences], dtype=np.int64)
         # TODO Changes in adjacencies are not accounted for !
         # adjacencies = [self.adjacency] + self.mutated_adjacencies
         adjacencies = self.adjacency
-        for k_name, kernel in zip(self._kernels.sub_matrices_names, self._kernels.kernels):
+        for k_name, kernel in zip(self._kernels.sub_matrices_ids, self._kernels.kernels):
             # N = wt+mutations
             ks_dict[k_name] = torch.Tensor(kernel.k(sequences, adjacencies))
         return ks_dict
@@ -143,7 +143,7 @@ class ProteinCollection:
             ax[idx].set_xticklabels(mat.columns, rotation=90, size=5)
             if idx > 0:
                 ax[idx].set_yticks([])
-            ax[idx].set_title("{}".format(self._kernels.sub_matrices_names[idx]))
+            ax[idx].set_title("{}".format(self._kernels.sub_matrices_ids[idx]))
         fig.colorbar(matplot, ax=ax[idx], fraction=0.046, pad=0.04)
         plt.savefig(filename)
         plt.legend()
