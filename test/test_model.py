@@ -5,16 +5,10 @@ import os
 from scipy.io import loadmat
 from graphkernel import ContactMapper
 from protein_representation import ProteinCollection
-from utility import parse_matlab_mutation_file, parse_mutations, convert_aa_sequence
+from utility import parse_matlab_mutation_file, parse_mutations 
+from utility import preprocess_observations, convert_aa_sequence
 from gp_regression import GPRegression
- 
-def preprocess_observations(y_wild_type, y_wetlab, y_scaled):
-    y = np.vstack([y_wild_type, y_wetlab, y_scaled])
-    mean_y = np.mean(y)
-    y -= mean_y
-    max_y = np.max(np.abs(y))
-    y /= max_y
-    return mean_y, max_y, y[[0], :], y[1:y_wetlab.shape[0]+1, :], y[1+y_wetlab.shape[0]:, :]
+
  
 def test_model():
     """
@@ -75,7 +69,7 @@ def test_model():
     y_scaled = f(y_insilico)
     mean_y, max_y, y_wild_type, y_wetlab, y_scaled = preprocess_observations(y_wild_type, y_wetlab, y_scaled)
     # THIRD TEST: SCALING AND NORMALIZATION OF y-VALUES
-    assert max_y == pytest.approx(ref_file["model"]["ymax"][0, 0][0, 0], rel=0.003)
+    assert max_y == pytest.approx(ref_file["model"]["ymax"][0, 0][0, 0])
 
     # build model
     model = GPRegression(protein_representation=prot, X_wt=X_wild_type, X_exp=X_wetlab, X_is=X_insilico,

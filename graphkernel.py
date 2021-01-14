@@ -59,7 +59,9 @@ class MatrixKernel:
         """
         N = sequences.shape[0]
         k = np.zeros([N, N])
-        neighborhoods = np.array([contacts for res, contacts in adjacencies])
+        neighborhoods = adjacencies
+        if isinstance(adjacencies[0], tuple):
+            neighborhoods = np.array([contacts for res, contacts in adjacencies])
         neighborhood_iterator = tqdm(enumerate(neighborhoods))
         for idx, neighbors in neighborhood_iterator:
             neighborhood_iterator.set_description(f"Matrix: {self.matrix_id}")

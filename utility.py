@@ -1,12 +1,16 @@
 import re
+import os
+import warnings
 from os import path
 from copy import deepcopy
 from tqdm import tqdm
 import numpy as np
 import torch
 from torch.distributions import Gamma
+import scipy
 from scipy import io
 from typing import List, Tuple
+from Bio.Seq import Seq
 
 
 def parse_matlab_mutation_file(mat_file, query: str=None) -> dict:
@@ -82,6 +86,42 @@ def aa2index(aa):
 
 def convert_aa_sequence(sequences: list):
     return np.array([np.array([aa2index(aa) for aa in seq], dtype=np.int64) for seq in sequences], dtype=np.int64)
+
+
+def list_of_pairs_2_seq(list):
+    seq_str = []
+    last_i = -1
+    for i, s in list:
+        if i - last_i > 1:
+            raise RuntimeError("Parsed Sequence has gaps!")
+        last_i = i
+        seq_str.append(s)
+    return Seq(''.join(seq_str))
+
+
+def get_sequence_and_contact_graph_from_ref_matlab_file(pdb_id: str,  cutoff_distance=5., chain_id=None) -> (Seq, list):
+    if not cutoff_distance == 5.:
+        raise RuntimeError("The matlab reference files have a fixed cutoff distance of 5 angstrom!")
+    data_dir = os.path.join(os.path.dirname(__file__), "data")
+    filename = pdb_id + '.mat'
+    mat = scipy.io.loadmat(os.path.join(data_dir, filename))
+    ref_sequence = np.squeeze(mat['sequence']['letters'])
+    seq = []
+    for i, aa in enumerate(ref_sequence):
+        seq.append((i, aa[0]))
+    return list_of_pairs_2_seq(seq), convert_graph_from_matlab_file(mat['contact_map'])
+
+
+def convert_graph_from_matlab_file(al):
+    contact_map = []
+    for ns in al:
+        contact_map.append(np.array(ns[0][0]) - 1)
+    return contact_map
+
+
+def get_sequence_and_contact_graph(*args, **kwargs):
+    warnings.warn("Using local MATLAB files to load data.")
+    return get_sequence_and_contact_graph_from_ref_matlab_file(*args, **kwargs)
 
 
 class Variable:
