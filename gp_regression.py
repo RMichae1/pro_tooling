@@ -21,10 +21,11 @@ np.random.seed(42)
 class GPRegression:
     def __init__(self, protein_representation: ProteinCollection, X_wt: np.ndarray, 
                 X_exp: np.ndarray, X_is: np.ndarray, y_wt: np.ndarray, y_exp: np.ndarray, y_is: np.ndarray,
-                σ_T: float, n_samples=100, n_optimization=20):
+                adjacencies: np.ndarray, σ_T: float, n_samples=100, n_optimization=20):
         self.X_wt, self.X_exp, self.X_is = X_wt, X_exp, X_is
         self.y_wt, self.y_exp, self.y_is = y_is, y_exp, y_is
         self.protein = protein_representation
+        self.adjacencies = adjacencies
         # set hyperparameters - see Appendix mGPfusion
         σ_0=1e-6 
         α_E=2.5
@@ -67,7 +68,7 @@ class GPRegression:
 
         # TODO WARN: what matrix size to compute matters!
         self.covariance_matrices = self.compute_matrices(X=self.X, 
-                                                        adjacencies=self.protein.adjacency[:len(self.X)])
+                                                        adjacencies=self.adjacencies[:len(self.X)])
         # trainable parameters for testing
         self.trainable_parameters: list = [w for w in self.weights.get_value()] + [self.σ_E, self.σ_S, self.t]
     
@@ -113,10 +114,10 @@ class GPRegression:
         n = X.shape[0]
         k = torch.zeros([n, n], dtype=torch.float64)
         assert np.all(n == mat.shape[0] for mat in self.covariance_matrices)
-        # TODO query adjacencies through indices from X
+        # TODO query matrix values through X
         for i, mat in enumerate(self.covariance_matrices):
             # WARN: This operation is of type double, but torch doesnt complain
-            k += self.weights.get_value()[i].type(torch.float64) * mat
+            k += self.weights.get_value()[i].type(torch.float64) * mat[:n, :n]
         return k
 
     def neg_ll(self):

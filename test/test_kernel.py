@@ -90,7 +90,6 @@ def test_normalized_kernel():
         assert len(X) == len(_X)
         assert np.all([x == y for x, y in zip(X, _X)])
 
-
         for i, m in enumerate(matrices):
             kernel = MatrixKernel(matrix=m[0], matrix_id=None)
             k = kernel.k(sequences=X, adjacencies=ref_contact_graph)

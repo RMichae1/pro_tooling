@@ -235,7 +235,7 @@ def parse_and_assert_mutations(mutation: str) -> Tuple[str, int, str]:
     return mutation_tuples
 
 
-def parse_mutations(sequence: str, adjacency: List[tuple], mutation_dict: dict) -> Tuple[list, list]:
+def parse_mutations(sequence: str, adjacency: List[tuple], mutation_dict: dict) -> Tuple[list, list, np.ndarray, list]:
     mutated_sequences = []
     mutated_adjacencies = []
     ΔΔg = []
