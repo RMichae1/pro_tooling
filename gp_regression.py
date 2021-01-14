@@ -65,8 +65,9 @@ class GPRegression:
         self.weights = Variable(init_w, lower=0, upper=1) 
         self.X_train, self.x_test, self.y_train, self.y_test = self.mutation_split_GPR()
 
-        self.covariance_matrices = self.compute_matrices(X=self.X_train, 
-                                                        adjacencies=self.protein.adjacency[:len(self.X_train)])
+        # TODO WARN: what matrix size to compute matters!
+        self.covariance_matrices = self.compute_matrices(X=self.X, 
+                                                        adjacencies=self.protein.adjacency[:len(self.X)])
         # trainable parameters for testing
         self.trainable_parameters: list = [w for w in self.weights.get_value()] + [self.σ_E, self.σ_S, self.t]
     
