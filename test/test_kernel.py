@@ -80,16 +80,19 @@ def test_normalized_kernel():
         mut_S_exp, _, _, _ = parse_mutations(mutation_dict=mut_exp.get(prot.pdb_ID),
                                                     sequence=sequence_WT, adjacency=ref_contact_graph)
         X = np.vstack([sequence_WT, mut_S_exp])
+        X = convert_aa_sequence(X)
 
         # Simon Code:
-        # num_wet_lab_obs = ref_K_list[0][0].shape[0] - 1
-        # _, x_wild_type, _, X_wetlab, _, _, _, _, _, X_test, _ = get_split_training_and_test_data(
-        #                         "1PGA", cutoff_distance=5., p=np.arange(num_wet_lab_obs))
-        # X = np.vstack([x_wild_type, X_test, X_wetlab])
+        num_wet_lab_obs = ref_K_list[0][0].shape[0] - 1
+        _, x_wild_type, _, X_wetlab, _, _, _, _, _, X_test, _ = get_split_training_and_test_data(
+                                "1PGA", cutoff_distance=5., p=np.arange(num_wet_lab_obs))
+        _X = np.vstack([x_wild_type, X_test, X_wetlab])
+        assert len(X) == len(_X)
+        assert np.all([x == y for x, y in zip(X, _X)])
 
 
         for i, m in enumerate(matrices):
             kernel = MatrixKernel(matrix=m[0], matrix_id=None)
-            k = kernel.k(convert_aa_sequence(X), adjacencies=ref_contact_graph)
+            k = kernel.k(sequences=X, adjacencies=ref_contact_graph)
             # k = NormalizedKernel(WeightedDecomposition(substitution_matrix=m[0], contact_map=ref_contact_graph), w=1.0, gamma=1.0)
             np.testing.assert_almost_equal(k.detach().numpy(), ref_K_list[i][0])
