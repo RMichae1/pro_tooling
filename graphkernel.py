@@ -63,9 +63,9 @@ class MatrixKernel:
         neighborhood_iterator = tqdm(enumerate(neighborhoods))
         for idx, neighbors in neighborhood_iterator:
             neighborhood_iterator.set_description(f"Matrix: {self.matrix_id}")
-            for contacts in neighbors:
+            for n in neighbors:
                 # WARN: assumption is that neighborhood does NOT change
-                k += self.matrix[sequences[:, contacts], :][:, sequences[:, contacts]]
+                k += self.matrix[sequences[:, n], :][:, sequences[:, n]]
             k *= self.matrix[sequences[:, idx], :][:, sequences[:, idx]]
         norm = np.sqrt(np.diag(k))[:, np.newaxis]
         k_hat = k / norm.dot(norm.T)

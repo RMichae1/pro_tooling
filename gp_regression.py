@@ -1,6 +1,7 @@
 import numpy as np
 from numpy.random import multivariate_normal
 from scipy.stats import norm
+from tqdm import tqdm
 
 import torch
 from torch import cholesky, cholesky_solve
@@ -8,6 +9,7 @@ from torch.distributions import MultivariateNormal, Gamma
 import matplotlib.pyplot as plt
 from typing import Tuple
 from protein_representation import ProteinCollection
+from graphkernel import KernelLoader
 from utility import Variable
 
 # for reproducability:
@@ -16,27 +18,22 @@ np.random.seed(42)
 
 
 class GPRegression:
-    def __init__(self, protein_representation: ProteinCollection, n_samples=100, n_optimization=20):
+    def __init__(self, protein_representation: ProteinCollection, X_wt: np.ndarray, 
+                X_exp: np.ndarray, X_is: np.ndarray, y_wt: np.ndarray, y_exp: np.ndarray, y_is: np.ndarray,
+                σ_T: float, n_samples=100, n_optimization=20):
+        self.X_wt, self.X_exp, self.X_is = X_wt, X_exp, X_is
+        self.y_wt, self.y_exp, self.y_is = y_is, y_exp, y_is
+        self.protein = protein_representation
         # set hyperparameters - see Appendix mGPfusion
         σ_0=1e-6 
         α_E=2.5
         β_E=0.02
         α_S=50.
         β_S=0.007
-
-        self.n_optimization = n_optimization
-        self.protein = protein_representation
-        self.id = protein_representation.pdb_ID
-        self.X = np.array(protein_representation.mutation_ids)
-        # TODO: position-lvl CV: randomly select mutations for train, test
-        self.X_train, self.x_test = None, None
-        self.y_train, self.y_test = None, None
-        self.K_XX, self.K_xX, self.K_xx = None, None, None
-        self.μ, self.cov, self.lml, self.p_sample = None, None, None, None
+        self.t = 1.1
+        # init prior noise
         self.σ_E_prior = Gamma(torch.tensor(α_E), torch.tensor(β_E))
         self.σ_S_prior = Gamma(torch.tensor(α_S), torch.tensor(β_S))
-
-        self.t = 1.1
         # init noise terms
         init_σ_E = 0.075 * torch.ones([1, 1], dtype=torch.float64)
         init_σ_S = 0.1 * torch.ones([1, 1], dtype=torch.float64)
@@ -44,30 +41,56 @@ class GPRegression:
         self.σ_S = Variable(init_σ_S, lower=0.001, upper=10)
         self.σ_0 = 1e-5 * torch.ones([1, 1], dtype=torch.float64)
         # TODO+ t*self.σ_T init get this from BayesScaler instead !!
-        self.σ_T = torch.ones([len(self.protein.mut_ids_is), 1], dtype=torch.float64) * 0.02
+        self.σ_T = σ_T * torch.ones([len(self.protein.mut_ids_is), 1], dtype=torch.float64)
         self.σ = self.set_noise_term()
+        
 
-        # TODO: mutation-lvl CV: randomly select mutations for train, test
-        # TODO  for now cutoff at -10 elem
-        self.y = np.array(protein_representation.ΔΔg)
+        self.n_optimization = n_optimization
+        self.id = protein_representation.pdb_ID
+        self.X, self.y = self._combine_observations(X_wt, X_exp, X_is, y_wt, y_exp, y_is)
+        # initialize required variables for training GP
+        # TODO: position-lvl CV: randomly select mutations for train, test
+        self.X_train, self.x_test = None, None
+        self.y_train, self.y_test = None, None
+        self.K_XX, self.K_xX, self.K_xx = None, None, None
+        self.μ, self.cov, self.lml, self.p_sample = None, None, None, None
+
+        _kernels = KernelLoader()
+        self._kernels = _kernels.kernels
         self.p_sample = None
         self.n_samples = n_samples
         # self.mutation_level_GPR()
         # self.multiple_kernel_learning()
         # init weights randomly
-        init_w = 0.9 * torch.ones([len(self.protein.covariance_matrices), 1], dtype=torch.float64)
+        init_w = (0.9/len(self._kernels)) * torch.ones([len(self._kernels), 1], dtype=torch.float64)
         self.weights = Variable(init_w, lower=0, upper=1) 
         # TODO optimize t
         self.mutation_split_GPR()
-        # TODO for testing
+        # trainable parameters for testing
         self.trainable_parameters: list = [w for w in self.weights.get_value()] + [self.σ_E, self.σ_S, self.t]
+    
+    @staticmethod
+    def check_and_add_axis(x: np.ndarray) -> np.ndarray:
+        return x[:, np.newaxis] if len(x.shape) == 1 else x
+
+    def _combine_observations(self, X_wt: np.ndarray, X_exp: np.ndarray, X_is: np.ndarray, 
+                            y_wt: np.ndarray, y_exp: np.ndarray, y_is: np.ndarray) -> Tuple[torch.Tensor, torch.Tensor]:
+        y_wt = self.check_and_add_axis(y_wt)
+        X_wt = self.check_and_add_axis(X_wt)
+        X_exp, X_is = self.check_and_add_axis(X_exp), self.check_and_add_axis(X_is)
+        y_exp, y_is = self.check_and_add_axis(y_exp), self.check_and_add_axis(y_is)
+        assert X_exp.shape[1] == X_wt.shape[1]
+        assert y_exp.shape[1] == y_wt.shape[1]
+        X = torch.Tensor(np.vstack([X_wt, X_exp, X_is]))
+        y = torch.Tensor(np.vstack([y_wt, y_exp, y_is]))
+        return X, y
     
     def set_noise_term(self):
         σ_E = self.σ_E.get_value()
         σ_S = self.σ_S.get_value()
         σ = torch.cat((self.σ_0, 
-                    σ_E * torch.ones([len(self.protein.mut_ids_exp), 1], dtype=torch.float64), 
-                    (σ_E + σ_S) * torch.ones([len(self.protein.mut_ids_is), 1], dtype=torch.float64) + self.t*self.σ_T))
+                    σ_E * torch.ones([len(self.X_exp), 1], dtype=torch.float64), 
+                    (σ_E + σ_S) * torch.ones([len(self.X_is), 1], dtype=torch.float64) + self.t*self.σ_T))
         return σ
 
     def mWDK(self, X):
@@ -75,9 +98,12 @@ class GPRegression:
         compute weighted kernel value from existing covariance matrix
         """
         n = X.shape[0]
+        X = X.detach().numpy().astype(np.int64)
         k = torch.zeros([n, n], dtype=torch.float64)
-        for i, mat in enumerate(self.protein.covariance_matrices.values()):
-            k += self.weights.get_value()[i] * mat[:n, :n]
+        # TODO query adjacencies
+        adjacencies = self.protein.adjacency[:n]
+        for i, kernel in tqdm(enumerate(self._kernels)):
+            k += self.weights.get_value()[i] * torch.Tensor(kernel.k(X, adjacencies))
         return k
 
     def neg_ll(self):
@@ -114,11 +140,8 @@ class GPRegression:
             optimizer.step(closure)
         # set weights after optimization
         print("FINAL:")
-        print("weights:")
-        print(self.weights.get_value())
-        print("sigma:")
-        print(self.σ_S.get_value())
-        print(self.σ_E.get_value())
+        print(f"weights: {self.weights.get_value()}")
+        print(f"sigmas S={self.σ_S.get_value()} E={self.σ_E.get_value()}:")
         return 
     
     def mutation_split_GPR(self, training=0.75) -> None:
@@ -126,8 +149,8 @@ class GPRegression:
         Split mutations into 75:25 train test split
         """ 
         cutoff = int(training*self.X.shape[0])
-        self.X_train, x_test = self.X[:cutoff], self.X[cutoff:]
-        self.y_train, y_test = self.y[:cutoff], self.y[cutoff:]
+        self.X_train, self.x_test = self.X[:cutoff], self.X[cutoff:]
+        self.y_train, self.y_test = self.y[:cutoff], self.y[cutoff:]
         return
 
     def mutation_level_GPR(self) -> dict:

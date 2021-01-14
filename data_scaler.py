@@ -15,7 +15,7 @@ class BayesScaler:
     Bayesian In Silico Scaling for Rosetta simulated data.
     Using MCMC (w/ NUTS sampler)
     """
-    def __init__(self, is_mutations, ΔΔg, exp_mutations, experimentally_observed_ΔΔg,
+    def __init__(self, is_mutations: list, ΔΔg: np, exp_mutations, experimentally_observed_ΔΔg,
                     α_a=2., β_a=1.5, α_b=1.3, β_b=2., α_c=2, β_c=5., σ_d=0.15, σ_n=0.5,
                     samples_N=10000, warmup_N=500, TESTING=False, pdb_ID=None):
         pyro.set_rng_seed(42)
@@ -60,9 +60,10 @@ class BayesScaler:
                 self.xx)) + np.dot(self.b_samples[i], self.xx) + self.d_samples[i] for i in range(self.samples_N)])
         self.θ = self.a * np.exp(np.dot(self.c, self.ΔΔg_is)) + np.dot(self.b, self.ΔΔg_is) + self.d
         self.θ_xx = np.array(list(map(self.transform, self.xx)))
-        self.σ_T = np.sum(np.square(self.θ_samples - self.θ), axis=1) / self.samples_N
+        self.σ_T = np.sum(np.square(self.θ_samples - self.θ)) / self.samples_N
+        self.σ_T_samples = np.sum(np.square(self.θ_samples - self.θ), axis=0) / self.samples_N
         # compute sigma over the whole range of possible inputs
-        self.σ_T_sampled = np.sum(np.square(self.θ_xx_samples - self.θ_xx), axis=1) / self.samples_N
+        self.σ_T_xx = np.sum(np.square(self.θ_xx_samples - self.θ_xx), axis=0) / self.samples_N
 
     def transform(self, x: float) -> float:
         return self.a * np.exp(np.dot(self.c, x)) + np.dot(self.b, x) + self.d
@@ -117,19 +118,6 @@ class BayesScaler:
             site_stats[site_name] = describe[["mean", "std", "5%", "25%", "50%", "75%", "95%"]]
         return site_stats
 
-    def _sample_f_suggestions(self, x: np.ndarray, n_samples:int=1000) -> list:
-        """
-        From fitted values sample function suggestions for plotting
-        """
-        pass
-        # a = dist.Normal(self.mcmc.get('a').mean(0), self.mcmc.get('a').std(0))
-        # b = dist.Normal(self.mcmc.get('b').mean(0), self.mcmc.get('b').std(0))
-        # c = dist.Normal(self.mcmc.get('c').mean(0), self.mcmc.get('c').std(0))
-        # d = dist.Normal(self.mcmc.get('d').mean(0), self.mcmc.get('d').std(0))
-        # y_list = [a().numpy() * np.exp(np.dot(c().numpy(), x)) + np.dot(b().numpy(), x) + d().numpy() 
-        #             for _ in range(n_samples)]
-        # return y_list
-
     def print_summary(self):
         #for site, values in self.summary(self.mcmc_samples).items():
         for site, values in self.summary(self.mcmc).items():
@@ -145,18 +133,18 @@ class BayesScaler:
         # plot final theta over complete range
         y = list(map(self.transform, self.xx))
         ax[0].plot(self.xx, y, "k-", label="μ scaling")
-        sns.scatterplot(x=self.ΔΔg_is.numpy(), y=self.θ, ci=self.σ_T, s=20, color="red", ax=ax[0], label="scaled simulated data")
+        sns.scatterplot(x=self.ΔΔg_is.numpy(), y=self.θ, ci=self.σ_T, s=30, color="green", ax=ax[0], label="scaled simulated data")
         sns.scatterplot(x=self.ΔΔg_is.numpy(), y=self.ΔΔg_exp.numpy(), s=250, color="blue", ax=ax[0], label="experimental")
         # TODO account for confidence interval correctly
-        # ci_pos = np.array(list(map(self.transform, self.xx))) + self.σ_T_sampled
-        # ci_neg = np.array(list(map(self.transform, self.xx))) - self.σ_T_sampled
-        # # draw confidence intervals at val +/- one σ_T around all sampled range
-        
-        # ax[0].plot(self.xx, ci_pos, "r--") # TODO order points for smoother plotting
-        # ax[0].plot(self.xx, ci_neg, "r--")
-        # # TODO add green interval for sampling posterior
-        # # barplot over scaled y values
-        sns.histplot(self.σ_T_sampled, ax=ax[1], label="σ_T distribution", stat="count")
+        ci_pos = np.array(list(map(self.transform, self.xx))) + 2 * self.σ_T_xx
+        ci_neg = np.array(list(map(self.transform, self.xx))) - 2 * self.σ_T_xx
+        # draw confidence intervals at val +/- one σ_T around all sampled range
+        ax[0].plot(self.xx, ci_pos, "r--") # TODO order points for smoother plotting
+        ax[0].plot(self.xx, ci_neg, "r--")
+        # TODO add green interval for sampling posterior
+        # barplot over scaled y values
+        sns.histplot(self.σ_T_xx, ax=ax[1], label="σ_T over range", alpha=0.3, stat="density")
+        sns.histplot(self.σ_T_samples, ax=ax[1], label="σ_T per sample", color="black", stat="count")
         # sns.barplot(x=self.σ_T_sampled, y=np.array(list(map(self.transform, self.xx))), 
         #             label="σ values", ax=ax[1])
         ax[0].set_xlabel("ΔΔG original")
