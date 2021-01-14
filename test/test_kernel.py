@@ -13,6 +13,49 @@ cm = ContactMapper(pdb_file="./pdb/1pga.pdb", tri_dist=True)
 mut_exp = parse_matlab_mutation_file("./data/ddg_protherm.mat", query="ddg_protherm")
 mut_is = parse_matlab_mutation_file("./data/ddg_rosetta_single.mat", query="ddg_rosetta_single")
 
+ref_file = loadmat(os.path.join(os.path.dirname(__file__), os.path.join("data", "1PGAkernel_matrices.mat")))
+matrices = ref_file["subMats"]
+m = matrices[0]
+kernel = MatrixKernel(matrix=m[0], matrix_id=None)
+
+
+def naive_K(seq: np.ndarray, adj: np.ndarray, S:np.ndarray) -> np.ndarray:
+    """
+    Kernel as described in the paper
+    """
+    n = seq.shape[0]
+    K = np.zeros([n, n])
+    for p in range(n):
+        for q in range(n):
+            for idx in range(seq.shape[1]):
+                nbps = adj[idx]
+                for l in nbps:
+                    K[p, q] += S[seq[p, l], seq[q, l]]
+                K[p, q] *= S[seq[p, idx], seq[q, idx]]
+    print(K)
+    # normalize
+    for p in range(n):
+        for q in range(n):
+            if p == q:
+                continue
+            K[p, q] /= (np.sqrt(K[p, p]) * np.sqrt(K[q, q]))
+    # set diagonal explicitly 
+    for i in range(0, n):
+        K[i, i] = 1
+    return K
+
+
+def test_vectorized_kernel():
+    N = 50 # mutations
+    L = 20 # sequence length
+    AA = 19 # amino acids
+    S = kernel.matrix
+    seqs = np.random.randint(0, AA, size=[N, L])
+    adj = [np.random.randint(0, L, [np.random.randint(0, L)]) for _ in range(0, L)]
+    k = kernel.k(sequences=seqs, adjacencies=adj)
+    k_ref = naive_K(seq=seqs, adj=adj, S=S)
+    np.testing.assert_almost_equal(k, k_ref)
+
 
 def test_normalized_kernel():
         ref_file = loadmat(os.path.join(os.path.dirname(__file__), os.path.join("data", "1PGAkernel_matrices.mat")))
@@ -34,15 +77,15 @@ def test_normalized_kernel():
         #assert np.all([elem_ref == elem for elem_ref, elem in zip(ref_contact_graph, contacts)])
         
         # Richard Code
-        # mut_S_exp, _, _, _ = parse_mutations(mutation_dict=mut_exp.get(prot.pdb_ID),
-        #                                             sequence=sequence_WT, adjacency=ref_contact_graph)
-        # X = np.vstack([sequence_WT, mut_S_exp])
+        mut_S_exp, _, _, _ = parse_mutations(mutation_dict=mut_exp.get(prot.pdb_ID),
+                                                    sequence=sequence_WT, adjacency=ref_contact_graph)
+        X = np.vstack([sequence_WT, mut_S_exp])
 
         # Simon Code:
-        num_wet_lab_obs = ref_K_list[0][0].shape[0] - 1
-        _, x_wild_type, _, X_wetlab, _, _, _, _, _, X_test, _ = get_split_training_and_test_data(
-                                "1PGA", cutoff_distance=5., p=np.arange(num_wet_lab_obs))
-        X = np.vstack([x_wild_type, X_test, X_wetlab])
+        # num_wet_lab_obs = ref_K_list[0][0].shape[0] - 1
+        # _, x_wild_type, _, X_wetlab, _, _, _, _, _, X_test, _ = get_split_training_and_test_data(
+        #                         "1PGA", cutoff_distance=5., p=np.arange(num_wet_lab_obs))
+        # X = np.vstack([x_wild_type, X_test, X_wetlab])
 
 
         for i, m in enumerate(matrices):

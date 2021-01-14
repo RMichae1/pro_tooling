@@ -7,6 +7,7 @@ from graphkernel import ContactMapper
 from protein_representation import ProteinCollection
 from utility import parse_matlab_mutation_file, parse_mutations 
 from utility import preprocess_observations, convert_aa_sequence
+from utility import convert_graph_from_matlab_file
 from gp_regression import GPRegression
 
  
@@ -29,6 +30,9 @@ def test_model():
     ref_prior_R = ref_file["mll_components_struct"]["prior_R"][0, 0]
     sigma_T = ref_file["model"]["stdT"][0, 0]
     a, b, c, d = ref_file["model"]["theta"][0, 0][0, :]  # parameters for the Bayesian scaling
+    # correct adjacencies
+    pga_file = loadmat(os.path.join(os.path.dirname(__file__), os.path.join("data", "1PGA.mat")))
+    ref_contact_graph = convert_graph_from_matlab_file(pga_file["al"])
 
     # some consistency checks on our loaded data
     ref_L = np.linalg.cholesky(ref_K + np.square(np.diag(ref_noise)))  # reference Cholesky
@@ -55,9 +59,9 @@ def test_model():
 
     prot = ProteinCollection(cm, pdb_ID="1PGA", mutations_exp=mut_exp, mutations_sim=mut_is)
     mut_S_exp, mut_adj_exp, ΔΔg_exp, mut_ids_exp = parse_mutations(mutation_dict=mut_exp.get(prot.pdb_ID), 
-                                                    sequence=prot.sequence, adjacency=prot.adjacency)
+                                                    sequence=prot.sequence, adjacency=ref_contact_graph)
     mut_S_is, mut_adj_is, ΔΔg_is, mut_ids_is = parse_mutations(mutation_dict=mut_is.get(prot.pdb_ID), 
-                                                    sequence=prot.sequence, adjacency=prot.adjacency)
+                                                    sequence=prot.sequence, adjacency=ref_contact_graph)
     X_wetlab = convert_aa_sequence(mut_S_exp)
     X_insilico = convert_aa_sequence(mut_S_is[:20])
     X_wild_type = convert_aa_sequence([prot.sequence])
