@@ -31,7 +31,7 @@ class GPRegression:
         β_E=0.02
         α_S=50.
         β_S=0.007
-        self.t = 1.1
+        self.t = Variable(1.1 * torch.ones([1, 1], dtype=torch.float64), lower=0.001, upper=10)
         # init prior noise
         self.σ_E_prior = Gamma(torch.tensor(α_E), torch.tensor(β_E))
         self.σ_S_prior = Gamma(torch.tensor(α_S), torch.tensor(β_S))
@@ -42,7 +42,7 @@ class GPRegression:
         self.σ_S = Variable(init_σ_S, lower=0.001, upper=10)
         self.σ_0 = 1e-5 * torch.ones([1, 1], dtype=torch.float64)
         # TODO+ t*self.σ_T init get this from BayesScaler instead !!
-        self.σ_T = σ_T * torch.ones([len(self.protein.mut_ids_is), 1], dtype=torch.float64)
+        self.σ_T = σ_T * torch.ones([1, 1], dtype=torch.float64)
         self.σ = self.set_noise_term()
         
 
@@ -51,8 +51,6 @@ class GPRegression:
         self.X, self.y = self._combine_observations(X_wt, X_exp, X_is, y_wt, y_exp, y_is)
         # initialize required variables for training GP
         # TODO: position-lvl CV: randomly select mutations for train, test
-        self.X_train, self.x_test = None, None
-        self.y_train, self.y_test = None, None
         self.K_XX, self.K_xX, self.K_xx = None, None, None
         self.μ, self.cov, self.lml, self.p_sample = None, None, None, None
 
@@ -65,8 +63,7 @@ class GPRegression:
         # init weights randomly
         init_w = (0.9/len(self._kernels)) * torch.ones([len(self._kernels), 1], dtype=torch.float64)
         self.weights = Variable(init_w, lower=0, upper=1) 
-        # TODO optimize t
-        self.mutation_split_GPR()
+        self.X_train, self.x_test, self.y_train, self.y_test = self.mutation_split_GPR()
 
         self.covariance_matrices = self.compute_matrices(X=self.X_train, 
                                                         adjacencies=self.protein.adjacency[:len(self.X_train)])
@@ -92,9 +89,10 @@ class GPRegression:
     def set_noise_term(self):
         σ_E = self.σ_E.get_value()
         σ_S = self.σ_S.get_value()
+        t = self.t.get_value()
         σ = torch.cat((self.σ_0, 
                     σ_E * torch.ones([len(self.X_exp), 1], dtype=torch.float64), 
-                    (σ_E + σ_S) * torch.ones([len(self.X_is), 1], dtype=torch.float64) + self.t*self.σ_T))
+                    (σ_E + σ_S) * torch.ones([len(self.X_is), 1], dtype=torch.float64) + t*self.σ_T))
         return σ
 
     def compute_matrices(self, X: torch.Tensor, adjacencies: List[tuple]) -> list:
@@ -103,19 +101,27 @@ class GPRegression:
         covariance_mats = []
         for i, kernel in tqdm(enumerate(self._kernels)):
             k = torch.zeros([n, n], dtype=torch.float64)
-            k += kernel.k(X, adjacencies)
+            k_val = kernel.k(X, adjacencies)
+            print(k_val)
+            k = k + k_val
             covariance_mats.append(k)
+            print("MAT TYPE")
+            print(k.type())
         return covariance_mats
 
-    def mWDK(self) -> torch.Tensor:
+    def mWDK(self, X: torch.Tensor) -> torch.Tensor:
         """
         compute weighted kernel value from existing covariance matrix
         """
         n = X.shape[0]
         k = torch.zeros([n, n], dtype=torch.float64)
+        assert np.all(n == mat.shape[0] for mat in self.covariance_matrices)
         # TODO query adjacencies through indices from X
         for i, mat in tqdm(enumerate(self.covariance_matrices)):
-            k += self.weights.get_value()[i] * torch.Tensor(mat)
+            x = self.weights.get_value()[i].type(torch.float64) * torch.Tensor(mat)
+            print("MWDK OPERATION TYPE")
+            print(x.type())
+            k += self.weights.get_value()[i].type(torch.float64) * torch.Tensor(mat)
         return k
 
     def neg_ll(self):
@@ -137,13 +143,14 @@ class GPRegression:
         return nll
 
     def parameter_optimization(self) -> None:
-        optimizer = torch.optim.LBFGS([self.weights.unconstrained, self.σ_E.unconstrained, self.σ_S.unconstrained],
+        optimizer = torch.optim.LBFGS([self.weights.unconstrained, self.σ_E.unconstrained, 
+                                        self.σ_S.unconstrained, self.t.unconstrained],
                                         lr=0.99)
         def closure():
             optimizer.zero_grad()
             loss = self.neg_ll()
-            loss.backward()
             print(f"Loss: {loss}")
+            loss.backward()
             return loss
         for n in range(self.n_optimization):
             print(f"iter: {n}")
@@ -161,9 +168,9 @@ class GPRegression:
         Split mutations into 75:25 train test split
         """ 
         cutoff = int(training*self.X.shape[0])
-        self.X_train, self.x_test = self.X[:cutoff], self.X[cutoff:]
-        self.y_train, self.y_test = self.y[:cutoff], self.y[cutoff:]
-        return
+        X_train, x_test = self.X[:cutoff], self.X[cutoff:]
+        y_train, y_test = self.y[:cutoff], self.y[cutoff:]
+        return X_train, x_test, y_train, y_test
 
     def mutation_level_GPR(self) -> dict:
         """

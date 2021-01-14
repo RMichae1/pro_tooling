@@ -100,6 +100,7 @@ class Variable:
     @staticmethod
     def inverse(val, lower, upper):
         inverse = -torch.log( (upper-lower) / (val-lower) -1)
+        inverse.type(torch.float64)
         inverse.requires_grad_(True)
         return inverse
 
@@ -109,5 +110,6 @@ class Variable:
         constrain through σ function
         """
         constrained = lower + (upper-lower) * (1 / (1 + torch.exp(-val)))
+        constrained.type(torch.float64)
         constrained.requires_grad_(True)
         return constrained
