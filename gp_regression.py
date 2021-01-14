@@ -2,6 +2,7 @@ import numpy as np
 from numpy.random import multivariate_normal
 from scipy.stats import norm
 from tqdm import tqdm
+from typing import List, Tuple
 
 import torch
 from torch import cholesky, cholesky_solve
@@ -66,6 +67,9 @@ class GPRegression:
         self.weights = Variable(init_w, lower=0, upper=1) 
         # TODO optimize t
         self.mutation_split_GPR()
+
+        self.covariance_matrices = self.compute_matrices(X=self.X_train, 
+                                                        adjacencies=self.protein.adjacency[:len(self.X_train)])
         # trainable parameters for testing
         self.trainable_parameters: list = [w for w in self.weights.get_value()] + [self.σ_E, self.σ_S, self.t]
     
@@ -93,17 +97,25 @@ class GPRegression:
                     (σ_E + σ_S) * torch.ones([len(self.X_is), 1], dtype=torch.float64) + self.t*self.σ_T))
         return σ
 
-    def mWDK(self, X):
+    def compute_matrices(self, X: torch.Tensor, adjacencies: List[tuple]) -> list:
+        X = X.detach().numpy().astype(np.int64)
+        n = X.shape[0]
+        covariance_mats = []
+        for i, kernel in tqdm(enumerate(self._kernels)):
+            k = torch.zeros([n, n], dtype=torch.float64)
+            k += kernel.k(X, adjacencies)
+            covariance_mats.append(k)
+        return covariance_mats
+
+    def mWDK(self) -> torch.Tensor:
         """
         compute weighted kernel value from existing covariance matrix
         """
         n = X.shape[0]
-        X = X.detach().numpy().astype(np.int64)
         k = torch.zeros([n, n], dtype=torch.float64)
-        # TODO query adjacencies
-        adjacencies = self.protein.adjacency[:n]
-        for i, kernel in tqdm(enumerate(self._kernels)):
-            k += self.weights.get_value()[i] * torch.Tensor(kernel.k(X, adjacencies))
+        # TODO query adjacencies through indices from X
+        for i, mat in tqdm(enumerate(self.covariance_matrices)):
+            k += self.weights.get_value()[i] * torch.Tensor(mat)
         return k
 
     def neg_ll(self):
@@ -130,7 +142,7 @@ class GPRegression:
         def closure():
             optimizer.zero_grad()
             loss = self.neg_ll()
-            loss.backward(retain_graph=True)
+            loss.backward()
             print(f"Loss: {loss}")
             return loss
         for n in range(self.n_optimization):
