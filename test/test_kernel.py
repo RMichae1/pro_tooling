@@ -56,42 +56,55 @@ def test_vectorized_kernel():
     k_ref = naive_K(seq=seqs, adj=adj, S=S)
     np.testing.assert_almost_equal(k, k_ref)
 
+ref_file = loadmat(os.path.join(os.path.dirname(__file__), os.path.join("data", "1PGAkernel_matrices.mat")))
+ref_K_list = ref_file["kernel_matrices"]
+matrices = ref_file["subMats"]
+ref_contact_graph = convert_graph_from_matlab_file(ref_file["al"])
+num_wet_lab_obs = ref_K_list[0][0].shape[0] - 1
 
-def test_normalized_kernel():
-        ref_file = loadmat(os.path.join(os.path.dirname(__file__), os.path.join("data", "1PGAkernel_matrices.mat")))
-        ref_K_list = ref_file["kernel_matrices"]
-        matrices = ref_file["subMats"]
-        ref_contact_graph = convert_graph_from_matlab_file(ref_file["al"])
-        num_wet_lab_obs = ref_K_list[0][0].shape[0] - 1
+sequence_WT = get_sequence_and_contact_graph(pdb_id="1PGA", cutoff_distance=5., chain_id=None)[0]
+sequence_WT = list(sequence_WT)
 
-        sequence_WT = get_sequence_and_contact_graph(pdb_id="1PGA", cutoff_distance=5., chain_id=None)[0]
-        sequence_WT = list(sequence_WT)
+prot = ProteinCollection(cm, pdb_ID="1PGA", mutations_exp=mut_exp, mutations_sim=mut_is)
 
-        prot = ProteinCollection(cm, pdb_ID="1PGA", mutations_exp=mut_exp, mutations_sim=mut_is)
-        # TEST is reference sequence equal to own parsed sequence
-        assert np.all([x == y for x,y in zip(sequence_WT, prot.sequence)])
+def test_parsed_seq_against_ref():
+        """
+        is reference sequence equal to own parsed sequence
+        """
+        assert np.all([x == y for x,y in zip(prot.sequence, sequence_WT)])
 
+def test_adjacency_against_ref():
         # TEST adjacencies
+        # THIS FAILS
         contacts = np.array([contacts for res, contacts in cm.adjacency])
         assert len(ref_contact_graph) == len(contacts)
-        #assert np.all([elem_ref == elem for elem_ref, elem in zip(ref_contact_graph, contacts)])
-        
-        # Richard Code
-        mut_S_exp, _, _, _ = parse_mutations(mutation_dict=mut_exp.get(prot.pdb_ID),
-                                                    sequence=sequence_WT, adjacency=ref_contact_graph)
-        X = np.vstack([sequence_WT, mut_S_exp])
-        X = convert_aa_sequence(X)
+        assert np.all([elem_ref == elem for elem_ref, elem in zip(ref_contact_graph, contacts)])
 
-        # Simon Code:
-        num_wet_lab_obs = ref_K_list[0][0].shape[0] - 1
-        _, x_wild_type, _, X_wetlab, _, _, _, _, _, X_test, _ = get_split_training_and_test_data(
-                                "1PGA", cutoff_distance=5., p=np.arange(num_wet_lab_obs))
-        _X = np.vstack([x_wild_type, X_test, X_wetlab])
-        assert len(X) == len(_X)
-        assert np.all([x == y for x, y in zip(X, _X)])
+### PARSING MUTATIONS
+# Richard Code:
+mut_S_exp, _, _, _ = parse_mutations(mutation_dict=mut_exp.get(prot.pdb_ID),
+                                            sequence=sequence_WT, adjacency=ref_contact_graph)
+X = np.vstack([sequence_WT, mut_S_exp])
+X = convert_aa_sequence(X)
+# Simon Code:
+num_wet_lab_obs = ref_K_list[0][0].shape[0] - 1
+_, x_wild_type, _, X_wetlab, _, _, _, _, _, X_test, _ = get_split_training_and_test_data(
+                        "1PGA", cutoff_distance=5., p=np.arange(num_wet_lab_obs))
+_X = np.vstack([x_wild_type, X_test, X_wetlab])
 
-        for i, m in enumerate(matrices):
-            kernel = MatrixKernel(matrix=m[0], matrix_id=None)
-            k = kernel.k(sequences=X, adjacencies=ref_contact_graph)
-            # k = NormalizedKernel(WeightedDecomposition(substitution_matrix=m[0], contact_map=ref_contact_graph), w=1.0, gamma=1.0)
-            np.testing.assert_almost_equal(k.detach().numpy(), ref_K_list[i][0])
+def test_mutations_consistent():
+    """
+    Test against gp_modeling parsing reference for experimental mutations
+    """
+    assert len(X) == len(_X)
+    assert np.all([x == y for x, y in zip(X, _X)])
+
+def test_normalized_kernel():
+    """
+    Test computed (normalized) matrix kernel values against reference K values
+    """
+    for i, m in enumerate(matrices):
+        kernel = MatrixKernel(matrix=m[0], matrix_id=None)
+        k = kernel.k(sequences=X, adjacencies=ref_contact_graph)
+        # k = NormalizedKernel(WeightedDecomposition(substitution_matrix=m[0], contact_map=ref_contact_graph), w=1.0, gamma=1.0)
+        np.testing.assert_almost_equal(k.detach().numpy(), ref_K_list[i][0])
