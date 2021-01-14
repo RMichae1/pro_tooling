@@ -7,6 +7,7 @@ from graphkernel import MatrixKernel
 from scipy.io import loadmat
 from protein_representation import ProteinCollection
 from contact_mapper import ContactMapper
+from utility import get_split_training_and_test_data
 
 cm = ContactMapper(pdb_file="./pdb/1pga.pdb", tri_dist=True)
 mut_exp = parse_matlab_mutation_file("./data/ddg_protherm.mat", query="ddg_protherm")
@@ -32,13 +33,20 @@ def test_normalized_kernel():
         assert len(ref_contact_graph) == len(contacts)
         #assert np.all([elem_ref == elem for elem_ref, elem in zip(ref_contact_graph, contacts)])
         
-        mut_S_exp, _, _, _ = parse_mutations(mutation_dict=mut_exp.get(prot.pdb_ID),
-                                                    sequence=sequence_WT, adjacency=ref_contact_graph)
-        mut_S = np.vstack([sequence_WT, mut_S_exp])
+        # Richard Code
+        # mut_S_exp, _, _, _ = parse_mutations(mutation_dict=mut_exp.get(prot.pdb_ID),
+        #                                             sequence=sequence_WT, adjacency=ref_contact_graph)
+        # X = np.vstack([sequence_WT, mut_S_exp])
+
+        # Simon Code:
+        num_wet_lab_obs = ref_K_list[0][0].shape[0] - 1
+        _, x_wild_type, _, X_wetlab, _, _, _, _, _, X_test, _ = get_split_training_and_test_data(
+                                "1PGA", cutoff_distance=5., p=np.arange(num_wet_lab_obs))
+        X = np.vstack([x_wild_type, X_test, X_wetlab])
 
 
         for i, m in enumerate(matrices):
             kernel = MatrixKernel(matrix=m[0], matrix_id=None)
-            k = kernel.k(convert_aa_sequence(mut_S), adjacencies=ref_contact_graph)
+            k = kernel.k(convert_aa_sequence(X), adjacencies=ref_contact_graph)
             # k = NormalizedKernel(WeightedDecomposition(substitution_matrix=m[0], contact_map=ref_contact_graph), w=1.0, gamma=1.0)
             np.testing.assert_almost_equal(k.detach().numpy(), ref_K_list[i][0])

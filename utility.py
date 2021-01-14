@@ -13,6 +13,32 @@ from typing import List, Tuple
 from Bio.Seq import Seq
 
 
+def get_split_training_and_test_data(pdb_id: str, cutoff_distance: float, p=None):
+    x_wild_type, y_wild_type, X_wetlab, y_wetlab, X_insilico, y_insilico, matching_mutations, contact_graph =\
+        load_pdb_id_data(pdb_id, cutoff_distance=cutoff_distance)
+
+    if p is None:
+        p = np.random.permutation(X_wetlab.shape[0])
+    assert(p.shape[0] == X_wetlab.shape[0])
+    X_test = X_wetlab[p[:20], :]  # 20 data points from the wetlab experiments are withheld for testing
+    y_test = y_wetlab[p[:20], :]
+    #matching_mutations = np.hstack([matching_mutations[p[20:], [0]], matching_mutations[20:, [1]]])  # TODO: does this work? seems so
+    matching_mutations[:, 0] = p[matching_mutations[:, 0]]
+    matching_mutations = matching_mutations[20:, :]
+    y_train_wetlab_matching = y_wetlab[matching_mutations[:, 0], :]  # observations stem only from the training set
+    y_insilico_matching = y_insilico[matching_mutations[:, 1], :]
+    X_wetlab = X_wetlab[p[20:], :]
+    y_wetlab = y_wetlab[p[20:], :]
+    return contact_graph, x_wild_type, y_wild_type, X_wetlab, y_wetlab, X_insilico, y_insilico, y_train_wetlab_matching, \
+           y_insilico_matching, X_test, y_test
+
+
+def load_pdb_id_data(pdb_id: str, cutoff_distance=5.):
+    wild_type, contact_graph = get_sequence_and_contact_graph(pdb_id=pdb_id, cutoff_distance=cutoff_distance, chain_id=None)
+    x_wild_type, X_wetlab, y_wetlab, X_insilico, y_insilico, matching_mutations = load_mutations(pdb_id, wild_type)
+    return x_wild_type, 0., X_wetlab, y_wetlab, X_insilico, y_insilico, matching_mutations, contact_graph
+
+
 def parse_matlab_mutation_file(mat_file, query: str=None) -> dict:
     if isinstance(mat_file, str) and mat_file.endswith(".mat"):
         mat_file = io.loadmat(mat_file)
@@ -57,13 +83,13 @@ def parse_mutations(sequence: str, adjacency: List[tuple], mutation_dict: dict) 
         ΔΔg.append(ddg)
         mutation_ids.append(mutation)
         # deepcopy to ensure that the underlying wildtype is not overwritten
-        sequence = deepcopy(sequence)
-        adjacency = deepcopy(adjacency)
+        seq = deepcopy(sequence)
+        adj = deepcopy(adjacency)
         mutation_tuples = parse_and_assert_mutations(mutation)
         for _, idx, mut in mutation_tuples:
-            sequence[idx] = mut
+            seq[idx] = mut
             # change imutable reference tuple by creating new tuple
-            adjacency[idx] = (mut, adjacency[idx][1])
+            adj[idx] = (mut, adjacency[idx][1])
         mutated_sequences.append(sequence)
         mutated_adjacencies.append(adjacency)
     return mutated_sequences, mutated_adjacencies, np.array(ΔΔg), mutation_ids
@@ -80,7 +106,7 @@ def preprocess_observations(y_wild_type, y_wetlab, y_scaled):
 
 def aa2index(aa):
     aa_array = np.array(["A", "R", "N", "D", "C", "Q", "E", "G", 
-                        "H", "I", "L", "K", "M", "F", "P", "S", "T", "W", "Y", "V"])
+                        "H", "I", "L", "K", "M", "F", "P", "S", "T", "W", "Y", "V", "-"])
     return np.where(aa_array == aa)[0][0]
 
 

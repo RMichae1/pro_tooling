@@ -30,6 +30,10 @@ if __name__ == "__main__":
     y_wt = np.array([0])
     X_wt = convert_aa_sequence([pcol.sequence])
 
+    print(X_exp)
+    print(X_is)
+
+
     # # scale using Bayesian Scaling
     # bs_rosetta = BayesScaler(is_mutations=mut_ids_is, ΔΔg=pcol.ΔΔg_is, exp_mutations=mut_ids_exp, 
     #                     experimentally_observed_ΔΔg=pcol.ΔΔg_exp, TESTING=True, pdb_ID="1PGA")
@@ -43,12 +47,13 @@ if __name__ == "__main__":
     # print(bs_rosetta.plot_scaling())
     σ_T = 1.3756
 
-    # TODO preprocess y
+    # # TODO preprocess y
 
-    gpr = GPRegression(protein_representation=pcol, X_wt=X_wt, X_exp=X_exp, X_is=X_is, 
-                        y_wt=y_wt, y_exp=ΔΔg_exp, y_is=ΔΔg_is, σ_T=σ_T)
-    print(gpr.neg_ll())
-    gpr.parameter_optimization()
-    print(gpr.neg_ll())
-    # gpr.plot_log_prob()
-    # gpr.plot()
+    # gpr = GPRegression(protein_representation=pcol, X_wt=X_wt, X_exp=X_exp, X_is=X_is, 
+    #                      y_wt=y_wt, y_exp=ΔΔg_exp, y_is=ΔΔg_is, σ_T=σ_T)
+    # print(gpr.X)
+    # print(gpr.neg_ll())
+    # gpr.parameter_optimization()
+    # print(gpr.neg_ll())
+    # # gpr.plot_log_prob()
+    # # gpr.plot()
