@@ -90,8 +90,8 @@ def parse_mutations(sequence: str, adjacency: List[tuple], mutation_dict: dict) 
             seq[idx] = mut
             # change imutable reference tuple by creating new tuple
             adj[idx] = (mut, adjacency[idx][1])
-        mutated_sequences.append(sequence)
-        mutated_adjacencies.append(adjacency)
+        mutated_sequences.append(seq)
+        mutated_adjacencies.append(adj)
     return mutated_sequences, mutated_adjacencies, np.array(ΔΔg), mutation_ids
 
 
