@@ -100,13 +100,9 @@ class GPRegression:
         n = X.shape[0]
         covariance_mats = []
         for i, kernel in tqdm(enumerate(self._kernels)):
-            k = torch.zeros([n, n], dtype=torch.float64)
-            k_val = kernel.k(X, adjacencies)
-            print(k_val)
-            k = k + k_val
+            k = torch.zeros([n, n], dtype=torch.float64).float()
+            k += kernel.k(X, adjacencies).float()
             covariance_mats.append(k)
-            print("MAT TYPE")
-            print(k.type())
         return covariance_mats
 
     def mWDK(self, X: torch.Tensor) -> torch.Tensor:
@@ -117,11 +113,9 @@ class GPRegression:
         k = torch.zeros([n, n], dtype=torch.float64)
         assert np.all(n == mat.shape[0] for mat in self.covariance_matrices)
         # TODO query adjacencies through indices from X
-        for i, mat in tqdm(enumerate(self.covariance_matrices)):
-            x = self.weights.get_value()[i].type(torch.float64) * torch.Tensor(mat)
-            print("MWDK OPERATION TYPE")
-            print(x.type())
-            k += self.weights.get_value()[i].type(torch.float64) * torch.Tensor(mat)
+        for i, mat in enumerate(self.covariance_matrices):
+            # WARN: This operation is of type double, but torch doesnt complain
+            k += self.weights.get_value()[i].type(torch.float64) * mat
         return k
 
     def neg_ll(self):
@@ -148,8 +142,9 @@ class GPRegression:
                                         lr=0.99)
         def closure():
             optimizer.zero_grad()
-            loss = self.neg_ll()
+            loss = self.neg_ll().sum()
             print(f"Loss: {loss}")
+            # TODO double check sum or better mean
             loss.backward()
             return loss
         for n in range(self.n_optimization):
