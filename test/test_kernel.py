@@ -65,10 +65,12 @@ ref_file = loadmat(os.path.join(os.path.dirname(__file__), os.path.join("data", 
 ref_K_list = ref_file["kernel_matrices"]
 matrices = ref_file["subMats"]
 ref_contact_graph = convert_graph_from_matlab_file(ref_file["al"])
+contact_graph_matlab = [cell + 1 for cell in ref_contact_graph]
 num_wet_lab_obs = ref_K_list[0][0].shape[0] - 1
 
-sequence_WT = get_sequence_and_contact_graph(pdb_id="1PGA", cutoff_distance=5., chain_id=None)[0]
-sequence_WT = list(sequence_WT)
+seq_WT = get_sequence_and_contact_graph(pdb_id="1PGA", cutoff_distance=5., chain_id=None)[0]
+seq_WT_str = str(seq_WT)
+sequence_WT = list(seq_WT_str)
 
 prot = ProteinCollection(cm, pdb_ID="1PGA", mutations_exp=mut_exp, mutations_sim=mut_is)
 
@@ -172,9 +174,7 @@ function sequencesNew=constructSequences(sequenceWT, mutations1, includeWT)
 %           in the same order as given in mutations
 % 
 
-if isletter(sequenceWT(1))
-    sequenceWT=double(aa2int(sequenceWT));
-end
+sequenceWT=double(aa2int(sequenceWT));
 
 numMut=numel(mutations1);
 if includeWT; wt=1; else; wt=0; end
@@ -192,8 +192,8 @@ for i=1:numMut
         if isnan(num) 
             warning('Mutation %s at index %d is not known. The WT sequence is left at this location.',mut,i);
             break
-        elseif sequenceWT(num)~=aa2int(mut(letter_inds(j)))
-            warning('Mutation %s at index %d does not match the WT, the original AA is %c',mut,i, int2aa(sequenceWT(num)));
+        % elseif sequenceWT(num)~=aa2int(mut(letter_inds(j)))
+        %     warning('Mutation %s at index %d does not match the WT, the original AA is %c',mut,i, int2aa(sequenceWT(num)));
         end
         sequencesNew(i+wt,num)=double(aa2int(mut(letter_inds(j+1))));
     end
@@ -203,7 +203,7 @@ with open("kernel_script.m", "w") as outfile:
     outfile.write(K_script)
 eng = matlab.engine.start_matlab()
 matlab_m = matlab.double(m[0].tolist())
-matlab_contacts = [matlab.int8(contacts.tolist()) for contacts in ref_contact_graph]
+matlab_contacts = [matlab.int8(contacts.tolist()) for contacts in contact_graph_matlab]
 
 def test_normalized_kernel():
     """
@@ -215,7 +215,7 @@ def test_normalized_kernel():
     for i, m in enumerate(matrices):
         kernel = MatrixKernel(matrix=m[0], matrix_id=None)
         k = kernel.k(sequences=X, adjacencies=ref_contact_graph)
-        ref_K = eng.kernel_script(sequence_WT, ref_mutations, matlab_contacts, 
-                    1, True, matlab_m, nargout=0)
+        ref_K = eng.kernel_script(seq_WT_str, ref_mutations, matlab_contacts, 
+                    1, True, matlab_m, nargout=1)
         #np.testing.assert_almost_equal(k.detach().numpy(), ref_K_list[i][0])
         np.testing.assert_almost_equal(k.detach().numpy(), ref_K)

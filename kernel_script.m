@@ -64,9 +64,7 @@ function sequencesNew=constructSequences(sequenceWT, mutations1, includeWT)
 %           in the same order as given in mutations
 % 
 
-if isletter(sequenceWT(1))
-    sequenceWT=double(aa2int(sequenceWT));
-end
+sequenceWT=double(aa2int(sequenceWT));
 
 numMut=numel(mutations1);
 if includeWT; wt=1; else; wt=0; end
@@ -84,8 +82,8 @@ for i=1:numMut
         if isnan(num) 
             warning('Mutation %s at index %d is not known. The WT sequence is left at this location.',mut,i);
             break
-        elseif sequenceWT(num)~=aa2int(mut(letter_inds(j)))
-            warning('Mutation %s at index %d does not match the WT, the original AA is %c',mut,i, int2aa(sequenceWT(num)));
+        % elseif sequenceWT(num)~=aa2int(mut(letter_inds(j)))
+        %     warning('Mutation %s at index %d does not match the WT, the original AA is %c',mut,i, int2aa(sequenceWT(num)));
         end
         sequencesNew(i+wt,num)=double(aa2int(mut(letter_inds(j+1))));
     end
