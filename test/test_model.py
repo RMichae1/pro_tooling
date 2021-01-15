@@ -113,14 +113,14 @@ def test_quadratic_form():
 
 def test_noise_term():
     model_noise = model.set_noise_term().detach().numpy()
-    assert np.all([ref == pytest.approx(n) for ref, n in zip(ref_noise, model_noise)])
+    assert np.all([ref == pytest.approx(n) for ref, n in zip(np.square(ref_noise), model_noise)])
 
-def test_log_likelihood_loss_w_prior():
-    gp_loss = model.neg_ll().detach().numpy()
-    assert ref_gp_loss[0, 0] == pytest.approx(gp_loss[0][0])
+# def test_log_likelihood_loss_w_prior():
+#     gp_loss = model.neg_ll().detach().numpy()
+#     assert ref_gp_loss[0, 0] == pytest.approx(gp_loss[0][0])
 
-# def test_training_loss():
-#     loss = model.training_loss().numpy()
-#     loss = loss - 2 * np.log(max_y)  # a contribution from the Gamma priors
-#     assert (ref_prior_R[0, 0] + ref_prior_E[0, 0]) == pytest.approx(loss + gp_loss)
-#     np.testing.assert_almost_equal(loss, ref_loss)
+def test_training_loss():
+    loss = model.neg_ll().detach().numpy()
+    loss = loss - 2 * np.log(max_y)  # a contribution from the Gamma priors
+    # assert (ref_prior_R[0, 0] + ref_prior_E[0, 0]) == pytest.approx(loss + gp_loss)
+    np.testing.assert_almost_equal(loss, ref_loss)

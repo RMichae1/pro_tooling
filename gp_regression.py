@@ -30,9 +30,9 @@ class GPRegression:
         # set hyperparameters - see Appendix mGPfusion
         σ_0=1e-6 
         α_E=2.5
-        β_E=0.02
+        β_E=1/0.02
         α_S=50.
-        β_S=0.007
+        β_S=1/0.007
         self.t = Variable(1.1 * torch.ones([1, 1], dtype=torch.float64), lower=0.001, upper=10)
         # init prior noise
         self.σ_E_prior = Gamma(torch.tensor(α_E), torch.tensor(β_E))
@@ -131,7 +131,7 @@ class GPRegression:
         K_XX = K_XX + torch.diag(noise)
         # zero mean is consistent due to prior assumption
         # print(f"noise: {noise}")
-        nll = -(MultivariateNormal(zero_μ, covariance_matrix=K_XX).log_prob(torch.Tensor(self.y)).sum() \
+        nll = -(MultivariateNormal(zero_μ, covariance_matrix=K_XX).log_prob(torch.flatten(self.y)).sum() \
             + self.σ_E_prior.log_prob(self.σ_E.get_value()) + self.σ_S_prior.log_prob(self.σ_S.get_value()))
         nll.requires_grad_(True)
         return nll
