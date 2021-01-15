@@ -21,9 +21,10 @@ np.random.seed(42)
 class GPRegression:
     def __init__(self, protein_representation: ProteinCollection, X_wt: np.ndarray, 
                 X_exp: np.ndarray, X_is: np.ndarray, y_wt: np.ndarray, y_exp: np.ndarray, y_is: np.ndarray,
-                adjacencies: np.ndarray, σ_T: float, n_samples=100, n_optimization=20):
+                y_max: float, adjacencies: np.ndarray, σ_T: float, n_samples=100, n_optimization=20):
         self.X_wt, self.X_exp, self.X_is = X_wt, X_exp, X_is
         self.y_wt, self.y_exp, self.y_is = y_is, y_exp, y_is
+        self.y_max = y_max
         self.protein = protein_representation
         self.adjacencies = adjacencies
         # set hyperparameters - see Appendix mGPfusion
@@ -93,8 +94,8 @@ class GPRegression:
         σ_S = self.σ_S.get_value()
         t = self.t.get_value()
         σ = torch.cat((self.σ_0, 
-                    σ_E * torch.ones([len(self.X_exp), 1], dtype=torch.float64), 
-                    (σ_E + σ_S) * torch.ones([len(self.X_is), 1], dtype=torch.float64) + t*self.σ_T))
+                    (σ_E/self.y_max) * torch.ones([len(self.X_exp), 1], dtype=torch.float64), 
+                    ((σ_E + σ_S) / self.y_max) * torch.ones([len(self.X_is), 1], dtype=torch.float64) + t*(self.σ_T/self.y_max)))
         return σ
 
     def compute_matrices(self, X: torch.Tensor, adjacencies: List[tuple]) -> list:
@@ -158,6 +159,7 @@ class GPRegression:
         print("FINAL:")
         print(f"weights: {self.weights.get_value()}")
         print(f"sigmas S={self.σ_S.get_value()} E={self.σ_E.get_value()}:")
+        print(f"t = {self.t.get_value()}")
         return 
     
     def mutation_split_GPR(self, training=0.75) -> None:
