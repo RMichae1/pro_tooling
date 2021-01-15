@@ -117,9 +117,7 @@ def test_noise_term():
 
 def test_log_likelihood_loss_w_prior():
     gp_loss = model.neg_ll().detach().numpy()
-    print(gp_loss)
-    print(ref_gp_loss[0, 0])
-    assert np.all([ref_gp_loss[0, 0] == pytest.approx(loss) for loss in gp_loss])
+    assert ref_gp_loss[0, 0] == pytest.approx(gp_loss[0][0])
 
 # def test_training_loss():
 #     loss = model.training_loss().numpy()

@@ -134,7 +134,7 @@ class GPRegression:
         # zero mean is consistent due to prior assumption
         # print(K_XX)
         # print(f"noise: {noise}")
-        nll = -(MultivariateNormal(zero_μ, covariance_matrix=K_XX).log_prob(torch.Tensor(self.y_train)) \
+        nll = -(MultivariateNormal(zero_μ, covariance_matrix=K_XX).log_prob(torch.Tensor(self.y)).sum() \
             + self.σ_E_prior.log_prob(self.σ_E.get_value()) + self.σ_S_prior.log_prob(self.σ_S.get_value()))
         nll.requires_grad_(True)
         return nll
