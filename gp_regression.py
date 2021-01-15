@@ -122,11 +122,11 @@ class GPRegression:
         return k
 
     def neg_ll(self):
-        n = self.X_train.shape[0]
+        n = self.X.shape[0]
         # use unconstrained params
         # TODO for all element in unconstrained apply constrain
         zero_μ = torch.zeros(n, dtype=torch.float64) # TODO compute mean over all training data
-        K_XX = self.mWDK(X=self.X_train)
+        K_XX = self.mWDK(X=self.X)
         noise = self.set_noise_term().squeeze()[:n]
         #noise = self.σ.squeeze()[:n]
         K_XX = K_XX + torch.diag(noise) # TODO built new self sigma
