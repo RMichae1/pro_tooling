@@ -46,6 +46,10 @@ def naive_K(seq: np.ndarray, adj: np.ndarray, S:np.ndarray) -> np.ndarray:
 
 
 def test_vectorized_kernel():
+    """
+    Test if vectorized kernel computation follows same logic as naive kernel 
+    as presented in the paper.
+    """
     N = 50 # mutations
     L = 20 # sequence length
     AA = 19 # amino acids
@@ -56,6 +60,7 @@ def test_vectorized_kernel():
     k_ref = naive_K(seq=seqs, adj=adj, S=S)
     np.testing.assert_almost_equal(k, k_ref)
 
+### Load Reference
 ref_file = loadmat(os.path.join(os.path.dirname(__file__), os.path.join("data", "1PGAkernel_matrices.mat")))
 ref_K_list = ref_file["kernel_matrices"]
 matrices = ref_file["subMats"]
@@ -204,11 +209,13 @@ def test_normalized_kernel():
     """
     Test computed (normalized) matrix kernel values against reference K values
     """
+    ref_mutations = [str(mut[0][0]) for mut in ref_file.get('mutE')]
+    mutations = [m for m, _ in mut_exp.get("1PGA")]
+    assert np.all([ref == mut for ref, mut in zip(ref_mutations, mutations)])
     for i, m in enumerate(matrices):
         kernel = MatrixKernel(matrix=m[0], matrix_id=None)
         k = kernel.k(sequences=X, adjacencies=ref_contact_graph)
-        print(mut_S_exp)
-        ref_K = eng.kernel_script(sequence_WT, mut_S_exp, matlab_contacts, 
+        ref_K = eng.kernel_script(sequence_WT, ref_mutations, matlab_contacts, 
                     1, True, matlab_m, nargout=0)
         #np.testing.assert_almost_equal(k.detach().numpy(), ref_K_list[i][0])
         np.testing.assert_almost_equal(k.detach().numpy(), ref_K)
