@@ -114,11 +114,12 @@ def test_quadratic_form():
 def test_noise_term():
     model_noise = model.set_noise_term().detach().numpy()
     assert np.all([ref == pytest.approx(n) for ref, n in zip(ref_noise, model_noise)])
-    #assert ref_noise == pytest.approx(model_noise)
 
 def test_log_likelihood_loss_w_prior():
     gp_loss = model.neg_ll().detach().numpy()
-    #assert pytest.approx(gp_loss.sum()) == ref_gp_loss[0, 0]
+    print(gp_loss)
+    print(ref_gp_loss[0, 0])
+    assert np.all([ref_gp_loss[0, 0] == pytest.approx(loss) for loss in gp_loss])
 
 # def test_training_loss():
 #     loss = model.training_loss().numpy()
