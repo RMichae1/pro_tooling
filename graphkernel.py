@@ -71,6 +71,7 @@ class MatrixKernel:
             k *= self.matrix[sequences[:, idx], :][:, sequences[:, idx]]
         norm = np.sqrt(np.diag(k))[:, np.newaxis]
         k_hat = k / norm.dot(norm.T)
+        #k_hat = k / np.sqrt(np.diag(k) * np.diag(k).T)
 
             # TODO imperformant and deprecated
             # k_xy = self.matrix[x_idx][y_idx] * self.averaged_neighborhood(p_res=res_x, q_res=res_y, 

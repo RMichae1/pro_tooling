@@ -1,4 +1,4 @@
-# pro_tooling
+# pro_tooling a Protein Tooling and Modeling Library
 Tooling Lib for Protein Interaction, Mutation Modeling and Visualization.
 
 Includes GP Regression modeling for predictive stability values.

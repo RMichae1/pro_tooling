@@ -199,9 +199,13 @@ class GPRegression:
         # TODO ? start with 1 mutation in training and increase until all except one mutation (sample)
         pass
 
-    def _fit(self, mu, cov, K, ) -> Tuple[torch.Tensor, torch.Tensor, float, np.array]:
+    def _fit(self, f_μ=0., cov=None) -> Tuple[torch.Tensor, torch.Tensor, float, np.array]:
         """Alg. 2.1 Rasmussen *GPs in ML* """
-        A = self.K_XX + self.σ * torch.eye(self.N) # TODO add sigma_E add sigma_
+        n = self.X_train.shape[0]
+        self.K_XX = self.mWDK(self.X_train)
+        self.K_xX = self.mWDK(self.X[:, n:])
+        self.K_xx = self.mWDK(self.x_test)
+        A = self.K_XX + self.σ * torch.eye(n) # TODO add sigma_E add sigma_
         ## 0,0 sigma
         ## diag in range exp + sigma_E
         ## 
@@ -209,7 +213,7 @@ class GPRegression:
         α = cholesky_solve(self.y_train, L)
 
         # init fit
-        mean = 0
+        # mean = 0
         cov = A
         # compute dist + lml
 
@@ -218,21 +222,23 @@ class GPRegression:
         cov = self.K_xx - torch.matmul(self.K_xX, v)
         mN = MultivariateNormal(f_μ, cov)
         # added gamma prior from noise representation as in (Eq. 10) mGPfusion
-        log_marg_likelihood = mN.log_prob(self.y_train) + self.noise.σ_E.log_prob(self.noise.σ_E.sample()) + self.noise.σ_S.log_prob(self.noise.σ_S.sample())
-        return log_marg_likelihood
+        log_marg_likelihood = mN.log_prob(self.y_train) + self.σ_E_prior.log_prob(self.σ_E.get_value()) + self.σ_S_prior.log_prob(self.σ_S.get_value())
+        return f_μ, cov, log_marg_likelihood
 
-    def predict(self):
-        return mu, cov, p_sample
+    def predict(self, f_μ, cov):
+        mN = MultivariateNormal(f_μ, cov)
         p_sample = mN.sample((self.n_samples,))
+        return p_sample
         
 
     def plot(self) -> None:
+        μ, cov, lml = self._fit()
+        samples = self.predict(μ, cov)
+        μ = μ.squeeze().detach().numpy()
+        cov = cov.squeeze().detach().numpy()
+        y_test = self.y_test
         _, ax = plt.subplots(1,1, figsize=(15,10))
-        for idx, mutation in enumerate(self.X):
-            samples = self.mutation_level_dict.get('samples')[idx]
-            μ = self.mutation_level_dict.get('μ_list')[idx].squeeze().detach().numpy()
-            cov = self.mutation_level_dict.get('cov_list')[idx].squeeze().detach().numpy()
-            y_test = self.y[idx]
+        for idx, (_, mutation) in enumerate(zip(self.x_test, self.protein.mutation_ids[len(self.X_train):])):
             for s in samples:
                 ax.scatter(y_test, s, color="indianred", alpha=0.3)
             # plot gaussian from computed mean and covariance
@@ -251,7 +257,7 @@ class GPRegression:
     
     def plot_log_prob(self) -> None:
         _, ax = plt.subplots(1, 1, figsize=(10,10))
-        for idx, mut in enumerate(self.X):
+        for idx, mut in enumerate(self.x_test):
             y_train = self.y[np.arange(self.y.shape[0])!=idx]
             lmls = self.mutation_level_dict.get('lml_list')[idx]
             log_prob = [(lml.squeeze().detach().numpy()) for lml in lmls]
