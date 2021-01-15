@@ -247,6 +247,7 @@ class GPRegression:
             nll_init = self.neg_ll()
             self.parameter_optimization()
             nll_end = self.neg_ll()
+            μ, cov, lml = self._fit()
             # write optimization results
             optimization_parameters.append({"w": self.weights.get_value(),
                                         "sigma_S": self.σ_S.get_value(),
@@ -281,20 +282,17 @@ class GPRegression:
             assert(self.K_XX.shape == (self.N, self.N))
             assert(self.K_xX.shape == (1, self.N))
             assert(self.K_xx.shape == (1, 1))
-            self.μ, self.cov, self.lml, self.p_sample = self._fit()
+            self.μ, self.cov = self._fit()
         return
-
-    def cumulative_mutation_split(self):
-        # TODO ? start with 1 mutation in training and increase until all except one mutation (sample)
-        pass
 
     def _fit(self, X_test, f_μ=0., cov=None) -> Tuple[torch.Tensor, torch.Tensor, float, np.array]:
         """Alg. 2.1 Rasmussen *GPs in ML* """
         n = self.X_train.shape[0]
-        self.K_XX = self.mWDK(self.X_train)
-        # calculate covariance matrix
+        self.K_XX = self.mWDK(self.X_train, idx=self.idx_train)
+        self.K_xx = self.mWDK(self.x_test, idx=self.idx_test)
+        # TODO calculate covariance matrix
         self.K_xX = self.mWDK(self.X[:, n:])
-        self.K_xx = self.mWDK(self.x_test)
+        
         A = self.K_XX + self.σ * torch.eye(n) # TODO add sigma_E add sigma_
         ## 0,0 sigma
         ## diag in range exp + sigma_E
@@ -312,7 +310,7 @@ class GPRegression:
         cov = self.K_xx - torch.matmul(self.K_xX, v)
         mN = MultivariateNormal(f_μ, cov)
         # added gamma prior from noise representation as in (Eq. 10) mGPfusion
-        log_marg_likelihood = mN.log_prob(self.y_train) + self.σ_E_prior.log_prob(self.σ_E.get_value()) + self.σ_S_prior.log_prob(self.σ_S.get_value())
+        log_marg_likelihood = mN.log_prob(torch.flatten(self.y_train)).sum() + self.σ_E_prior.log_prob(self.σ_E.get_value()) + self.σ_S_prior.log_prob(self.σ_S.get_value())
         return f_μ, cov, log_marg_likelihood
 
     def predict(self, f_μ, cov):
