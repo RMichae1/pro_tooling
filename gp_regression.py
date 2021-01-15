@@ -3,7 +3,7 @@ from numpy.random import multivariate_normal
 from scipy.stats import norm
 from tqdm import tqdm
 from typing import List, Tuple
-
+from utility import get_mutation_idx
 import torch
 from torch import cholesky, cholesky_solve
 from torch.distributions import MultivariateNormal, Gamma
@@ -33,52 +33,102 @@ class GPRegression:
         β_E=1/0.02
         α_S=50.
         β_S=1/0.007
-        self.t = Variable(1.1 * torch.ones([1, 1], dtype=torch.float64), lower=0.001, upper=10)
+        self.init_t = 1.1 * torch.ones([1, 1], dtype=torch.float64)
+        self.t = Variable(self.init_t, lower=0.001, upper=10)
         # init prior noise
         self.σ_E_prior = Gamma(torch.tensor(α_E), torch.tensor(β_E))
         self.σ_S_prior = Gamma(torch.tensor(α_S), torch.tensor(β_S))
         # init noise terms
-        init_σ_E = 0.075 * torch.ones([1, 1], dtype=torch.float64)
-        init_σ_S = 0.1 * torch.ones([1, 1], dtype=torch.float64)
-        self.σ_E = Variable(init_σ_E, lower=0.001, upper=10)
-        self.σ_S = Variable(init_σ_S, lower=0.001, upper=10)
+        self.init_σ_E = 0.075 * torch.ones([1, 1], dtype=torch.float64)
+        self.init_σ_S = 0.1 * torch.ones([1, 1], dtype=torch.float64)
+        self.σ_E = Variable(self.init_σ_E, lower=0.001, upper=10)
+        self.σ_S = Variable(self.init_σ_S, lower=0.001, upper=10)
         self.σ_0 = 1e-5 * torch.ones([1, 1], dtype=torch.float64)
-        # TODO+ t*self.σ_T init get this from BayesScaler instead !!
-        self.σ_T = σ_T * torch.ones([1, 1], dtype=torch.float64)
+        self.init_σ_T = σ_T
+        self.σ_T = self.init_σ_T * torch.ones([1, 1], dtype=torch.float64)
         self.σ = self.set_noise_term()
-        
 
         self.n_optimization = n_optimization
         self.id = protein_representation.pdb_ID
         self.X, self.y = self._combine_observations(X_wt, X_exp, X_is, y_wt, y_exp, y_is)
-        # initialize required variables for training GP
-        # TODO: position-lvl CV: randomly select mutations for train, test
-        self.K_XX, self.K_xX, self.K_xx = None, None, None
-        self.μ, self.cov, self.lml, self.p_sample = None, None, None, None
+
+        self.μ, self.cov, self.lml, self.p_sample = [], [], [], []
 
         _kernels = KernelLoader()
         self._kernels = _kernels.kernels
-        self.p_sample = None
         self.n_samples = n_samples
-        # self.mutation_level_GPR()
-        # self.multiple_kernel_learning()
         # init weights randomly
-        init_w = (0.9/len(self._kernels)) * torch.ones([len(self._kernels), 1], dtype=torch.float64)
-        self.weights = Variable(init_w, lower=0, upper=1) 
-        self.X_train, self.x_test, self.y_train, self.y_test = self.mutation_split_GPR()
-
+        self.init_w = (0.9/len(self._kernels)) * torch.ones([len(self._kernels), 1], dtype=torch.float64)
+        self.weights = Variable(self.init_w, lower=0, upper=1) 
+        
         # TODO WARN: what matrix size to compute matters!
+        # TODO set train_idx, set test_idx
+        # TODO reset function for training -> trainable parameters init
         self.covariance_matrices = self.compute_matrices(X=self.X, 
                                                         adjacencies=self.adjacencies[:len(self.X)])
         # trainable parameters for testing
         self.trainable_parameters: list = [w for w in self.weights.get_value()] + [self.σ_E, self.σ_S, self.t]
+        self.K_XX, self.K_xX, self.K_xx = None, None, None
+        # train set to complete data to compute neg-ll correctly while testing
+        self.X_train, self.x_test, self.y_train, self.y_test = self.X, None, self.y, None
+        self.idx_train, self.idx_test = None, None
+        # TODO compute rho and rmse after training from results
+
+    def reset_trainable_parameters(self) -> None:
+        """
+        reset trainable parameters to initial values
+        """
+        self.t = Variable(self.init_t, lower=0.001, upper=10)
+        self.σ_E = Variable(self.init_σ_E, lower=0.001, upper=10)
+        self.σ_S = Variable(self.init_σ_S, lower=0.001, upper=10)
+        self.σ_T = self.init_σ_T * torch.ones([1, 1], dtype=torch.float64)
+        self.weights = Variable(self.init_w, lower=0, upper=1)
+        return None
+
+
+    def reset_GPR(self) -> None:
+        """
+        reset state of GPR object 
+        """
+        # check that cached covariance matrices are unaffected...
+        assert np.all([mat.shape[0] == mat.shape[1] for mat in self.covariance_matrices])
+        assert np.all([mat.shape[0] == self.X.shape[0] for mat in self.covariance_matrices])
+        # reset computed covariances
+        self.K_XX, self.K_xX, self.K_xx = None, None, None
+        self.X_train, self.x_test, self.y_train, self.y_test = None, None, None, None
+        self.idx_train, self.idx_test = None, None
+        self.reset_trainable_parameters()
+        return None
     
+    @staticmethod
+    def compute_ρ(exp_μ: np.ndarray, predictions_μ: np.ndarray, y_vec: np.ndarray, y_pred_μ: np.ndarray) -> float:
+        """
+        ρ computation as defined in (S7)
+        """
+        ρ = np.sum((y_vec - exp_μ)*(y_pred_μ - predictions_μ))
+        norm = np.sqrt(np.sum((y_vec-exp_μ)**2)*np.sum((y_pred_μ-predictions_μ)**2))
+        ρ /= norm 
+        return ρ
+
+    @staticmethod
+    def compute_rmse(y: np.ndarray, y_pred_μ) -> float:
+        """
+        RMSE computation as defined in (S8)
+        """
+        n_obs = y.shape[0]
+        rmse = np.sqrt(np.sum(y - y_pred_μ)/n_obs)
+        return rmse
+
     @staticmethod
     def check_and_add_axis(x: np.ndarray) -> np.ndarray:
         return x[:, np.newaxis] if len(x.shape) == 1 else x
 
     def _combine_observations(self, X_wt: np.ndarray, X_exp: np.ndarray, X_is: np.ndarray, 
                             y_wt: np.ndarray, y_exp: np.ndarray, y_is: np.ndarray) -> Tuple[torch.Tensor, torch.Tensor]:
+        """
+        Method to initialize X and y torch Tensors from given input data
+        :return: combined sequences NxM and ddg Nx1 vector
+        """
         y_wt = self.check_and_add_axis(y_wt)
         X_wt = self.check_and_add_axis(X_wt)
         X_exp, X_is = self.check_and_add_axis(X_exp), self.check_and_add_axis(X_is)
@@ -108,7 +158,7 @@ class GPRegression:
             covariance_mats.append(k)
         return covariance_mats
 
-    def mWDK(self, X: torch.Tensor) -> torch.Tensor:
+    def mWDK(self, X: torch.Tensor, idx) -> torch.Tensor:
         """
         compute weighted kernel value from existing covariance matrix
         """
@@ -118,48 +168,41 @@ class GPRegression:
         # TODO query matrix values through X
         for i, mat in enumerate(self.covariance_matrices):
             # WARN: This operation is of type double, but torch doesnt complain
-            k += self.weights.get_value()[i].type(torch.float64) * mat[:n, :n]
+            # TODO query mat at indices
+            if idx is None:
+                k += self.weights.get_value()[i].type(torch.float64) * mat
+            else: # only works on quadratic matrices
+                k += self.weights.get_value()[i].type(torch.float64) * mat[idx, idx]
         return k
 
     def neg_ll(self):
-        n = self.X.shape[0]
-        # use unconstrained params
-        # TODO for all element in unconstrained apply constrain
+        n = self.X_train.shape[0]
         zero_μ = torch.zeros(n, dtype=torch.float64) # TODO compute mean over all training data
-        K_XX = self.mWDK(X=self.X)
-        noise = self.set_noise_term().squeeze()[:n]
+        K_XX = self.mWDK(X=self.X_train, idx=self.idx_train)
+        # get noise on relevant data by index
+        noise = self.set_noise_term().squeeze()[self.idx_train] 
         K_XX = K_XX + torch.diag(noise)
         # zero mean is consistent due to prior assumption
-        # print(f"noise: {noise}")
-        nll = -(MultivariateNormal(zero_μ, covariance_matrix=K_XX).log_prob(torch.flatten(self.y)).sum() \
+        nll = -(MultivariateNormal(zero_μ, covariance_matrix=K_XX).log_prob(torch.flatten(self.y_train)).sum() \
             + self.σ_E_prior.log_prob(self.σ_E.get_value()) + self.σ_S_prior.log_prob(self.σ_S.get_value()))
         nll.requires_grad_(True)
         return nll
 
     def parameter_optimization(self) -> None:
         optimizer = torch.optim.LBFGS([self.weights.unconstrained, self.σ_E.unconstrained, 
-                                        self.σ_S.unconstrained, self.t.unconstrained],
-                                        lr=0.99)
+                                        self.σ_S.unconstrained, self.t.unconstrained], lr=0.99)
         def closure():
             optimizer.zero_grad()
-            loss = self.neg_ll().sum()
-            print(f"Loss: {loss}")
-            # TODO double check sum or better mean
+            loss = self.neg_ll()
+            print(loss)
             loss.backward()
             return loss
         for n in range(self.n_optimization):
-            print(f"iter: {n}")
-            # print(f"weights: {self.weights.get_unconstrained()} <= {self.weights.get_value()}")
-            # print(f"sigmas E: {self.σ_E.get_unconstrained()} <= {self.σ_E.get_value()}")
+            print(n)
             optimizer.step(closure)
-        # set weights after optimization
-        print("FINAL:")
-        print(f"weights: {self.weights.get_value()}")
-        print(f"sigmas S={self.σ_S.get_value()} E={self.σ_E.get_value()}:")
-        print(f"t = {self.t.get_value()}")
         return 
     
-    def mutation_split_GPR(self, training=0.75) -> None:
+    def _split_CV(self, training=0.75) -> None:
         """
         Split mutations into 75:25 train test split
         """ 
@@ -168,7 +211,54 @@ class GPRegression:
         y_train, y_test = self.y[:cutoff], self.y[cutoff:]
         return X_train, x_test, y_train, y_test
 
-    def mutation_level_GPR(self) -> dict:
+    def position_level_CV(self) -> Tuple[list, list]:
+        mutations = []
+        optimization_parameters = []
+        experimental_mutation_index = get_mutation_idx(self.protein.mut_ids_exp)
+        for pos in tqdm(range(len(self.protein.sequence))):
+            print("reset parameters ...")
+            self.reset_GPR() # reset trainable parameters
+            # gather all mutations at that position and assign train and test indices
+            mutation_bool_mask = np.array([bool(pos in mut) for mut in experimental_mutation_index])
+            test_mutation_idx = np.where(mutation_bool_mask)[0]
+            not_test_mutation_idx = np.where(~mutation_bool_mask)[0]
+            n_mutations = len(test_mutation_idx)
+            # split into train and test
+            self.idx_test = 1 + test_mutation_idx # offset from WT
+            self.x_test = self.X[self.idx_test]
+            self.y_test = self.y[self.idx_test]
+            # combine WT + not selected + in silico for training data
+            self.idx_train = np.concatenate([np.array([0]), 1+not_test_mutation_idx, 
+                            np.arange(start=len(self.X_exp)+1, stop=self.X.shape[0])])
+            self.X_train = self.X[self.idx_train]
+            self.y_train = self.y[self.idx_train]
+            print(pos)
+            print(mutation_bool_mask)
+            print(self.idx_test)
+            print(self.x_test.shape)
+            print(self.idx_train)
+            print(self.X_train.shape)
+            if self.x_test.shape[0] == 0:
+                print(f"No Mutation at pos:{pos} - skipping...")
+                continue
+            # TODO compute K_Xx from self.covariance_matrices
+            # TODO compute neg_ll with X_train
+            # optimize
+            nll_init = self.neg_ll()
+            self.parameter_optimization()
+            nll_end = self.neg_ll()
+            # write optimization results
+            optimization_parameters.append({"w": self.weights.get_value(),
+                                        "sigma_S": self.σ_S.get_value(),
+                                        "sigma_E": self.σ_E.get_value(),
+                                        "t": self.t.get_value(),
+                                        "nll": (nll_init, nll_end)})
+            mutations.append(n_mutations)
+            # TODO add to results to a diction
+        print(optimization_parameters)
+        return optimization_parameters, mutations
+
+    def mutation_level_CV(self) -> dict:
         """
         iteratively sets train and test splits
         has side-effects
@@ -198,10 +288,11 @@ class GPRegression:
         # TODO ? start with 1 mutation in training and increase until all except one mutation (sample)
         pass
 
-    def _fit(self, f_μ=0., cov=None) -> Tuple[torch.Tensor, torch.Tensor, float, np.array]:
+    def _fit(self, X_test, f_μ=0., cov=None) -> Tuple[torch.Tensor, torch.Tensor, float, np.array]:
         """Alg. 2.1 Rasmussen *GPs in ML* """
         n = self.X_train.shape[0]
         self.K_XX = self.mWDK(self.X_train)
+        # calculate covariance matrix
         self.K_xX = self.mWDK(self.X[:, n:])
         self.K_xx = self.mWDK(self.x_test)
         A = self.K_XX + self.σ * torch.eye(n) # TODO add sigma_E add sigma_

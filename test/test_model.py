@@ -123,4 +123,4 @@ def test_training_loss():
     loss = model.neg_ll().detach().numpy()
     loss = loss - 2 * np.log(max_y)  # a contribution from the Gamma priors
     # assert (ref_prior_R[0, 0] + ref_prior_E[0, 0]) == pytest.approx(loss + gp_loss)
-    np.testing.assert_almost_equal(loss, ref_loss)
+    np.testing.assert_almost_equal(loss, ref_loss, decimal=3)

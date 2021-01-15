@@ -31,6 +31,7 @@ class KernelLoader:
                 #if m_id in sub_mat_ids or s in str(m_info):
             s_mat_id.append(m_id[0])
             s_mat.append(m_vals)
+            break # TODO Testing with ONE matrix only TAKE OUT
         self.kernels: list = [MatrixKernel(matrix=s, matrix_id=m_id) for s, m_id in zip(s_mat, s_mat_id)]
         self.sub_matrices_ids = s_mat_id
         assert len(self.kernels) == len(self.sub_matrices_ids)

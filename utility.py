@@ -203,6 +203,11 @@ def get_sequence_and_contact_graph(*args, **kwargs):
 #########
 ### UTILS FROM THIS PROJECT:
 
+def get_mutation_idx(mutation_ids: list) -> list:
+    idx_lst = [re.findall(r'\d+', mut) for mut in mutation_ids]
+    int_idx_lst = [[int(idx) for idx in sublist] for sublist in idx_lst]
+    return int_idx_lst
+
 def parse_matlab_mutation_file(mat_file, query: str=None) -> dict:
     if isinstance(mat_file, str) and mat_file.endswith(".mat"):
         mat_file = io.loadmat(mat_file)
