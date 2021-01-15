@@ -96,7 +96,7 @@ class GPRegression:
         σ = torch.cat((self.σ_0, 
                     (σ_E/self.y_max) * torch.ones([len(self.X_exp), 1], dtype=torch.float64), 
                     ((σ_E + σ_S) / self.y_max) * torch.ones([len(self.X_is), 1], dtype=torch.float64) + t*(self.σ_T/self.y_max)))
-        return σ
+        return torch.square(σ)
 
     def compute_matrices(self, X: torch.Tensor, adjacencies: List[tuple]) -> list:
         X = X.detach().numpy().astype(np.int64)
@@ -128,11 +128,8 @@ class GPRegression:
         zero_μ = torch.zeros(n, dtype=torch.float64) # TODO compute mean over all training data
         K_XX = self.mWDK(X=self.X)
         noise = self.set_noise_term().squeeze()[:n]
-        #noise = self.σ.squeeze()[:n]
-        K_XX = K_XX + torch.diag(noise) # TODO built new self sigma
-        # set diagonal to add noise
+        K_XX = K_XX + torch.diag(noise)
         # zero mean is consistent due to prior assumption
-        # print(K_XX)
         # print(f"noise: {noise}")
         nll = -(MultivariateNormal(zero_μ, covariance_matrix=K_XX).log_prob(torch.Tensor(self.y)).sum() \
             + self.σ_E_prior.log_prob(self.σ_E.get_value()) + self.σ_S_prior.log_prob(self.σ_S.get_value()))
