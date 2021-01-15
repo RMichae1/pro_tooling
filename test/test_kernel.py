@@ -1,6 +1,8 @@
 import os
 import pytest
 import numpy as np
+import random
+import string
 from utility import convert_graph_from_matlab_file, get_sequence_and_contact_graph
 from utility import parse_mutations, parse_matlab_mutation_file, convert_aa_sequence
 from graphkernel import MatrixKernel
@@ -25,13 +27,16 @@ def naive_K(seq: np.ndarray, adj: np.ndarray, S:np.ndarray) -> np.ndarray:
     """
     n = seq.shape[0]
     K = np.zeros([n, n])
+    temp_K = np.zeros([n, n])
     for p in range(n):
         for q in range(n):
             for idx in range(seq.shape[1]):
                 nbps = adj[idx]
+                temp_K.fill(0.)
                 for l in nbps:
-                    K[p, q] += S[seq[p, l], seq[q, l]]
-                K[p, q] *= S[seq[p, idx], seq[q, idx]]
+                    temp_K[p, q] += S[seq[p, l], seq[q, l]]
+                temp_K[p, q] *= S[seq[p, idx], seq[q, idx]]
+                K += temp_K
     print(K)
     # normalize
     for p in range(n):
@@ -108,6 +113,7 @@ def test_mutations_consistent():
 
 import matlab
 import matlab.engine
+
 K_script = """
 function K=mWDK(WTSeq,mutations,al,depth,normalize,S)
 %% MWDK calculates a graph kernel matrix with fixed adjacency matrix
@@ -204,18 +210,29 @@ with open("kernel_script.m", "w") as outfile:
 eng = matlab.engine.start_matlab()
 matlab_m = matlab.double(m[0].tolist())
 matlab_contacts = [matlab.int8(contacts.tolist()) for contacts in contact_graph_matlab]
+ref_mutations = [str(mut[0][0]) for mut in ref_file.get('mutE')]
+
+def test_matlab_kernel_against_naive():
+    S = kernel.matrix
+    S_mat = matlab.double(S.tolist())
+    k_matlab = eng.kernel_script(seq_WT_str, ref_mutations, matlab_contacts, 1, True, S_mat)
+    k_ref = naive_K(X, ref_contact_graph, S)
+    np.testing.assert_almost_equal(k_matlab, k_ref)
 
 def test_normalized_kernel():
     """
     Test computed (normalized) matrix kernel values against reference K values
     """
-    ref_mutations = [str(mut[0][0]) for mut in ref_file.get('mutE')]
+    # Test mutations in alignment with reference
     mutations = [m for m, _ in mut_exp.get("1PGA")]
     assert np.all([ref == mut for ref, mut in zip(ref_mutations, mutations)])
+    ref_contacts_reindexed = [c+1 for c in ref_contact_graph]
+    assert np.all([np.all(contacts_x == contacts_y) for contacts_x, contacts_y in zip(ref_contacts_reindexed, matlab_contacts)])
     for i, m in enumerate(matrices):
         kernel = MatrixKernel(matrix=m[0], matrix_id=None)
+        matlab_m = matlab.double(m[0].tolist())
         k = kernel.k(sequences=X, adjacencies=ref_contact_graph)
         ref_K = eng.kernel_script(seq_WT_str, ref_mutations, matlab_contacts, 
                     1, True, matlab_m, nargout=1)
-        #np.testing.assert_almost_equal(k.detach().numpy(), ref_K_list[i][0])
+        np.testing.assert_almost_equal(ref_K_list[i][0], ref_K)
         np.testing.assert_almost_equal(k.detach().numpy(), ref_K)

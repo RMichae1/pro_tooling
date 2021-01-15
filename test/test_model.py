@@ -113,7 +113,7 @@ def test_quadratic_form():
 
 def test_log_likelihood_loss_w_prior():
     gp_loss = model.neg_ll().detach().numpy()
-    assert pytest.approx(gp_loss.mean()) == ref_gp_loss[0, 0]
+    assert pytest.approx(gp_loss.sum()) == ref_gp_loss[0, 0]
 
 # def test_training_loss():
 #     loss = model.training_loss().numpy()

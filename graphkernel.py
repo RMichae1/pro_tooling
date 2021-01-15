@@ -59,19 +59,21 @@ class MatrixKernel:
         """
         N = sequences.shape[0]
         k = np.zeros([N, N])
+        temp_k = np.zeros([N, N])
         neighborhoods = adjacencies
         if isinstance(adjacencies[0], tuple):
             neighborhoods = np.array([contacts for res, contacts in adjacencies])
         neighborhood_iterator = tqdm(enumerate(neighborhoods))
         for idx, neighbors in neighborhood_iterator:
             neighborhood_iterator.set_description(f"Matrix: {self.matrix_id}")
+            temp_k.fill(0.)
             for n in neighbors:
                 # WARN: assumption is that neighborhood does NOT change
-                k += self.matrix[sequences[:, n], :][:, sequences[:, n]]
-            k *= self.matrix[sequences[:, idx], :][:, sequences[:, idx]]
+                temp_k += self.matrix[sequences[:, n], :][:, sequences[:, n]]
+            temp_k *= self.matrix[sequences[:, idx], :][:, sequences[:, idx]]
+            k += temp_k
         norm = np.sqrt(np.diag(k))[:, np.newaxis]
         k_hat = k / norm.dot(norm.T)
-        #k_hat = k / np.sqrt(np.diag(k) * np.diag(k).T)
 
             # TODO imperformant and deprecated
             # k_xy = self.matrix[x_idx][y_idx] * self.averaged_neighborhood(p_res=res_x, q_res=res_y, 
