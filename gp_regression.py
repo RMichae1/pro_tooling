@@ -159,7 +159,7 @@ class GPRegression:
         compute weighted kernel value from existing covariance matrix
         """
         n = X.shape[0]
-        m = X.shape[0] if not x else x.shape[0]
+        m = X.shape[0] if x is None else x.shape[0]
         k = torch.zeros([n, m], dtype=torch.float64)
         assert np.all(n == mat.shape[0] for mat in self.covariance_matrices)
         for i, mat in enumerate(covariance_matrices):
@@ -225,12 +225,6 @@ class GPRegression:
                             np.arange(start=len(self.X_exp)+1, stop=self.X.shape[0])])
             self.X_train = self.X[self.idx_train]
             self.y_train = self.y[self.idx_train]
-            print(pos)
-            print(mutation_bool_mask)
-            print(self.idx_test)
-            print(self.x_test.shape)
-            print(self.idx_train)
-            print(self.X_train.shape)
             if self.x_test.shape[0] == 0:
                 print(f"No Mutation at pos:{pos} - skipping...")
                 continue
@@ -241,9 +235,6 @@ class GPRegression:
             self.parameter_optimization()
             nll_end = self.neg_ll()
             f_μ, cov, lml = self._fit()
-            print(f"mu: {f_μ}")
-            print(f"cov: {cov}")
-            print(f"lml: {lml}")
             # write optimization results
             optimization_parameters.append({"w": self.weights.get_value(),
                                         "sigma_S": self.σ_S.get_value(),
@@ -255,8 +246,6 @@ class GPRegression:
             fit_parameters.append({'mu': f_μ,
                                     'cov': cov,
                                     'lml': lml})
-            # TODO add to results to a diction
-        print(optimization_parameters)
         return optimization_parameters, fit_parameters, mutations
 
     def mutation_level_CV(self) -> Tuple[List[dict], List[dict]]:
