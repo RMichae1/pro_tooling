@@ -1,3 +1,4 @@
+import os
 import numpy as np
 from numpy.random import multivariate_normal
 from scipy.stats import norm
@@ -81,7 +82,6 @@ class GPRegression:
         self.σ_T = self.init_σ_T * torch.ones([1, 1], dtype=torch.float64)
         self.weights = Variable(self.init_w, lower=0, upper=1)
         return None
-
 
     def reset_GPR(self) -> None:
         """
@@ -245,9 +245,11 @@ class GPRegression:
                                         "nll": (nll_init, nll_end)})
             # TODO compute rho and rmse after training from results
             mutations.append(n_mutations)
-            fit_parameters.append({'mu': f_μ,
-                                    'cov': cov,
-                                    'lml': lml})
+            fit_parameters.append({'mu': f_μ.squeeze().detach().numpy(),
+                                    'cov': cov.squeeze().detach().numpy(),
+                                    'y_exp': self.y_test.detach().numpy(),
+                                    'lml': lml#.squeeze().detach().numpy()
+                                    })
         return optimization_parameters, fit_parameters, mutations
 
     def mutation_level_CV(self) -> Tuple[List[dict], List[dict]]:
@@ -275,9 +277,10 @@ class GPRegression:
                                             "sigma_E": self.σ_E.get_value(),
                                             "t": self.t.get_value()})
             f_μ, cov, lml = self._fit()
-            results.append({"mu": f_μ,
-                            "cov": cov,
-                            "lml": lml})
+            results.append({"mu": f_μ.squeeze().detach().numpy(),
+                            "cov": cov.squeeze().detach().numpy(),
+                            "lml": lml, #.detach().numpy(),
+                            "y_exp": self.y_test.detach().numpy()})
         return optimization_parameters, results
 
     def derive_Xx(self):
@@ -321,29 +324,24 @@ class GPRegression:
         p_sample = mN.sample((n_samples,))
         return p_sample
         
-
-    def plot(self) -> None:
-        μ, cov, lml = self._fit()
-        samples = self.predict(μ, cov)
-        μ = μ.squeeze().detach().numpy()
-        cov = cov.squeeze().detach().numpy()
-        y_test = self.y_test
+    def plot(self, f_μ, cov, y_test, mutations, save_fig="./fig/") -> None:
+        # samples = self.predict(μ, cov)
+        filename = os.path.join(save_fig, f"gpr_{self.protein.pdb_ID}.png")
         _, ax = plt.subplots(1,1, figsize=(15,10))
-        for idx, (_, mutation) in enumerate(zip(self.x_test, self.protein.mutation_ids[len(self.X_train):])):
-            for s in samples:
-                ax.scatter(y_test, s, color="indianred", alpha=0.3)
-            # plot gaussian from computed mean and covariance
+        ax.scatter(y_test, f_μ, color=mutations)
+        # add gaussians to plot
+        for μ, var, y in zip(f_μ, cov, y_test):
             xx = np.arange(-5, 5, 0.1)
-            f = norm.pdf(xx, μ, cov)
-            ax.plot(y_test+f, xx, "k-")
-            ax.scatter(y_test, μ, color="darkred")
-            # annotate mutations at test point
-            ax.annotate(mutation, xy=(y_test, μ), xycoords="data", xytext=(10,10), 
-                textcoords='offset points') #, arrowprops=dict(facecolor="black", shrink=0.05))
-        ax.set_xlabel("measured ΔΔg")
-        ax.set_ylabel("predicted ΔΔg")
-        plt.title(f"GP Regression (mutation lvl) {self.id}")
-        plt.savefig(f"./fig/gpr_{self.id}.png")
+            f = norm.pdf(xx, μ, var)
+            ax.plot(y+f, xx, "k-")
+        # annotate mutations at test point
+        # ax.annotate(mutation, xy=(y_test, μ), xycoords="data", xytext=(10,10), 
+        #     textcoords='offset points') #, arrowprops=dict(facecolor="black", shrink=0.05))
+        ax.set_xlabel("experimental ΔΔG")
+        ax.set_ylabel("predicted ΔΔG")
+        plt.title(f"GP Regression (position lvl) {self.id}")
+        plt.legend()
+        plt.savefig(filename)
         plt.show()
     
     def plot_log_prob(self) -> None:

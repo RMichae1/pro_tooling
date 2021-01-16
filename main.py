@@ -40,7 +40,7 @@ if __name__ == "__main__":
 
     # scale using Bayesian Scaling
     bs_rosetta = BayesScaler(is_mutations=mut_ids_is, ΔΔg=pcol.ΔΔg_is, exp_mutations=mut_ids_exp, 
-                        experimentally_observed_ΔΔg=pcol.ΔΔg_exp, TESTING=True, pdb_ID="1PGA")
+                        experimentally_observed_ΔΔg=pcol.ΔΔg_exp, TESTING=False, pdb_ID="1PGA")
 
     # print("theta")
     # print(bs_rosetta.θ)
@@ -64,9 +64,11 @@ if __name__ == "__main__":
     # gpr.parameter_optimization()
     print(gpr.neg_ll())
     opt_results, gpr_results, n_mutations = gpr.position_level_CV()
-    print(opt_results)
+    #print(opt_results)
     print(gpr_results)
     print(n_mutations)
-    # print(gpr._fit())
+    mu = [res.get("mu") for res in gpr_results]
+    cov = [res.get("cov") for res in gpr_results]
+    ys = [res.get("y_exp") for res in gpr_results]
+    gpr.plot(f_μ=mu, cov=cov, y_test=ys, mutations=n_mutations)
     # # gpr.plot_log_prob()
-    # gpr.plot()
