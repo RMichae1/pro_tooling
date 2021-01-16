@@ -1,8 +1,10 @@
 fig/
 data/
+pdb/
 serialized/
 .idea/
 .vscode/
+.ipynb_checkpoints/
 
 *.log
 *.pyc

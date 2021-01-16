@@ -154,12 +154,12 @@ class GPRegression:
             covariance_mats.append(k)
         return covariance_mats
 
-    def mWDK(self, X: torch.Tensor, covariance_matrices) -> torch.Tensor:
+    def mWDK(self, X: torch.Tensor, covariance_matrices:list, x: torch.Tensor=None) -> torch.Tensor:
         """
         compute weighted kernel value from existing covariance matrix
         """
         n = X.shape[0]
-        m = X.shape[1]
+        m = X.shape[0] if not x else x.shape[0]
         k = torch.zeros([n, m], dtype=torch.float64)
         assert np.all(n == mat.shape[0] for mat in self.covariance_matrices)
         for i, mat in enumerate(covariance_matrices):
@@ -171,7 +171,7 @@ class GPRegression:
         n = self.X_train.shape[0]
         zero_μ = torch.zeros(n, dtype=torch.float64) # TODO compute mean over all training data
         cov_mats = [cov[self.idx_train, self.idx_train] for cov in self.covariance_matrices]
-        K_XX = self.mWDK(self.X_train, cov_mats)
+        K_XX = self.mWDK(X=self.X_train, covariance_matrices=cov_mats)
         # get noise on relevant data by index
         noise = self.set_noise_term().squeeze()[self.idx_train] 
         K_XX = K_XX + torch.diag(noise)
@@ -240,19 +240,21 @@ class GPRegression:
             nll_init = self.neg_ll()
             self.parameter_optimization()
             nll_end = self.neg_ll()
-            f_μ, cov = self._fit()
+            f_μ, cov, lml = self._fit()
             print(f"mu: {f_μ}")
             print(f"cov: {cov}")
+            print(f"lml: {lml}")
             # write optimization results
             optimization_parameters.append({"w": self.weights.get_value(),
                                         "sigma_S": self.σ_S.get_value(),
                                         "sigma_E": self.σ_E.get_value(),
-                                        "t": self.t.get_value()})
+                                        "t": self.t.get_value(),
+                                        "nll": (nll_init, nll_end)})
             # TODO compute rho and rmse after training from results
             mutations.append(n_mutations)
             fit_parameters.append({'mu': f_μ,
                                     'cov': cov,
-                                    "nll": (nll_init, nll_end)})
+                                    'lml': lml})
             # TODO add to results to a diction
         print(optimization_parameters)
         return optimization_parameters, fit_parameters, mutations
@@ -307,10 +309,10 @@ class GPRegression:
         m = self.x_test.shape[0]
         train_mats = [cov[self.idx_train, self.idx_train] for cov in self.covariance_matrices]
         test_mats = [cov[self.idx_test, self.idx_test] for cov in self.covariance_matrices]
-        K_XX = self.mWDK(self.X_train, covariance_matrices=train_mats)
-        K_xx = self.mWDK(self.x_test, covariance_matrices=test_mats)
+        K_XX = self.mWDK(X=self.X_train, covariance_matrices=train_mats)
+        K_xx = self.mWDK(X=self.x_test, covariance_matrices=test_mats)
         cov_mats = self.derive_Xx()
-        K_Xx = self.mWDK(torch.zeros([n, m]), covariance_matrices=cov_mats)
+        K_Xx = self.mWDK(X=self.X_train, x=self.x_test, covariance_matrices=cov_mats)
         σ = self.set_noise_term()[self.idx_train]
         A = K_XX + σ * torch.eye(n)
         L = cholesky(A)
@@ -319,7 +321,9 @@ class GPRegression:
         f_μ = self.y_max * torch.matmul(K_Xx.T, α) + self.y_mean
         v = cholesky_solve(K_Xx, L)
         cov = (self.y_max*self.y_max) * (K_xx - torch.matmul(K_Xx.T, v))
-        return f_μ, cov,
+        lml = MultivariateNormal(f_μ, covariance_matrix=cov).log_prob(torch.flatten(self.y_train)).sum() \
+            + self.σ_E_prior.log_prob(self.σ_E.get_value()) + self.σ_S_prior.log_prob(self.σ_S.get_value())
+        return f_μ, cov, lml
 
     @staticmethod
     def predict(self, f_μ, cov, n_samples=100):
