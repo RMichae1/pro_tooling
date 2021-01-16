@@ -9,6 +9,7 @@ import torch
 from torch import cholesky, cholesky_solve
 from torch.distributions import MultivariateNormal, Gamma
 import matplotlib.pyplot as plt
+import seaborn as sns
 from typing import Tuple
 from protein_representation import ProteinCollection
 from graphkernel import KernelLoader
@@ -79,7 +80,6 @@ class GPRegression:
         self.t = Variable(self.init_t, lower=0.001, upper=10)
         self.σ_E = Variable(self.init_σ_E, lower=0.001, upper=10)
         self.σ_S = Variable(self.init_σ_S, lower=0.001, upper=10)
-        self.σ_T = self.init_σ_T * torch.ones([1, 1], dtype=torch.float64)
         self.weights = Variable(self.init_w, lower=0, upper=1)
         return None
 
@@ -230,11 +230,13 @@ class GPRegression:
             if self.x_test.shape[0] == 0:
                 print(f"No Mutation at pos:{pos} - skipping...")
                 continue
-            # TODO compute K_Xx from self.covariance_matrices
-            # TODO compute neg_ll with X_train
             # optimize
-            nll_init = self.neg_ll()
-            self.parameter_optimization()
+            nll_init = self.neg_ll() 
+            try:
+                self.parameter_optimization()
+            except RuntimeError as _:
+                print("Optimization broke.")
+                self.reset_trainable_parameters()
             nll_end = self.neg_ll()
             f_μ, cov, lml = self._fit()
             # write optimization results
@@ -328,12 +330,20 @@ class GPRegression:
         # samples = self.predict(μ, cov)
         filename = os.path.join(save_fig, f"gpr_{self.protein.pdb_ID}.png")
         _, ax = plt.subplots(1,1, figsize=(15,10))
-        ax.scatter(y_test, f_μ, color=mutations)
-        # add gaussians to plot
-        for μ, var, y in zip(f_μ, cov, y_test):
-            xx = np.arange(-5, 5, 0.1)
-            f = norm.pdf(xx, μ, var)
-            ax.plot(y+f, xx, "k-")
+        mutations = [np.repeat(mut, len(y)) for mut, y in zip(mutations, y_test)]
+        f_μ = [list(elem) for elem in f_μ]
+        cov = [list(elem) for elem in cov]
+        ys = [y for sub in y_test for y in sub]
+        pred = [mu for sub in f_μ for mu in sub]
+        sns.scatterplot(ys, pred, hue=mutations, size=150)
+        # TODO connecting line-plot
+        # TODO each mutation has n means and n covariances
+        # # add gaussians to plot
+        # for μ, var, y in zip(f_μ, cov, y_test):
+        #     xx = np.arange(-5, 5, 0.1)
+        #     f = norm.pdf(xx, μ, var)
+        #     _y = y.flatten()
+        #     ax.plot(_y+f, xx, "k-")
         # annotate mutations at test point
         # ax.annotate(mutation, xy=(y_test, μ), xycoords="data", xytext=(10,10), 
         #     textcoords='offset points') #, arrowprops=dict(facecolor="black", shrink=0.05))
@@ -344,11 +354,10 @@ class GPRegression:
         plt.savefig(filename)
         plt.show()
     
-    def plot_log_prob(self) -> None:
+    def plot_log_prob(self, lml, mutations) -> None:
         _, ax = plt.subplots(1, 1, figsize=(10,10))
         for idx, mut in enumerate(self.x_test):
-            y_train = self.y[np.arange(self.y.shape[0])!=idx]
-            lmls = self.mutation_level_dict.get('lml_list')[idx]
+            y_train = self.y.shape[0] - mutations
             log_prob = [(lml.squeeze().detach().numpy()) for lml in lmls]
             sorted_data = np.array(sorted(zip(y_train, log_prob), key= lambda x: x[0]))
             ax.plot(sorted_data[:, 0], sorted_data[:, 1], "r:", alpha=0.5)
