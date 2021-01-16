@@ -131,8 +131,8 @@ class GPRegression:
         y_exp, y_is = self.check_and_add_axis(y_exp), self.check_and_add_axis(y_is)
         assert X_exp.shape[1] == X_wt.shape[1]
         assert y_exp.shape[1] == y_wt.shape[1]
-        X = torch.Tensor(np.vstack([X_wt, X_exp, X_is]))
-        y = torch.Tensor(np.vstack([y_wt, y_exp, y_is]))
+        X = torch.Tensor(np.vstack([X_wt, X_exp, X_is])).type(dtype=torch.float64)
+        y = torch.Tensor(np.vstack([y_wt, y_exp, y_is])).type(dtype=torch.float64)
         return X, y
     
     def set_noise_term(self):
