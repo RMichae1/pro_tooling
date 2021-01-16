@@ -21,10 +21,10 @@ np.random.seed(42)
 class GPRegression:
     def __init__(self, protein_representation: ProteinCollection, X_wt: np.ndarray, 
                 X_exp: np.ndarray, X_is: np.ndarray, y_wt: np.ndarray, y_exp: np.ndarray, y_is: np.ndarray,
-                y_max: float, adjacencies: np.ndarray, σ_T: float, n_optimization=15):
+                y_max: float, y_mean: float, adjacencies: np.ndarray, σ_T: float, n_optimization=15):
         self.X_wt, self.X_exp, self.X_is = X_wt, X_exp, X_is
         self.y_wt, self.y_exp, self.y_is = y_is, y_exp, y_is
-        self.y_max = y_max
+        self.y_max, self.y_mean = y_max, y_mean
         self.protein = protein_representation
         self.adjacencies = adjacencies
         # set hyperparameters - see Appendix mGPfusion
@@ -159,7 +159,7 @@ class GPRegression:
         compute weighted kernel value from existing covariance matrix
         """
         n = X.shape[0]
-        m = X.shape[0]
+        m = X.shape[1]
         k = torch.zeros([n, m], dtype=torch.float64)
         assert np.all(n == mat.shape[0] for mat in self.covariance_matrices)
         for i, mat in enumerate(covariance_matrices):
@@ -240,22 +240,19 @@ class GPRegression:
             nll_init = self.neg_ll()
             self.parameter_optimization()
             nll_end = self.neg_ll()
-            f_μ, cov, lml = self._fit()
-            print("GPR OUTPUT")
-            print(f"mu: {μ}")
+            f_μ, cov = self._fit()
+            print(f"mu: {f_μ}")
             print(f"cov: {cov}")
-            print(f"lml: {lml}")
             # write optimization results
             optimization_parameters.append({"w": self.weights.get_value(),
                                         "sigma_S": self.σ_S.get_value(),
                                         "sigma_E": self.σ_E.get_value(),
-                                        "t": self.t.get_value(),
-                                        "nll": (nll_init, nll_end)})
+                                        "t": self.t.get_value()})
             # TODO compute rho and rmse after training from results
             mutations.append(n_mutations)
             fit_parameters.append({'mu': f_μ,
                                     'cov': cov,
-                                    'lml': lml})
+                                    "nll": (nll_init, nll_end)})
             # TODO add to results to a diction
         print(optimization_parameters)
         return optimization_parameters, fit_parameters, mutations
@@ -319,14 +316,10 @@ class GPRegression:
         L = cholesky(A)
         α = cholesky_solve(self.y_train, L)
         # compute disttribution and lml
-        f_μ = torch.matmul(K_Xx.T, α)
+        f_μ = self.y_max * torch.matmul(K_Xx.T, α) + self.y_mean
         v = cholesky_solve(K_Xx, L)
-        cov = K_xx - torch.matmul(K_Xx.T, v)
-        mN = MultivariateNormal(f_μ, cov)
-        # added gamma prior from noise representation as in (Eq. 10) mGPfusion
-        log_marg_likelihood = mN.log_prob(torch.flatten(self.y_train)).sum() + self.σ_E_prior.log_prob(self.σ_E.get_value()) + self.σ_S_prior.log_prob(self.σ_S.get_value())
-        # TODO add scaling through y_max ??
-        return f_μ, cov, log_marg_likelihood
+        cov = (self.y_max*self.y_max) * (K_xx - torch.matmul(K_Xx.T, v))
+        return f_μ, cov,
 
     @staticmethod
     def predict(self, f_μ, cov, n_samples=100):

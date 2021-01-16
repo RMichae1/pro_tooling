@@ -59,7 +59,7 @@ if __name__ == "__main__":
 
     gpr = GPRegression(protein_representation=pcol, X_wt=X_wt, X_exp=X_exp, X_is=X_is, 
                          y_wt=y_wt, y_exp=ΔΔg_exp, y_is=ΔΔg_is_scaled, adjacencies=ref_adj, 
-                         σ_T=σ_T, y_max=max_y)
+                         σ_T=σ_T, y_max=max_y, y_mean=mean_y)
     # print(gpr.neg_ll())
     # gpr.parameter_optimization()
     print(gpr.neg_ll())

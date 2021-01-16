@@ -87,5 +87,5 @@ class ProteinCollection:
         fig.colorbar(matplot, ax=ax[idx], fraction=0.046, pad=0.04)
         plt.savefig(filename)
         plt.legend()
-        plt.show()
+        #plt.show()
 
