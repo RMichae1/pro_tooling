@@ -64,7 +64,9 @@ if __name__ == "__main__":
     # gpr.parameter_optimization()
     print(gpr.neg_ll())
     opt_results, gpr_results, n_mutations = gpr.position_level_CV()
-
+    print(opt_results)
+    print(gpr_results)
+    print(n_mutations)
     # print(gpr._fit())
     # # gpr.plot_log_prob()
     # gpr.plot()

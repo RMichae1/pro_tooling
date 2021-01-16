@@ -70,10 +70,10 @@ class ProteinCollection:
         total_df = pd.DataFrame({'idx': covariance_matrices.keys(), 'mat': df_list})
         return total_df
 
-    def plot_sub_matrices(self, savefig: str="./fig/", plot_range=None):
+    def plot_sub_matrices(self, savefig: str="./fig/", per_row=5, plot_range=None):
         # TODO plot only range of matrices (e.g. 10 mutations)
         filename = f"{savefig}/sub_matrices_{self.pdb_ID}.png"
-        fig, ax = plt.subplots(1, len(self._kernels.sub_matrices_ids), figsize=(30,20))
+        fig, ax = plt.subplots(int(np.ceil(len(self._kernels.sub_matrices_ids)/per_row)), per_row, figsize=(8.27, 11.69))
         matrices_df = self.generate_df_representation()
         for idx, mat in enumerate(matrices_df['mat']):
             matplot = ax[idx].imshow(mat.to_numpy())

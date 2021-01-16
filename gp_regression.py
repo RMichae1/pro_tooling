@@ -190,7 +190,9 @@ class GPRegression:
             # print(loss)
             loss.backward()
             return loss
-        for n in tqdm(range(self.n_optimization)):
+        p_bar = tqdm(range(self.n_optimization))
+        for n in p_bar:
+            p_bar.set_description(f"L-BFGS: {n}")
             optimizer.step(closure)
         return 
     
@@ -310,8 +312,7 @@ class GPRegression:
         f_μ = self.y_max * torch.matmul(K_Xx.T, α) + self.y_mean
         v = cholesky_solve(K_Xx, L)
         cov = (self.y_max*self.y_max) * (K_xx - torch.matmul(K_Xx.T, v))
-        lml = MultivariateNormal(f_μ, covariance_matrix=cov).log_prob(torch.flatten(self.y_train)).sum() \
-            + self.σ_E_prior.log_prob(self.σ_E.get_value()) + self.σ_S_prior.log_prob(self.σ_S.get_value())
+        lml = 0 # MultivariateNormal(f_μ, covariance_matrix=cov).log_prob(torch.flatten(self.y_train)).sum() + self.σ_E_prior.log_prob(self.σ_E.get_value()) + self.σ_S_prior.log_prob(self.σ_S.get_value())
         return f_μ, cov, lml
 
     @staticmethod
