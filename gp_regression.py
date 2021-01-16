@@ -21,7 +21,7 @@ np.random.seed(42)
 class GPRegression:
     def __init__(self, protein_representation: ProteinCollection, X_wt: np.ndarray, 
                 X_exp: np.ndarray, X_is: np.ndarray, y_wt: np.ndarray, y_exp: np.ndarray, y_is: np.ndarray,
-                y_max: float, adjacencies: np.ndarray, σ_T: float, n_samples=100, n_optimization=20):
+                y_max: float, adjacencies: np.ndarray, σ_T: float, n_optimization=15):
         self.X_wt, self.X_exp, self.X_is = X_wt, X_exp, X_is
         self.y_wt, self.y_exp, self.y_is = y_is, y_exp, y_is
         self.y_max = y_max
@@ -56,7 +56,6 @@ class GPRegression:
 
         _kernels = KernelLoader()
         self._kernels = _kernels.kernels
-        self.n_samples = n_samples
         # init weights randomly
         self.init_w = (0.9/len(self._kernels)) * torch.ones([len(self._kernels), 1], dtype=torch.float64)
         self.weights = Variable(self.init_w, lower=0, upper=1) 
@@ -68,11 +67,9 @@ class GPRegression:
                                                         adjacencies=self.adjacencies[:len(self.X)])
         # trainable parameters for testing
         self.trainable_parameters: list = [w for w in self.weights.get_value()] + [self.σ_E, self.σ_S, self.t]
-        self.K_XX, self.K_xX, self.K_xx = None, None, None
-        # train set to complete data to compute neg-ll correctly while testing
+        # DEFAULT train set to complete data to compute neg-ll correctly while testing
         self.X_train, self.x_test, self.y_train, self.y_test = self.X, None, self.y, None
-        self.idx_train, self.idx_test = None, None
-        # TODO compute rho and rmse after training from results
+        self.idx_train, self.idx_test = np.arange(0, self.X.shape[0]), None
 
     def reset_trainable_parameters(self) -> None:
         """
@@ -94,7 +91,6 @@ class GPRegression:
         assert np.all([mat.shape[0] == mat.shape[1] for mat in self.covariance_matrices])
         assert np.all([mat.shape[0] == self.X.shape[0] for mat in self.covariance_matrices])
         # reset computed covariances
-        self.K_XX, self.K_xX, self.K_xx = None, None, None
         self.X_train, self.x_test, self.y_train, self.y_test = None, None, None, None
         self.idx_train, self.idx_test = None, None
         self.reset_trainable_parameters()
@@ -158,27 +154,24 @@ class GPRegression:
             covariance_mats.append(k)
         return covariance_mats
 
-    def mWDK(self, X: torch.Tensor, idx) -> torch.Tensor:
+    def mWDK(self, X: torch.Tensor, covariance_matrices) -> torch.Tensor:
         """
         compute weighted kernel value from existing covariance matrix
         """
         n = X.shape[0]
-        k = torch.zeros([n, n], dtype=torch.float64)
+        m = X.shape[0]
+        k = torch.zeros([n, m], dtype=torch.float64)
         assert np.all(n == mat.shape[0] for mat in self.covariance_matrices)
-        # TODO query matrix values through X
-        for i, mat in enumerate(self.covariance_matrices):
+        for i, mat in enumerate(covariance_matrices):
             # WARN: This operation is of type double, but torch doesnt complain
-            # TODO query mat at indices
-            if idx is None:
-                k += self.weights.get_value()[i].type(torch.float64) * mat
-            else: # only works on quadratic matrices
-                k += self.weights.get_value()[i].type(torch.float64) * mat[idx, idx]
+            k += self.weights.get_value()[i].type(torch.float64) * mat
         return k
 
     def neg_ll(self):
         n = self.X_train.shape[0]
         zero_μ = torch.zeros(n, dtype=torch.float64) # TODO compute mean over all training data
-        K_XX = self.mWDK(X=self.X_train, idx=self.idx_train)
+        cov_mats = [cov[self.idx_train, self.idx_train] for cov in self.covariance_matrices]
+        K_XX = self.mWDK(self.X_train, cov_mats)
         # get noise on relevant data by index
         noise = self.set_noise_term().squeeze()[self.idx_train] 
         K_XX = K_XX + torch.diag(noise)
@@ -194,11 +187,10 @@ class GPRegression:
         def closure():
             optimizer.zero_grad()
             loss = self.neg_ll()
-            print(loss)
+            # print(loss)
             loss.backward()
             return loss
-        for n in range(self.n_optimization):
-            print(n)
+        for n in tqdm(range(self.n_optimization)):
             optimizer.step(closure)
         return 
     
@@ -211,9 +203,10 @@ class GPRegression:
         y_train, y_test = self.y[:cutoff], self.y[cutoff:]
         return X_train, x_test, y_train, y_test
 
-    def position_level_CV(self) -> Tuple[list, list]:
+    def position_level_CV(self) -> Tuple[list, list, list]:
         mutations = []
         optimization_parameters = []
+        fit_parameters = []
         experimental_mutation_index = get_mutation_idx(self.protein.mut_ids_exp)
         for pos in tqdm(range(len(self.protein.sequence))):
             print("reset parameters ...")
@@ -247,75 +240,98 @@ class GPRegression:
             nll_init = self.neg_ll()
             self.parameter_optimization()
             nll_end = self.neg_ll()
-            μ, cov, lml = self._fit()
+            f_μ, cov, lml = self._fit()
+            print("GPR OUTPUT")
+            print(f"mu: {μ}")
+            print(f"cov: {cov}")
+            print(f"lml: {lml}")
             # write optimization results
             optimization_parameters.append({"w": self.weights.get_value(),
                                         "sigma_S": self.σ_S.get_value(),
                                         "sigma_E": self.σ_E.get_value(),
                                         "t": self.t.get_value(),
                                         "nll": (nll_init, nll_end)})
+            # TODO compute rho and rmse after training from results
             mutations.append(n_mutations)
+            fit_parameters.append({'mu': f_μ,
+                                    'cov': cov,
+                                    'lml': lml})
             # TODO add to results to a diction
         print(optimization_parameters)
-        return optimization_parameters, mutations
+        return optimization_parameters, fit_parameters, mutations
 
-    def mutation_level_CV(self) -> dict:
+    def mutation_level_CV(self) -> Tuple[List[dict], List[dict]]:
         """
-        iteratively sets train and test splits
+        iteratively sets train and test splits, where one mutation is in the test-set
         has side-effects
         This trains on N-1 data and includes the excluded for test
         TODO not optimal - different approaches needed
         """
-        for idx, _ in enumerate(self.X):
-            # assign each mutation to testing split 
+        optimization_parameters = []
+        results = []
+        for idx, mut in enumerate(self.X):
+            self.reset_GPR()
+            self.idx_train = np.delete(np.arange(0, self.X.shape[0]), idx)
+            self.idx_test = idx
+            # set train and testing indices
             self.X_train, self.x_test = self.X[np.arange(self.X.shape[0])!=idx], self.X[idx]
-            self.N = len(self.X_train)
             self.y_train, self.y_test = self.y[np.arange(self.y.shape[0])!=idx], self.y[idx]
-            self.y_train = torch.Tensor(self.y_train[:, np.newaxis]) 
-            #self.y_test = torch.Tensor(self.y_test[:, np.newaxis])
-            # use np slicing index to cut out testing mutation from training kernel
-            drop_mutation_row = torch.vstack((self.kernel[:idx, :], self.kernel[idx+1:,]))
-            drop_mutation = torch.hstack((drop_mutation_row[:, :idx], drop_mutation_row[:, idx+1:]))
-            self.K_XX = drop_mutation
-            self.K_xX = drop_mutation_row[:, idx].unsqueeze_(0) # add axis in place
-            self.K_xx = torch.Tensor([[self.kernel[idx, idx]]])
-            assert(self.K_XX.shape == (self.N, self.N))
-            assert(self.K_xX.shape == (1, self.N))
-            assert(self.K_xx.shape == (1, 1))
-            self.μ, self.cov = self._fit()
-        return
+            nll_init = self.neg_ll()
+            self.parameter_optimization()
+            nll_end = self.neg_ll()
+            optimization_parameters.append({"nll": (nll_init, nll_end),
+                                            "w": self.weights.get_value(),
+                                            "sigma_S": self.σ_S.get_value(),
+                                            "sigma_E": self.σ_E.get_value(),
+                                            "t": self.t.get_value()})
+            f_μ, cov, lml = self._fit()
+            results.append({"mu": f_μ,
+                            "cov": cov,
+                            "lml": lml})
+        return optimization_parameters, results
 
-    def _fit(self, X_test, f_μ=0., cov=None) -> Tuple[torch.Tensor, torch.Tensor, float, np.array]:
+    def derive_Xx(self):
+        """
+        select n x m covariance matrices from existing ones
+        """
+        matrices = []
+        n, m = self.X_train.shape[0], self.x_test.shape[0]
+        for mat in self.covariance_matrices:
+            k = torch.zeros([n, m])
+            n_selected = mat[self.idx_train, :]
+            m_selected = n_selected[:, self.idx_test]
+            k += m_selected
+            matrices.append(k)
+        return matrices
+
+    def _fit(self) -> Tuple[torch.Tensor, torch.Tensor, float, np.array]:
         """Alg. 2.1 Rasmussen *GPs in ML* """
         n = self.X_train.shape[0]
-        self.K_XX = self.mWDK(self.X_train, idx=self.idx_train)
-        self.K_xx = self.mWDK(self.x_test, idx=self.idx_test)
-        # TODO calculate covariance matrix
-        self.K_xX = self.mWDK(self.X[:, n:])
-        
-        A = self.K_XX + self.σ * torch.eye(n) # TODO add sigma_E add sigma_
-        ## 0,0 sigma
-        ## diag in range exp + sigma_E
-        ## 
+        m = self.x_test.shape[0]
+        train_mats = [cov[self.idx_train, self.idx_train] for cov in self.covariance_matrices]
+        test_mats = [cov[self.idx_test, self.idx_test] for cov in self.covariance_matrices]
+        K_XX = self.mWDK(self.X_train, covariance_matrices=train_mats)
+        K_xx = self.mWDK(self.x_test, covariance_matrices=test_mats)
+        cov_mats = self.derive_Xx()
+        K_Xx = self.mWDK(torch.zeros([n, m]), covariance_matrices=cov_mats)
+        σ = self.set_noise_term()[self.idx_train]
+        A = K_XX + σ * torch.eye(n)
         L = cholesky(A)
         α = cholesky_solve(self.y_train, L)
-
-        # init fit
-        # mean = 0
-        cov = A
-        # compute dist + lml
-
-        f_μ = torch.matmul(self.K_xX, α)
-        v = cholesky_solve(self.K_xX.T, L)
-        cov = self.K_xx - torch.matmul(self.K_xX, v)
+        # compute disttribution and lml
+        f_μ = torch.matmul(K_Xx.T, α)
+        v = cholesky_solve(K_Xx, L)
+        cov = K_xx - torch.matmul(K_Xx.T, v)
         mN = MultivariateNormal(f_μ, cov)
         # added gamma prior from noise representation as in (Eq. 10) mGPfusion
         log_marg_likelihood = mN.log_prob(torch.flatten(self.y_train)).sum() + self.σ_E_prior.log_prob(self.σ_E.get_value()) + self.σ_S_prior.log_prob(self.σ_S.get_value())
+        # TODO add scaling through y_max ??
         return f_μ, cov, log_marg_likelihood
 
-    def predict(self, f_μ, cov):
+    @staticmethod
+    def predict(self, f_μ, cov, n_samples=100):
         mN = MultivariateNormal(f_μ, cov)
-        p_sample = mN.sample((self.n_samples,))
+        p_sample = mN.sample((n_samples,))
         return p_sample
         
 

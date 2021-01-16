@@ -62,8 +62,8 @@ if __name__ == "__main__":
                          σ_T=σ_T, y_max=max_y)
     # print(gpr.neg_ll())
     # gpr.parameter_optimization()
-    # print(gpr.neg_ll())
-    gpr.position_level_CV()
+    print(gpr.neg_ll())
+    opt_results, gpr_results, n_mutations = gpr.position_level_CV()
 
     # print(gpr._fit())
     # # gpr.plot_log_prob()
