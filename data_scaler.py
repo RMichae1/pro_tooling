@@ -128,8 +128,8 @@ class BayesScaler:
         filename = f"{save_fig}/bayes_scaling_{self.pdb_ID}.png"
         fig, ax = plt.subplots(1,2 ,figsize=(25,10))
         # plot sampled theta for background (% of the last drawn samples)
-        for y in self.θ_xx_samples[-int(0.01*self.samples_N):]:
-            ax[0].plot(self.xx, y, "k-", alpha=0.002)
+        for y in self.θ_xx_samples[-int(0.1*self.samples_N):]:
+            ax[0].plot(self.xx, y, "k-", alpha=0.005)
         # plot final theta over complete range
         y = list(map(self.transform, self.xx))
         ax[0].plot(self.xx, y, "k-", label="μ scaling")

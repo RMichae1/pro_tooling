@@ -1,4 +1,5 @@
 import numpy as np
+import pickle
 import re
 import os
 from scipy.io import loadmat
@@ -70,5 +71,10 @@ if __name__ == "__main__":
     mu = [res.get("mu") for res in gpr_results]
     cov = [res.get("cov") for res in gpr_results]
     ys = [res.get("y_exp") for res in gpr_results]
-    gpr.plot(f_μ=mu, cov=cov, y_test=ys, mutations=n_mutations)
-    # # gpr.plot_log_prob()
+    # TODO debug dimension conflicts in plotting
+    #gpr.plot(f_μ=mu, cov=cov, y_test=ys, mutations=n_mutations)
+    with open("./1PGA_gpr_results.pickle", "wb") as outfile:
+        pickle.dump({"optimization": opt_results, 
+                "regression": gpr_results, 
+                "mutations": n_mutations}, outfile)
+    # gpr.plot_log_prob()

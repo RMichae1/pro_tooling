@@ -3,7 +3,7 @@ import numpy as np
 from numpy.random import multivariate_normal
 from scipy.stats import norm
 from tqdm import tqdm
-from typing import List, Tuple
+from typing import List, Tuple, Dict
 from utility import get_mutation_idx
 import torch
 from torch import cholesky, cholesky_solve
@@ -97,12 +97,14 @@ class GPRegression:
         return None
     
     @staticmethod
-    def compute_ρ(exp_μ: np.ndarray, predictions_μ: np.ndarray, y_vec: np.ndarray, y_pred_μ: np.ndarray) -> float:
+    def compute_ρ(y_vec: np.ndarray, y_pred_μ: np.ndarray) -> float:
         """
         ρ computation as defined in (S7)
         """
-        ρ = np.sum((y_vec - exp_μ)*(y_pred_μ - predictions_μ))
-        norm = np.sqrt(np.sum((y_vec-exp_μ)**2)*np.sum((y_pred_μ-predictions_μ)**2))
+        pred_μ = np.mean(y_pred_μ)
+        exp_μ = np.mean(y_vec)
+        ρ = np.sum((y_vec - exp_μ)*(y_pred_μ - pred_μ))
+        norm = np.sqrt(np.sum((y_vec-exp_μ)**2)*np.sum((y_pred_μ-pred_μ)**2))
         ρ /= norm 
         return ρ
 
@@ -112,7 +114,7 @@ class GPRegression:
         RMSE computation as defined in (S8)
         """
         n_obs = y.shape[0]
-        rmse = np.sqrt(np.sum(y - y_pred_μ)/n_obs)
+        rmse = np.sqrt(np.sum((y - y_pred_μ)**2)/n_obs)
         return rmse
 
     @staticmethod
@@ -205,7 +207,7 @@ class GPRegression:
         y_train, y_test = self.y[:cutoff], self.y[cutoff:]
         return X_train, x_test, y_train, y_test
 
-    def position_level_CV(self) -> Tuple[list, list, list]:
+    def position_level_CV(self) -> Dict[str, list]:
         mutations = []
         optimization_parameters = []
         fit_parameters = []
@@ -252,7 +254,16 @@ class GPRegression:
                                     'y_exp': self.y_test.detach().numpy(),
                                     'lml': lml#.squeeze().detach().numpy()
                                     })
-        return optimization_parameters, fit_parameters, mutations
+        predictions = np.concatenate([np.atleast_1d(x) for x in [elem.get('mu') for elem in fit_parameters]])
+        experimental = np.concatenate([x for sub in [elem.get('y_exp') for elem in fit_parameters] for x in sub])
+        rho = self.compute_ρ(y_vec=experimental, y_pred_μ=predictions)
+        rmse = self.compute_rmse(y=experimental, y_pred_μ=predictions)
+        results = {"optimization": optimization_parameters, 
+                    "regression": fit_parameters, 
+                    "mutations": mutations,
+                    "rho": rho,
+                    "rmse": rmse}
+        return results
 
     def mutation_level_CV(self) -> Tuple[List[dict], List[dict]]:
         """
@@ -330,12 +341,12 @@ class GPRegression:
         # samples = self.predict(μ, cov)
         filename = os.path.join(save_fig, f"gpr_{self.protein.pdb_ID}.png")
         _, ax = plt.subplots(1,1, figsize=(15,10))
+        ax.axline((-4, -4), (4,4), color="grey", linestyle="--")
         mutations = [np.repeat(mut, len(y)) for mut, y in zip(mutations, y_test)]
-        f_μ = [list(elem) for elem in f_μ]
-        cov = [list(elem) for elem in cov]
-        ys = [y for sub in y_test for y in sub]
-        pred = [mu for sub in f_μ for mu in sub]
-        sns.scatterplot(ys, pred, hue=mutations, size=150)
+        f_μ = np.concatenate([np.atleast_1d(elem) for elem in f_μ])
+        cov = np.concatenate([np.atleast_1d(elem) for elem in cov])
+        y_test = np.concatenate([elem for sub in y_test for elem in sub])
+        sns.scatterplot(y_test, f_μ, hue=mutations, ax=ax)
         # TODO connecting line-plot
         # TODO each mutation has n means and n covariances
         # # add gaussians to plot
