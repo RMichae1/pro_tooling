@@ -144,15 +144,15 @@ class GPRegression:
         σ = torch.cat((self.σ_0, 
                     (σ_E/self.y_max) * torch.ones([len(self.X_exp), 1], dtype=torch.float64), 
                     ((σ_E + σ_S) / self.y_max) * torch.ones([len(self.X_is), 1], dtype=torch.float64) + t*(self.σ_T/self.y_max)))
-        return torch.square(σ)
+        return torch.square(σ).type(torch.float64)
 
     def compute_matrices(self, X: torch.Tensor, adjacencies: List[tuple]) -> list:
         X = X.detach().numpy().astype(np.int64)
         n = X.shape[0]
         covariance_mats = []
         for i, kernel in tqdm(enumerate(self._kernels)):
-            k = torch.zeros([n, n], dtype=torch.float64).float()
-            k += kernel.k(X, adjacencies).float()
+            k = torch.zeros([n, n], dtype=torch.float64)
+            k += kernel.k(X, adjacencies)
             covariance_mats.append(k)
         return covariance_mats
 
@@ -180,7 +180,7 @@ class GPRegression:
         # zero mean is consistent due to prior assumption
         nll = -(MultivariateNormal(zero_μ, covariance_matrix=K_XX).log_prob(torch.flatten(self.y_train)).sum() \
             + self.σ_E_prior.log_prob(self.σ_E.get_value()) + self.σ_S_prior.log_prob(self.σ_S.get_value()))
-        nll.requires_grad_(True)
+        nll.type(torch.float64).requires_grad_(True)
         return nll
 
     def parameter_optimization(self) -> None:
@@ -325,9 +325,11 @@ class GPRegression:
         L = cholesky(A)
         α = cholesky_solve(self.y_train, L)
         # compute disttribution and lml
-        f_μ = self.y_max * torch.matmul(K_Xx.T, α) + self.y_mean
+        #f_μ = self.y_max * torch.matmul(K_Xx.T, α) + self.y_mean
+        f_μ = torch.matmul(K_Xx.T, α) + self.y_mean
         v = cholesky_solve(K_Xx, L)
-        cov = (self.y_max*self.y_max) * (K_xx - torch.matmul(K_Xx.T, v))
+        # cov = (self.y_max*self.y_max) * (K_xx - torch.matmul(K_Xx.T, v))
+        cov = (K_xx - torch.matmul(K_Xx.T, v))
         lml = 0 # MultivariateNormal(f_μ, covariance_matrix=cov).log_prob(torch.flatten(self.y_train)).sum() + self.σ_E_prior.log_prob(self.σ_E.get_value()) + self.σ_S_prior.log_prob(self.σ_S.get_value())
         return f_μ, cov, lml
 
@@ -337,14 +339,13 @@ class GPRegression:
         p_sample = mN.sample((n_samples,))
         return p_sample
         
-    def plot(self, f_μ, cov, y_test, mutations, save_fig="./fig/") -> None:
+    def plot(self, f_μ, y_test, mutations, save_fig="./fig/") -> None:
         # samples = self.predict(μ, cov)
         filename = os.path.join(save_fig, f"gpr_{self.protein.pdb_ID}.png")
         _, ax = plt.subplots(1,1, figsize=(15,10))
         ax.axline((-4, -4), (4,4), color="grey", linestyle="--")
         mutations = [np.repeat(mut, len(y)) for mut, y in zip(mutations, y_test)]
         f_μ = np.concatenate([np.atleast_1d(elem) for elem in f_μ])
-        cov = np.concatenate([np.atleast_1d(elem) for elem in cov])
         y_test = np.concatenate([elem for sub in y_test for elem in sub])
         sns.scatterplot(y_test, f_μ, hue=mutations, ax=ax)
         # TODO connecting line-plot

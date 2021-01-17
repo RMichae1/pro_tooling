@@ -89,5 +89,5 @@ class MatrixKernel:
             #                     p_adj=q_adjacency[idx], q_adj=q_adjacency[idx])
             # normalized_k = k_xy / np.sqrt(k_xx*k_yy)
             # k += normalized_k
-        return torch.Tensor(k_hat).float()
+        return torch.Tensor(k_hat).type(torch.float64)
 
