@@ -239,7 +239,7 @@ class GPRegression:
                 print("Optimization broke.")
                 self.reset_trainable_parameters()
             nll_end = self.neg_ll()
-            f_μ, cov = self._fit()
+            f_μ, cov = self._fit(ref=True)
             # write optimization results
             optimization_parameters.append({"w": self.weights.get_value(),
                                         "sigma_S": self.σ_S.get_value(),
@@ -378,7 +378,7 @@ class GPRegression:
             matrices.append(k)
         return matrices
 
-    def _fit(self) -> Tuple[torch.Tensor, torch.Tensor, float, np.array]:
+    def _fit(self, ref=False) -> Tuple[torch.Tensor, torch.Tensor, float, np.array]:
         """Alg. 2.1 Rasmussen *GPs in ML* """
         n = self.X_train.shape[0]
         m = self.x_test.shape[0]
@@ -389,6 +389,8 @@ class GPRegression:
         cov_mats = self.derive_Xx()
         K_Xx = self.mWDK(X=self.X_train, x=self.x_test, covariance_matrices=cov_mats)
         σ = self.set_noise_term()[self.idx_train]
+        if ref:
+            σ += σ
         A = K_XX + σ * torch.eye(n)
         L = cholesky(A)
         α = cholesky_solve(self.y_train, L)

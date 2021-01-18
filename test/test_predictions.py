@@ -67,7 +67,6 @@ def test_targets():
     np.testing.assert_allclose(model.y[0:, :], ref_file["training_targets"][0:, :], atol=0.015)
 
 noise = model.set_noise_term().detach().numpy()[model.idx_train]
-
 def test_noise_equal():
     np.testing.assert_almost_equal(noise[0], ref_noise[0])
 
@@ -90,9 +89,10 @@ K[1:, 1:] = ref_K[21:, 21:]
 #     np.testing.assert_allclose(ref_mean_pred_local, ref_unscaled_pred)
 
 def test_mean_prediction_against_ref():
+    model.parameter_optimization()
     print(model.y.shape)
     ref_mean_corrected = np.linalg.solve(K, KZX_ref.T).T.dot(model.y_train)
     ref_mean_corrected *= max_y
     ref_mean_corrected += mean_y
-    mu, _ = model._fit()
+    mu, _ = model._fit(ref=True)
     np.testing.assert_allclose(mu.detach().numpy(), ref_mean_corrected)
