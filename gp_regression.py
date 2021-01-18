@@ -196,12 +196,12 @@ class GPRegression:
             optimizer.step(closure)
         return 
     
-    def set_test_index(index: np.ndarray) -> None:
+    def set_test_index(self, index: np.ndarray) -> None:
         self.idx_test = index
         self.x_test = self.X[index]
         self.y_test = self.y[index]
 
-    def set_train_index(index: np.ndarray) -> None:
+    def set_train_index(self, index: np.ndarray) -> None:
         self.idx_train = index
         self.X_train = self.X[index]
         self.y_train = self.y[index]
