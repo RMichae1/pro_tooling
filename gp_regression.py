@@ -72,6 +72,7 @@ class GPRegression:
         # DEFAULT train set to complete data to compute neg-ll correctly while testing
         self.X_train, self.x_test, self.y_train, self.y_test = self.X, None, self.y, None
         self.idx_train, self.idx_test = np.arange(0, self.X.shape[0]), None
+        self.cv_flag: str = None
 
     def reset_trainable_parameters(self) -> None:
         """
@@ -189,12 +190,9 @@ class GPRegression:
         def closure():
             optimizer.zero_grad()
             loss = self.neg_ll()
-            # print(loss)
             loss.backward()
             return loss
-        p_bar = tqdm(range(self.n_optimization))
-        for n in p_bar:
-            p_bar.set_description(f"L-BFGS: {n}")
+        for n in range(self.n_optimization):
             optimizer.step(closure)
         return 
     
@@ -203,30 +201,33 @@ class GPRegression:
         Split mutations into 75:25 train test split
         """ 
         cutoff = int(training*self.X.shape[0])
-        X_train, x_test = self.X[:cutoff], self.X[cutoff:]
-        y_train, y_test = self.y[:cutoff], self.y[cutoff:]
+        X_train, x_test = self.X[1:cutoff], self.X[cutoff:]
+        y_train, y_test = self.y[1:cutoff], self.y[cutoff:]
         return X_train, x_test, y_train, y_test
 
     def position_level_CV(self) -> Dict[str, list]:
+        self.cv_flag = "pos_lvl_CV"
         mutations = []
         optimization_parameters = []
         fit_parameters = []
-        experimental_mutation_index = get_mutation_idx(self.protein.mut_ids_exp)
+        # mutations include both insilico and experimental
+        mutation_index = get_mutation_idx(self.protein.mutation_ids)
         for pos in tqdm(range(len(self.protein.sequence))):
             print("reset parameters ...")
             self.reset_GPR() # reset trainable parameters
             # gather all mutations at that position and assign train and test indices
-            mutation_bool_mask = np.array([bool(pos in mut) for mut in experimental_mutation_index])
+            mutation_bool_mask = np.array([bool(pos in mut) for mut in mutation_index])
             test_mutation_idx = np.where(mutation_bool_mask)[0]
             not_test_mutation_idx = np.where(~mutation_bool_mask)[0]
             n_mutations = len(test_mutation_idx)
             # split into train and test
-            self.idx_test = 1 + test_mutation_idx # offset from WT
+            self.idx_test = test_mutation_idx # offset from WT
             self.x_test = self.X[self.idx_test]
             self.y_test = self.y[self.idx_test]
             # combine WT + not selected + in silico for training data
-            self.idx_train = np.concatenate([np.array([0]), 1+not_test_mutation_idx, 
-                            np.arange(start=len(self.X_exp)+1, stop=self.X.shape[0])])
+            # self.idx_train = np.concatenate([np.array([0]), 1+not_test_mutation_idx, 
+            #                 np.arange(start=len(self.X_exp)+1, stop=self.X.shape[0])])
+            self.idx_train = not_test_mutation_idx
             self.X_train = self.X[self.idx_train]
             self.y_train = self.y[self.idx_train]
             if self.x_test.shape[0] == 0:
@@ -272,9 +273,14 @@ class GPRegression:
         This trains on N-1 data and includes the excluded for test
         TODO not optimal - different approaches needed
         """
+        self.cv_flag = "mut_lvl_CV"
         optimization_parameters = []
         fit_parameters = []
-        for idx, mut in enumerate(self.X):
+        pbar = tqdm(enumerate(self.X))
+        for idx, _ in pbar:
+            pbar.set_description(f"Pos: {idx}")
+            if idx == 1: # exclude WT
+                continue 
             self.reset_GPR()
             self.idx_train = np.delete(np.arange(0, self.X.shape[0]), idx)
             self.idx_test = idx
@@ -338,7 +344,7 @@ class GPRegression:
         α = cholesky_solve(self.y_train, L)
         # compute disttribution and lml
         #f_μ = self.y_max * torch.matmul(K_Xx.T, α) + self.y_mean
-        f_μ = torch.matmul(K_Xx.T, α) + self.y_mean
+        f_μ = torch.matmul(K_Xx.T, α)) + self.y_mean
         v = cholesky_solve(K_Xx, L)
         # cov = (self.y_max*self.y_max) * (K_xx - torch.matmul(K_Xx.T, v))
         cov = (K_xx - torch.matmul(K_Xx.T, v))
