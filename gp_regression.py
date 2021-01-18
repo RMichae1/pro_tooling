@@ -196,14 +196,15 @@ class GPRegression:
             optimizer.step(closure)
         return 
     
-    def _split_CV(self, training=0.75) -> None:
-        """
-        Split mutations into 75:25 train test split
-        """ 
-        cutoff = int(training*self.X.shape[0])
-        X_train, x_test = self.X[1:cutoff], self.X[cutoff:]
-        y_train, y_test = self.y[1:cutoff], self.y[cutoff:]
-        return X_train, x_test, y_train, y_test
+    def set_test_index(index: np.ndarray) -> None:
+        self.idx_test = index
+        self.x_test = self.X[index]
+        self.y_test = self.y[index]
+
+    def set_train_index(index: np.ndarray) -> None:
+        self.idx_train = index
+        self.X_train = self.X[index]
+        self.y_train = self.y[index]
 
     def position_level_CV_reference(self) -> Dict[str, list]:
         """
@@ -225,12 +226,8 @@ class GPRegression:
             not_test_mutation_idx = np.where(~mutation_bool_mask)[0]
             n_mutations = len(test_mutation_idx)
             # split into train and test
-            self.idx_test = test_mutation_idx
-            self.x_test = self.X[self.idx_test]
-            self.y_test = self.y[self.idx_test]
-            self.idx_train = not_test_mutation_idx
-            self.X_train = self.X[self.idx_train]
-            self.y_train = self.y[self.idx_train]
+            self.set_test_index(test_mutation_idx)
+            self.set_train_index(not_test_mutation_idx)
             if self.x_test.shape[0] == 0:
                 print(f"No Mutation at pos:{pos} - skipping...")
                 continue
@@ -282,14 +279,11 @@ class GPRegression:
             not_test_mutation_idx = np.where(~mutation_bool_mask)[0]
             n_mutations = len(test_mutation_idx)
             # split into train and test
-            self.idx_test = 1 + test_mutation_idx # offset from WT
-            self.x_test = self.X[self.idx_test]
-            self.y_test = self.y[self.idx_test]
+            self.set_test_index(1+test_mutation_idx)
             # combine WT + not selected + in silico for training data
-            self.idx_train = np.concatenate([np.array([0]), 1+not_test_mutation_idx, 
+            train_index = np.concatenate([np.array([0]), 1+not_test_mutation_idx, 
                             np.arange(start=len(self.X_exp)+1, stop=self.X.shape[0])]) # all simulated data are training data
-            self.X_train = self.X[self.idx_train]
-            self.y_train = self.y[self.idx_train]
+            self.set_train_index(train_index)
             if self.x_test.shape[0] == 0:
                 print(f"No Mutation at pos:{pos} - skipping...")
                 continue
@@ -341,11 +335,9 @@ class GPRegression:
             if idx == 1: # exclude WT
                 continue 
             self.reset_GPR()
-            self.idx_train = np.delete(np.arange(0, self.X.shape[0]), idx)
-            self.idx_test = idx
             # set train and testing indices
-            self.X_train, self.x_test = self.X[self.idx_train], self.X[self.idx_test].clone().detach()[np.newaxis, :]
-            self.y_train, self.y_test = self.y[self.idx_train], self.y[self.idx_test]
+            self.set_train_index( np.delete(np.arange(0, self.X.shape[0]), idx))
+            self.set_test_index(np.array([idx]))
             nll_init = self.neg_ll() 
             try:
                 self.parameter_optimization()

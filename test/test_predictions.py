@@ -44,13 +44,13 @@ mut_S_exp, mut_adj_exp, ΔΔg_exp, mut_ids_exp = parse_mutations(mutation_dict=m
                                                 sequence=prot.sequence, adjacency=contact_graph)
 mut_S_is, mut_adj_is, ΔΔg_is, mut_ids_is = parse_mutations(mutation_dict=mut_is.get(prot.pdb_ID), 
                                                 sequence=prot.sequence, adjacency=contact_graph)
-# select only for 20 insilico mutations
-X_exp = convert_aa_sequence(mut_S_exp)
-X_is = convert_aa_sequence(mut_S_is[:20])
-X_wt = convert_aa_sequence([prot.sequence])
-y_wt = np.array([prot.ΔΔg[0]])[:, np.newaxis]
-y_exp = np.array(ΔΔg_exp)[:, np.newaxis]
-y_is = np.array(ΔΔg_is[:20])[:, np.newaxis]
+# # select only for 20 insilico mutations
+# X_exp = convert_aa_sequence(mut_S_exp)
+# X_is = convert_aa_sequence(mut_S_is[:20])
+# X_wt = convert_aa_sequence([prot.sequence])
+# y_wt = np.array([prot.ΔΔg[0]])[:, np.newaxis]
+# y_exp = np.array(ΔΔg_exp)[:, np.newaxis]
+# y_is = np.array(ΔΔg_is[:20])[:, np.newaxis]
 
 y_scaled = f(y_is)
 mean_y, max_y, y_wt, y_exp, y_scaled = preprocess_observations(y_wt, y_exp, y_scaled)
@@ -58,14 +58,12 @@ mean_y, max_y, y_wt, y_exp, y_scaled = preprocess_observations(y_wt, y_exp, y_sc
 def test_predict_ymax():
     assert max_y == pytest.approx(ref_file["model"]["ymax"][0, 0][0, 0], rel=0.02)
 
+assert X_wt.shape[1] != 1
 model = GPRegression(prot, X_wt, X_exp, X_is, y_wt, y_exp, y_scaled, max_y, mean_y, contact_graph, torch.Tensor(sigma_T))
 # set model parameters to account for training/testing specs
-model.X_train = np.vstack([model.X_wt, model.X_exp[20:, :], model.X_is])
-model.idx_train = np.arange(22, model.X_exp.shape[0]+model.X_is.shape[0])
-model.idx_test = np.arange(1, 21)
-model.x_test = model.X_exp[:20, :]
-model.y_test = y_exp[:20, :]
-model.y_train = np.vstack([y_wt, y_exp[20:, :], y_is])
+model.set_train_index(np.concatenate([np.array([0]), np.arange(21, model.X.shape[0])]))
+model.set_test_index(np.arange(1, 21))
+
 def test_targets():
     np.testing.assert_allclose(model.y[0, :], ref_file["training_targets"][0, :], atol=0.01)
     np.testing.assert_allclose(model.y[1:, :], ref_file["training_targets"][1:, :], atol=0.015)
