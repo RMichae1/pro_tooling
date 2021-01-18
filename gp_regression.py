@@ -273,16 +273,20 @@ class GPRegression:
         TODO not optimal - different approaches needed
         """
         optimization_parameters = []
-        results = []
+        fit_parameters = []
         for idx, mut in enumerate(self.X):
             self.reset_GPR()
             self.idx_train = np.delete(np.arange(0, self.X.shape[0]), idx)
             self.idx_test = idx
             # set train and testing indices
-            self.X_train, self.x_test = self.X[np.arange(self.X.shape[0])!=idx], self.X[idx]
-            self.y_train, self.y_test = self.y[np.arange(self.y.shape[0])!=idx], self.y[idx]
-            nll_init = self.neg_ll()
-            self.parameter_optimization()
+            self.X_train, self.x_test = self.X[self.idx_train], self.X[self.idx_test].clone().detach()[np.newaxis, :]
+            self.y_train, self.y_test = self.y[self.idx_train], self.y[self.idx_test]
+            nll_init = self.neg_ll() 
+            try:
+                self.parameter_optimization()
+            except RuntimeError as _:
+                print("Optimization broke.")
+                self.reset_trainable_parameters()
             nll_end = self.neg_ll()
             optimization_parameters.append({"nll": (nll_init, nll_end),
                                             "w": self.weights.get_value(),
@@ -290,11 +294,17 @@ class GPRegression:
                                             "sigma_E": self.σ_E.get_value(),
                                             "t": self.t.get_value()})
             f_μ, cov, lml = self._fit()
-            results.append({"mu": f_μ.squeeze().detach().numpy(),
+            fit_parameters.append({"mu": f_μ.squeeze().detach().numpy(),
                             "cov": cov.squeeze().detach().numpy(),
                             "lml": lml, #.detach().numpy(),
                             "y_exp": self.y_test.detach().numpy()})
-        return optimization_parameters, results
+        predictions = np.concatenate([np.atleast_1d(x) for x in [elem.get('mu') for elem in fit_parameters]])
+        experimental = np.concatenate([x for sub in [elem.get('y_exp') for elem in fit_parameters] for x in sub])
+        results = {"optimization": optimization_parameters, 
+                    "regression": fit_parameters,
+                    "rho": self.compute_ρ(y_vec=experimental, y_pred_μ=predictions),
+                    "rmse": self.compute_rmse(y=experimental, y_pred_μ=predictions)}
+        return results
 
     def derive_Xx(self):
         """
@@ -303,9 +313,11 @@ class GPRegression:
         matrices = []
         n, m = self.X_train.shape[0], self.x_test.shape[0]
         for mat in self.covariance_matrices:
-            k = torch.zeros([n, m])
+            k = torch.zeros([n, m], dtype=torch.float64)
             n_selected = mat[self.idx_train, :]
             m_selected = n_selected[:, self.idx_test]
+            if m_selected.shape[0] != m:
+                m_selected = m_selected.reshape(n, m)
             k += m_selected
             matrices.append(k)
         return matrices
@@ -339,26 +351,28 @@ class GPRegression:
         p_sample = mN.sample((n_samples,))
         return p_sample
         
-    def plot(self, f_μ, y_test, mutations, save_fig="./fig/") -> None:
+    def plot(self, f_μ, y_test, mutations=None, cov=None, save_fig="./fig/") -> None:
         # samples = self.predict(μ, cov)
         filename = os.path.join(save_fig, f"gpr_{self.protein.pdb_ID}.png")
         _, ax = plt.subplots(1,1, figsize=(15,10))
         ax.axline((-4, -4), (4,4), color="grey", linestyle="--")
-        mutations = [np.repeat(mut, len(y)) for mut, y in zip(mutations, y_test)]
         f_μ = np.concatenate([np.atleast_1d(elem) for elem in f_μ])
         y_test = np.concatenate([elem for sub in y_test for elem in sub])
-        sns.scatterplot(y_test, f_μ, hue=mutations, ax=ax)
-        # TODO connecting line-plot
+        plt.scatter(y_test, f_μ, color="indianred")
+        if mutations:
+            mutations = [np.repeat(mut, len(y)) for mut, y in zip(mutations, y_test)]
+            sns.scatterplot(y_test, f_μ, hue=mutations, ax=ax)
         # TODO each mutation has n means and n covariances
-        # # add gaussians to plot
-        # for μ, var, y in zip(f_μ, cov, y_test):
-        #     xx = np.arange(-5, 5, 0.1)
-        #     f = norm.pdf(xx, μ, var)
-        #     _y = y.flatten()
-        #     ax.plot(_y+f, xx, "k-")
-        # annotate mutations at test point
-        # ax.annotate(mutation, xy=(y_test, μ), xycoords="data", xytext=(10,10), 
-        #     textcoords='offset points') #, arrowprops=dict(facecolor="black", shrink=0.05))
+        # add gaussians to plot
+        if cov is not None:
+            for idx, μ, var, y in enumerate(zip(f_μ, cov, y_test)):
+                xx = np.arange(-5, 5, 0.1)
+                f = norm.pdf(xx, μ, var)
+                ax.plot(y+f, xx, "k-")
+            # annotate mutations at test point
+            # TODO write mutations while doing CV and query here
+            ax.annotate(self.protein.mutation_ids[idx], xy=(y_test, μ), xycoords="data", xytext=(10,10), 
+             textcoords='offset points')
         ax.set_xlabel("experimental ΔΔG")
         ax.set_ylabel("predicted ΔΔG")
         plt.title(f"GP Regression (position lvl) {self.id}")
