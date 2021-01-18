@@ -143,7 +143,7 @@ class GPRegression:
         σ_S = self.σ_S.get_value()
         t = self.t.get_value()
         σ = torch.cat((self.σ_0, 
-                    (σ_E/self.y_max) * torch.ones([len(self.X_exp), 1], dtype=torch.float64), 
+                    (σ_E/self.y_max) * torch.ones([self.X_exp.shape[0], 1], dtype=torch.float64), 
                     ((σ_E + σ_S) / self.y_max) * torch.ones([len(self.X_is), 1], dtype=torch.float64) + t*(self.σ_T/self.y_max)))
         return torch.square(σ).type(torch.float64)
 
@@ -205,8 +205,12 @@ class GPRegression:
         y_train, y_test = self.y[1:cutoff], self.y[cutoff:]
         return X_train, x_test, y_train, y_test
 
-    def position_level_CV(self) -> Dict[str, list]:
-        self.cv_flag = "pos_lvl_CV"
+    def position_level_CV_reference(self) -> Dict[str, list]:
+        """
+        Position level cross-validation that assigns test data-set from
+        position as done in the reference implementation - has double noise term
+        """
+        self.cv_flag = "pos_lvl_CV_REFERENCE"
         mutations = []
         optimization_parameters = []
         fit_parameters = []
@@ -221,13 +225,69 @@ class GPRegression:
             not_test_mutation_idx = np.where(~mutation_bool_mask)[0]
             n_mutations = len(test_mutation_idx)
             # split into train and test
-            self.idx_test = test_mutation_idx # offset from WT
+            self.idx_test = test_mutation_idx
+            self.x_test = self.X[self.idx_test]
+            self.y_test = self.y[self.idx_test]
+            self.idx_train = not_test_mutation_idx
+            self.X_train = self.X[self.idx_train]
+            self.y_train = self.y[self.idx_train]
+            if self.x_test.shape[0] == 0:
+                print(f"No Mutation at pos:{pos} - skipping...")
+                continue
+            # optimize
+            nll_init = self.neg_ll() 
+            try:
+                self.parameter_optimization()
+            except RuntimeError as _:
+                print("Optimization broke.")
+                self.reset_trainable_parameters()
+            nll_end = self.neg_ll()
+            f_μ, cov = self._fit()
+            # write optimization results
+            optimization_parameters.append({"w": self.weights.get_value(),
+                                        "sigma_S": self.σ_S.get_value(),
+                                        "sigma_E": self.σ_E.get_value(),
+                                        "t": self.t.get_value(),
+                                        "nll": (nll_init, nll_end)})
+            # TODO save which mutation was included for later plotting
+            mutations.append(n_mutations)
+            fit_parameters.append({'mu': f_μ.squeeze().detach().numpy(),
+                                    'cov': cov.squeeze().detach().numpy(),
+                                    'y_exp': self.y_test.detach().numpy()
+                                    })
+        predictions = np.concatenate([np.atleast_1d(x) for x in [elem.get('mu') for elem in fit_parameters]])
+        experimental = np.concatenate([x for sub in [elem.get('y_exp') for elem in fit_parameters] for x in sub])
+        rho = self.compute_ρ(y_vec=experimental, y_pred_μ=predictions)
+        rmse = self.compute_rmse(y=experimental, y_pred_μ=predictions)
+        results = {"optimization": optimization_parameters, 
+                    "regression": fit_parameters, 
+                    "mutations": mutations,
+                    "rho": rho,
+                    "rmse": rmse}
+        return results
+
+    def position_level_CV(self) -> Dict[str, list]:
+        self.cv_flag = "pos_lvl_CV"
+        mutations = []
+        optimization_parameters = []
+        fit_parameters = []
+        # mutations include both insilico and experimental
+        experimental_mutation_index = get_mutation_idx(self.protein.mut_ids_exp)
+        for pos in tqdm(range(len(self.protein.sequence))):
+            print("reset parameters ...")
+            self.reset_GPR() # reset trainable parameters
+            # gather all mutations at that position and assign train and test indices
+            mutation_bool_mask = np.array([bool(pos in mut) for mut in experimental_mutation_index])
+            test_mutation_idx = np.where(mutation_bool_mask)[0]
+            not_test_mutation_idx = np.where(~mutation_bool_mask)[0]
+            n_mutations = len(test_mutation_idx)
+            # split into train and test
+            self.idx_test = 1 + test_mutation_idx # offset from WT
             self.x_test = self.X[self.idx_test]
             self.y_test = self.y[self.idx_test]
             # combine WT + not selected + in silico for training data
-            # self.idx_train = np.concatenate([np.array([0]), 1+not_test_mutation_idx, 
-            #                 np.arange(start=len(self.X_exp)+1, stop=self.X.shape[0])])
-            self.idx_train = not_test_mutation_idx
+            self.idx_train = np.concatenate([np.array([0]), 1+not_test_mutation_idx, 
+                            np.arange(start=len(self.X_exp)+1, stop=self.X.shape[0])]) # all simulated data are training data
             self.X_train = self.X[self.idx_train]
             self.y_train = self.y[self.idx_train]
             if self.x_test.shape[0] == 0:
@@ -252,8 +312,7 @@ class GPRegression:
             mutations.append(n_mutations)
             fit_parameters.append({'mu': f_μ.squeeze().detach().numpy(),
                                     'cov': cov.squeeze().detach().numpy(),
-                                    'y_exp': self.y_test.detach().numpy(),
-                                    'lml': lml#.squeeze().detach().numpy()
+                                    'y_exp': self.y_test.detach().numpy()
                                     })
         predictions = np.concatenate([np.atleast_1d(x) for x in [elem.get('mu') for elem in fit_parameters]])
         experimental = np.concatenate([x for sub in [elem.get('y_exp') for elem in fit_parameters] for x in sub])
@@ -302,7 +361,6 @@ class GPRegression:
             f_μ, cov, lml = self._fit()
             fit_parameters.append({"mu": f_μ.squeeze().detach().numpy(),
                             "cov": cov.squeeze().detach().numpy(),
-                            "lml": lml, #.detach().numpy(),
                             "y_exp": self.y_test.detach().numpy()})
         predictions = np.concatenate([np.atleast_1d(x) for x in [elem.get('mu') for elem in fit_parameters]])
         experimental = np.concatenate([x for sub in [elem.get('y_exp') for elem in fit_parameters] for x in sub])
@@ -343,13 +401,10 @@ class GPRegression:
         L = cholesky(A)
         α = cholesky_solve(self.y_train, L)
         # compute disttribution and lml
-        #f_μ = self.y_max * torch.matmul(K_Xx.T, α) + self.y_mean
-        f_μ = torch.matmul(K_Xx.T, α)) + self.y_mean
+        f_μ = self.y_max * torch.matmul(K_Xx.T, α) + self.y_mean
         v = cholesky_solve(K_Xx, L)
-        # cov = (self.y_max*self.y_max) * (K_xx - torch.matmul(K_Xx.T, v))
-        cov = (K_xx - torch.matmul(K_Xx.T, v))
-        lml = 0 # MultivariateNormal(f_μ, covariance_matrix=cov).log_prob(torch.flatten(self.y_train)).sum() + self.σ_E_prior.log_prob(self.σ_E.get_value()) + self.σ_S_prior.log_prob(self.σ_S.get_value())
-        return f_μ, cov, lml
+        cov = (self.y_max*self.y_max) * (K_xx - torch.matmul(K_Xx.T, v))
+        return f_μ, cov
 
     @staticmethod
     def predict(self, f_μ, cov, n_samples=100):
