@@ -127,8 +127,9 @@ class BayesScaler:
     def plot_scaling(self, save_fig="./fig/"):
         filename = f"{save_fig}/bayes_scaling_{self.pdb_ID}.png"
         fig, ax = plt.subplots(1,2 ,figsize=(25,10))
+        ax[1].set_aspect(aspect=0.3)
         # plot sampled theta for background (% of the last drawn samples)
-        for y in self.θ_xx_samples[-int(0.1*self.samples_N):]:
+        for y in self.θ_xx_samples[-int(0.25*self.samples_N):]:
             ax[0].plot(self.xx, y, "k-", alpha=0.005)
         # plot final theta over complete range
         y = list(map(self.transform, self.xx))
@@ -147,12 +148,13 @@ class BayesScaler:
         sns.histplot(self.σ_T_samples, ax=ax[1], label="σ_T per sample", color="black", stat="count")
         # sns.barplot(x=self.σ_T_sampled, y=np.array(list(map(self.transform, self.xx))), 
         #             label="σ values", ax=ax[1])
-        ax[0].set_xlabel("ΔΔG original")
-        ax[1].set_xlabel("σT")
-        ax[0].set_ylabel("ΔΔG yE, yS")
+        ax[0].set_xlabel("ΔΔG original", fontsize=18)
+        ax[1].set_xlabel("σT", fontsize=18)
+        ax[0].set_ylabel("ΔΔG yE, yS", fontsize=18)
         ax[0].set_ylim((-12, 7))
         ax[0].set_xlim(self.x_range)
-        plt.suptitle(f"Stability Transformation {self.pdb_ID}")
+        plt.suptitle(f"Stability Transformation {self.pdb_ID}", fontsize=22)
+        plt.tight_layout()
         plt.savefig(filename)
         plt.legend()
         plt.show()
