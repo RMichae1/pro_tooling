@@ -45,7 +45,8 @@ mut_S_exp, mut_adj_exp, ΔΔg_exp, mut_ids_exp = parse_mutations(mutation_dict=m
 mut_S_is, mut_adj_is, ΔΔg_is, mut_ids_is = parse_mutations(mutation_dict=mut_is.get(prot.pdb_ID), 
                                                 sequence=prot.sequence, adjacency=contact_graph)
 # # select only for 20 insilico mutations
-# X_exp = convert_aa_sequence(mut_S_exp)
+#X_exp_train = convert_aa_sequence(mut_S_exp)
+#X_exp_test = convert_aa_sequence(mut_S_exp)
 # X_is = convert_aa_sequence(mut_S_is[:20])
 # X_wt = convert_aa_sequence([prot.sequence])
 # y_wt = np.array([prot.ΔΔg[0]])[:, np.newaxis]
@@ -58,17 +59,22 @@ mean_y, max_y, y_wt, y_exp, y_scaled = preprocess_observations(y_wt, y_exp, y_sc
 def test_predict_ymax():
     assert max_y == pytest.approx(ref_file["model"]["ymax"][0, 0][0, 0], rel=0.02)
 
-assert X_wt.shape[1] != 1
-model = GPRegression(prot, X_wt, X_exp, X_is, y_wt, y_exp, y_scaled, max_y, mean_y, contact_graph, torch.Tensor(sigma_T))
+model = GPRegression(prot, X_wt.reshape(1, len(X_wt)), X_exp, X_is, y_wt, y_exp, y_scaled, max_y, mean_y, contact_graph, torch.Tensor(sigma_T))
 # set model parameters to account for training/testing specs
 model.set_train_index(np.concatenate([np.array([0]), np.arange(21, model.X.shape[0])]))
 model.set_test_index(np.arange(1, 21))
+
+assert model.X_train.shape[0] == len(model.idx_train)
+assert np.vstack([X_wt, model.X_exp[20:,:], X_is]).shape[0] == len(model.idx_train)
+assert np.vstack([y_wt, model.y_exp[20:,:], y_is]).shape[0] == len(model.idx_train) 
+assert X_test_.shape[0] == len(model.idx_test)
 
 def test_targets():
     np.testing.assert_allclose(model.y[0, :], ref_file["training_targets"][0, :], atol=0.01)
     np.testing.assert_allclose(model.y[1:, :], ref_file["training_targets"][1:, :], atol=0.015)
 
-noise = model.set_noise_term().detach().numpy()[model.idx_train]
+noise = model.set_noise_term().detach().numpy()#[model.idx_train]
+
 def test_noise_equal():
     np.testing.assert_almost_equal(noise[0], ref_noise[0])
 
@@ -91,7 +97,7 @@ K[1:, 1:] = ref_K[21:, 21:]
 #     np.testing.assert_allclose(ref_mean_pred_local, ref_unscaled_pred)
 
 def test_mean_prediction_against_ref():
-    ref_mean_corrected = np.linalg.solve(K, KZX_ref.T).T.dot(model.y_test)
+    ref_mean_corrected = np.linalg.solve(K, KZX_ref.T).T.dot(model.y)
     ref_mean_corrected *= max_y
     ref_mean_corrected += mean_y
     mu, _ = model._fit()
