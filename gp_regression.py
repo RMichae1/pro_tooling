@@ -295,7 +295,7 @@ class GPRegression:
                 print("Optimization broke.")
                 self.reset_trainable_parameters()
             nll_end = self.neg_ll()
-            f_μ, cov, lml = self._fit()
+            f_μ, cov = self._fit()
             # write optimization results
             optimization_parameters.append({"w": self.weights.get_value(),
                                         "sigma_S": self.σ_S.get_value(),
@@ -350,7 +350,7 @@ class GPRegression:
                                             "sigma_S": self.σ_S.get_value(),
                                             "sigma_E": self.σ_E.get_value(),
                                             "t": self.t.get_value()})
-            f_μ, cov, lml = self._fit()
+            f_μ, cov = self._fit()
             fit_parameters.append({"mu": f_μ.squeeze().detach().numpy(),
                             "cov": cov.squeeze().detach().numpy(),
                             "y_exp": self.y_test.detach().numpy()})
