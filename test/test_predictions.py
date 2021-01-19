@@ -64,7 +64,7 @@ def test_model_dimensions():
 def test_targets():
     np.testing.assert_allclose(model.y[0, :], ref_file["training_targets"][0, :], atol=0.01)
     assert model.y.shape[0] == ref_file["training_targets"].shape[0]
-    np.testing.assert_allclose(model.y[0:, :], ref_file["training_targets"][0:, :], atol=0.015)
+    np.testing.assert_allclose(model.y[21:, :], ref_file["training_targets"][21:, :])
 
 noise = model.set_noise_term().detach().numpy()[model.idx_train]
 def test_noise_equal():
@@ -83,20 +83,19 @@ beta = np.linalg.solve(K + np.diag(noise), KZX_ref.T)
 #     # TODO beta has large difference
 #     np.testing.assert_allclose(beta.T, ref_beta, atol=0.01)
 
-def test_mean_pred_local():
-    ref_mean_pred_local = beta.T.dot(model.y_train)
-    np.testing.assert_allclose(ref_mean_pred_local, ref_unscaled_pred, atol=0.01)
+# def test_mean_pred_local():
+#     ref_mean_pred_local = beta.T.dot(model.y_train)
+#     np.testing.assert_allclose(ref_mean_pred_local, ref_unscaled_pred, rtol=0.00001)
 
 def test_k_xX():
     cov_mats = model.derive_Xx()
     k_xX = model.mWDK(X=model.X_train, x=model.x_test, covariance_matrices=cov_mats).detach().numpy().T
     np.testing.assert_allclose(k_xX, KZX_ref)
 
-# def test_mean_prediction_against_ref():
-#     model.parameter_optimization()
-#     print(model.y.shape)
-#     ref_mean_corrected = np.linalg.solve(K, KZX_ref.T).T.dot(model.y_train)
-#     ref_mean_corrected *= max_y
-#     ref_mean_corrected += mean_y
-#     mu, _ = model._fit(ref=True)
-#     np.testing.assert_allclose(mu.detach().numpy(), ref_mean_corrected)
+def test_mean_prediction_against_ref():
+    print(model.y.shape)
+    ref_mean_corrected = np.linalg.solve(K, KZX_ref.T).T.dot(model.y_train)
+    ref_mean_corrected *= max_y
+    ref_mean_corrected += mean_y
+    mu, _ = model._fit()
+    np.testing.assert_allclose(mu.detach().numpy(), ref_mean_corrected)
