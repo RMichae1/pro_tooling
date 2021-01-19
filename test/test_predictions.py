@@ -77,16 +77,15 @@ K[0, 1:] = ref_K[0, 21:]
 K[1:, 0] = K[0, 1:].T
 K[1:, 1:] = ref_K[21:, 21:]
 
-#beta = np.linalg.solve(K + np.diag(noise), KZX_ref.T)
+beta = np.linalg.solve(K + np.diag(noise), KZX_ref.T)
 
 # def test_beta_ref():
 #     # TODO beta has large difference
 #     np.testing.assert_allclose(beta.T, ref_beta, atol=0.01)
 
-# def test_mean_pred_local():
-#     model.y_test = np.vstack([y_wt, y_exp])
-#     ref_mean_pred_local = beta.T.dot(model.y_test)
-#     np.testing.assert_allclose(ref_mean_pred_local, ref_unscaled_pred)
+def test_mean_pred_local():
+    ref_mean_pred_local = beta.T.dot(model.y_train)
+    np.testing.assert_allclose(ref_mean_pred_local, ref_unscaled_pred, atol=0.01)
 
 def test_k_xX():
     cov_mats = model.derive_Xx()
