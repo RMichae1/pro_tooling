@@ -12,6 +12,12 @@ from utility import convert_graph_from_matlab_file
 from utility import get_mutation_idx
 from data_scaler import BayesScaler
 from gp_regression import GPRegression
+from visualization import plot_hyperparameters, results_table
+
+def write_results(gpr_results: dict, gpr):
+    suffix = "fusion" if gpr.fusion_flag else ""
+    with open(f"./results/1PGA_gpr_results_{gpr.cv_flag}_{suffix}.pickle", "wb") as outfile:
+        pickle.dump(gpr_results, outfile)
 
 if __name__ == "__main__":
 
@@ -29,7 +35,7 @@ if __name__ == "__main__":
     mutations_dict_is = parse_matlab_mutation_file("./data/ddg_rosetta_single.mat", query="ddg_rosetta_single")
 
     pcol = ProteinCollection(cm_tri, pdb_ID="1PGA", mutations_exp=mutations_dict_exp, mutations_sim=mutations_dict_is,
-                    TESTING=True)
+                    TESTING=False)
 
     mut_S_exp, mut_adj_exp, ΔΔg_exp, mut_ids_exp = parse_mutations(mutation_dict=mutations_dict_exp.get(pcol.pdb_ID), 
                                                     sequence=pcol.sequence, adjacency=ref_adj)
@@ -41,38 +47,36 @@ if __name__ == "__main__":
 
     # scale using Bayesian Scaling
     bs_rosetta = BayesScaler(is_mutations=mut_ids_is, ΔΔg=pcol.ΔΔg_is, exp_mutations=mut_ids_exp, 
-                        experimentally_observed_ΔΔg=pcol.ΔΔg_exp, TESTING=True, pdb_ID="1PGA")
-
-    # print("theta")
-    # print(bs_rosetta.θ)
-    # print("sigma T")
-    # print(bs_rosetta.σ_T)
-    # print(bs_rosetta.σ_T.shape)
-    # print(bs_rosetta.plot_scaling())
+                        experimentally_observed_ΔΔg=pcol.ΔΔg_exp, TESTING=False, pdb_ID="1PGA")
     ΔΔg_exp = ΔΔg_exp[:, np.newaxis]
     ΔΔg_is_scaled = bs_rosetta.transform(ΔΔg_is)[:, np.newaxis]
-    
-    # mean sigma from scaler run
-    σ_T = 1.41618
+
 
     # Scale y-values as done in the implementation by normalizing with mean and max
     mean_y, max_y, y_wt, ΔΔg_exp, ΔΔg_is_scaled = preprocess_observations(y_wt, ΔΔg_exp, ΔΔg_is_scaled)
 
     gpr = GPRegression(protein_representation=pcol, X_wt=X_wt, X_exp=X_exp, X_is=X_is, 
                          y_wt=y_wt, y_exp=ΔΔg_exp, y_is=ΔΔg_is_scaled, adjacencies=ref_adj, 
-                         σ_T=σ_T, y_max=max_y, y_mean=mean_y)
+                         σ_T=bs_rosetta.σ_T, y_max=max_y, y_mean=mean_y)
     # print(gpr.neg_ll())
     # gpr.parameter_optimization()
     print(gpr.neg_ll())
-    #gpr_results = gpr.position_level_CV()
-    gpr_results = gpr.mutation_level_CV()
+    # gpr_results_pos_lvl = gpr.position_level_CV()
+    # write_results(gpr_results_pos_lvl, gpr)
+    gpr_results_pos_lvl_ref = gpr.position_level_CV_reference()
+    write_results(gpr_results_pos_lvl_ref, gpr)
+    #gpr_results_mutation_lvl = gpr.mutation_level_CV()
+    #write_results(gpr_results_mutation_lvl, gpr)
 
-    with open("./1PGA_gpr_results_mut_lvl_UNSCALED.pickle", "wb") as outfile:
-        pickle.dump(gpr_results, outfile)
+    # # mGP Run - No fusion
+    # mgp = GPRegression(protein_representation=pcol, X_wt=X_wt, X_exp=X_exp,X_is=np.array([]), 
+    #                     y_wt=y_wt, y_exp=ΔΔg_exp, y_is=np.array([]), adjacencies=ref_adj, 
+    #                     σ_T=bs_rosetta.σ_T, y_max=max_y, y_mean=mean_y, fusion=False)
+    # mgp_results_pos_lvl = mgp.position_level_CV()
+    # write_results(mgp_results_pos_lvl, mgp)
+    # mgp_results_pos_lvl_ref = mgp.position_level_CV_reference()
+    # write_results(mgp_results_pos_lvl_ref, mgp)
 
-    mu = [res.get("mu") for res in gpr_results.get("regression")]
-    ys = [res.get("y_exp") for res in gpr_results.get("regression")]
-    cov = [res.get("cov") for res in gpr_results.get("regression")]
-    gpr.plot(f_μ=mu, y_test=ys, cov=cov)
-
-    # gpr.plot_log_prob()
+    # plot_gpr(f_μ=mu, y_test=ys, cov=cov)
+    # plot_hyperparameters("./results/hyper/")
+    # results_table("./results/")

@@ -23,12 +23,14 @@ np.random.seed(42)
 class GPRegression:
     def __init__(self, protein_representation: ProteinCollection, X_wt: np.ndarray, 
                 X_exp: np.ndarray, X_is: np.ndarray, y_wt: np.ndarray, y_exp: np.ndarray, y_is: np.ndarray,
-                y_max: float, y_mean: float, adjacencies: np.ndarray, σ_T: float, n_optimization=15):
+                y_max: float, y_mean: float, adjacencies: np.ndarray, σ_T: float, n_optimization=15, fusion=True):
         self.X_wt, self.X_exp, self.X_is = X_wt, X_exp, X_is
         self.y_wt, self.y_exp, self.y_is = y_is, y_exp, y_is
         self.y_max, self.y_mean = y_max, y_mean
         self.protein = protein_representation
         self.adjacencies = adjacencies
+        self.cv_flag: str = None
+        self.fusion_flag: bool = fusion
         # set hyperparameters - see Appendix mGPfusion
         σ_0=1e-6 
         α_E=2.5
@@ -72,7 +74,6 @@ class GPRegression:
         # DEFAULT train set to complete data to compute neg-ll correctly while testing
         self.X_train, self.x_test, self.y_train, self.y_test = self.X, None, self.y, None
         self.idx_train, self.idx_test = np.arange(0, self.X.shape[0]), None
-        self.cv_flag: str = None
 
     def reset_trainable_parameters(self) -> None:
         """
@@ -134,8 +135,12 @@ class GPRegression:
         y_exp, y_is = self.check_and_add_axis(y_exp), self.check_and_add_axis(y_is)
         assert X_exp.shape[1] == X_wt.shape[1]
         assert y_exp.shape[1] == y_wt.shape[1]
-        X = torch.Tensor(np.vstack([X_wt, X_exp, X_is])).type(dtype=torch.float64)
-        y = torch.Tensor(np.vstack([y_wt, y_exp, y_is])).type(dtype=torch.float64)
+        if self.fusion_flag:
+            X = torch.Tensor(np.vstack([X_wt, X_exp, X_is])).type(dtype=torch.float64)
+            y = torch.Tensor(np.vstack([y_wt, y_exp, y_is])).type(dtype=torch.float64)
+        else:
+            X = torch.Tensor(np.vstack([X_wt, X_exp])).type(dtype=torch.float64)
+            y = torch.Tensor(np.vstack([y_wt, y_exp])).type(dtype=torch.float64)
         return X, y
     
     def set_noise_term(self):
@@ -217,6 +222,8 @@ class GPRegression:
         fit_parameters = []
         # mutations include both insilico and experimental
         mutation_index = get_mutation_idx(self.protein.mutation_ids)
+        if not self.fusion_flag:
+            mutation_index = get_mutation_idx(self.protein.mut_ids_exp)
         for pos in tqdm(range(len(self.protein.sequence))):
             print("reset parameters ...")
             self.reset_GPR() # reset trainable parameters
@@ -405,48 +412,3 @@ class GPRegression:
         mN = MultivariateNormal(f_μ, cov)
         p_sample = mN.sample((n_samples,))
         return p_sample
-        
-    def plot(self, f_μ, y_test, mutations=None, cov=None, save_fig="./fig/") -> None:
-        # samples = self.predict(μ, cov)
-        filename = os.path.join(save_fig, f"gpr_{self.protein.pdb_ID}.png")
-        _, ax = plt.subplots(1,1, figsize=(15,10))
-        ax.axline((-4, -4), (4,4), color="grey", linestyle="--")
-        f_μ = np.concatenate([np.atleast_1d(elem) for elem in f_μ])
-        y_test = np.concatenate([elem for sub in y_test for elem in sub])
-        plt.scatter(y_test, f_μ, color="indianred")
-        if mutations:
-            mutations = [np.repeat(mut, len(y)) for mut, y in zip(mutations, y_test)]
-            sns.scatterplot(y_test, f_μ, hue=mutations, ax=ax)
-        # TODO each mutation has n means and n covariances
-        # add gaussians to plot
-        if cov is not None:
-            for idx, μ, var, y in enumerate(zip(f_μ, cov, y_test)):
-                xx = np.arange(-5, 5, 0.1)
-                f = norm.pdf(xx, μ, var)
-                ax.plot(y+f, xx, "k-")
-            # annotate mutations at test point
-            # TODO write mutations while doing CV and query here
-            ax.annotate(self.protein.mutation_ids[idx], xy=(y_test, μ), xycoords="data", xytext=(10,10), 
-             textcoords='offset points')
-        ax.set_xlabel("experimental ΔΔG")
-        ax.set_ylabel("predicted ΔΔG")
-        plt.title(f"GP Regression (position lvl) {self.id}")
-        plt.legend()
-        plt.savefig(filename)
-        plt.show()
-    
-    def plot_log_prob(self, lml, mutations) -> None:
-        _, ax = plt.subplots(1, 1, figsize=(10,10))
-        for idx, mut in enumerate(self.x_test):
-            y_train = self.y.shape[0] - mutations
-            log_prob = [(lml.squeeze().detach().numpy()) for lml in lmls]
-            sorted_data = np.array(sorted(zip(y_train, log_prob), key= lambda x: x[0]))
-            ax.plot(sorted_data[:, 0], sorted_data[:, 1], "r:", alpha=0.5)
-            #ax.plot(sorted_data[:, 0], np.mean(sorted_data[:, 1]), "k.")
-            # TODO add mean LML
-            # TODO add training data points as dots
-        ax.set_xlabel("training ΔΔg")
-        ax.set_ylabel("log marginal likelihood")
-        plt.title(f"Log Marginal Likelihood over training data {self.id}")
-        plt.savefig(f"./fig/gpr_logmarginal_{self.id}.png")
-        plt.show()
