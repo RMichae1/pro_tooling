@@ -127,7 +127,7 @@ class BayesScaler:
     def plot_scaling(self, save_fig="./fig/"):
         filename = f"{save_fig}/bayes_scaling_{self.pdb_ID}.png"
         fig, ax = plt.subplots(1,2 ,figsize=(25,10))
-        ax[1].set_aspect(aspect=0.3)
+        ax[1].set_aspect(aspect=0.4)
         # plot sampled theta for background (% of the last drawn samples)
         for y in self.θ_xx_samples[-int(0.25*self.samples_N):]:
             ax[0].plot(self.xx, y, "k-", alpha=0.005)

@@ -88,11 +88,16 @@ K[1:, 1:] = ref_K[21:, 21:]
 #     ref_mean_pred_local = beta.T.dot(model.y_test)
 #     np.testing.assert_allclose(ref_mean_pred_local, ref_unscaled_pred)
 
-def test_mean_prediction_against_ref():
-    model.parameter_optimization()
-    print(model.y.shape)
-    ref_mean_corrected = np.linalg.solve(K, KZX_ref.T).T.dot(model.y_train)
-    ref_mean_corrected *= max_y
-    ref_mean_corrected += mean_y
-    mu, _ = model._fit(ref=True)
-    np.testing.assert_allclose(mu.detach().numpy(), ref_mean_corrected)
+def test_k_xX():
+    cov_mats = model.derive_Xx()
+    k_xX = model.mWDK(X=model.X_train, x=model.x_test, covariance_matrices=cov_mats).detach().numpy().T
+    np.testing.assert_allclose(k_xX, KZX_ref)
+
+# def test_mean_prediction_against_ref():
+#     model.parameter_optimization()
+#     print(model.y.shape)
+#     ref_mean_corrected = np.linalg.solve(K, KZX_ref.T).T.dot(model.y_train)
+#     ref_mean_corrected *= max_y
+#     ref_mean_corrected += mean_y
+#     mu, _ = model._fit(ref=True)
+#     np.testing.assert_allclose(mu.detach().numpy(), ref_mean_corrected)
