@@ -389,8 +389,8 @@ class GPRegression:
         """Alg. 2.1 Rasmussen *GPs in ML* """
         n = self.X_train.shape[0]
         m = self.x_test.shape[0]
-        train_mats = [cov[self.idx_train, self.idx_train] for cov in self.covariance_matrices]
-        test_mats = [cov[self.idx_test, self.idx_test] for cov in self.covariance_matrices]
+        train_mats = [cov[self.idx_train, :][:, self.idx_train] for cov in self.covariance_matrices]
+        test_mats = [cov[self.idx_test,:][:,self.idx_test] for cov in self.covariance_matrices]
         K_XX = self.mWDK(X=self.X_train, covariance_matrices=train_mats)
         K_xx = self.mWDK(X=self.x_test, covariance_matrices=test_mats)
         cov_mats = self.derive_Xx()
