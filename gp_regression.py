@@ -221,9 +221,7 @@ class GPRegression:
         optimization_parameters = []
         fit_parameters = []
         # mutations include both insilico and experimental
-        mutation_index = get_mutation_idx(self.protein.mutation_ids)
-        if not self.fusion_flag:
-            mutation_index = get_mutation_idx(self.protein.mut_ids_exp)
+        mutation_index = get_mutation_idx(self.protein.mutation_ids) # includes WT
         for pos in tqdm(range(len(self.protein.sequence))):
             print("reset parameters ...")
             self.reset_GPR() # reset trainable parameters
@@ -231,7 +229,7 @@ class GPRegression:
             mutation_bool_mask = np.array([bool(pos in mut) for mut in mutation_index])
             test_mutation_idx = np.where(mutation_bool_mask)[0]
             not_test_mutation_idx = np.where(~mutation_bool_mask)[0]
-            n_mutations = len(test_mutation_idx)
+            n_mutations = np.array([len(mut) for mut in mutation_index if bool(pos in mut)])
             # split into train and test
             self.set_test_index(test_mutation_idx)
             self.set_train_index(not_test_mutation_idx)
@@ -253,7 +251,6 @@ class GPRegression:
                                         "sigma_E": self.σ_E.get_value(),
                                         "t": self.t.get_value(),
                                         "nll": (nll_init, nll_end)})
-            # TODO save which mutation was included for later plotting
             mutations.append(n_mutations)
             fit_parameters.append({'mu': f_μ.squeeze().detach().numpy(),
                                     'cov': cov.squeeze().detach().numpy(),
@@ -283,8 +280,9 @@ class GPRegression:
             mutation_bool_mask = np.array([bool(pos in mut) for mut in experimental_mutation_index])
             test_mutation_idx = np.where(mutation_bool_mask)[0]
             not_test_mutation_idx = np.where(~mutation_bool_mask)[0]
-            n_mutations = len(test_mutation_idx)
+            n_mutations = np.array([len(mut) for mut in experimental_mutation_index if bool(pos in mut)])
             # split into train and test
+            # TODO check if offset is justified
             self.set_test_index(1+test_mutation_idx) # offset with WT 
             # combine WT + not selected + in silico for training data
             train_index = np.concatenate([np.array([0]), 1+not_test_mutation_idx, 
