@@ -211,7 +211,7 @@ class GPRegression:
         self.X_train = self.X[index]
         self.y_train = self.y[index]
 
-    def position_level_CV_reference(self) -> Dict[str, list]:
+    def position_level_CV_reference(self, ref) -> Dict[str, list]:
         """
         Position level cross-validation that assigns test data-set from
         position as done in the reference implementation - has double noise term
@@ -246,7 +246,7 @@ class GPRegression:
                 print("Optimization broke.")
                 self.reset_trainable_parameters()
             nll_end = self.neg_ll()
-            f_μ, cov = self._fit(ref=True)
+            f_μ, cov = self._fit(ref=ref)
             # write optimization results
             optimization_parameters.append({"w": self.weights.get_value(),
                                         "sigma_S": self.σ_S.get_value(),
