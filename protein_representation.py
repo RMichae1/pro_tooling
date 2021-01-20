@@ -24,7 +24,7 @@ class ProteinCollection:
     computed covariance matrices
     """
     def __init__(self, contactmap: ContactMapper, pdb_ID: str, 
-            mutations_exp: dict={}, mutations_sim: dict={}, scaling=False, 
+            mutations_exp: dict={}, mutations_sim: dict={},
             TESTING=False):
         self.pdb_ID: str = pdb_ID
         self.contactmap = contactmap
@@ -38,13 +38,6 @@ class ProteinCollection:
                                                     sequence=self.sequence, adjacency=self.adjacency)
         self.mutated_sequences = self.mut_S_exp + self.mut_S_is
         self.mutated_adjacencies = self.mut_adj_exp + self.mut_adj_is
-
-        self.scaler = None
-        if scaling:
-            self.scaler = BayesScaler(is_mutations=self.mut_ids_is, exp_mutations=self.mut_ids_exp, 
-            ΔΔg=self.ΔΔg_is, experimentally_observed_ΔΔg=self.ΔΔg_exp)
-            # overwrite in-silico data with scaled
-            self.ΔΔg_is = self.scaler.transform(self.ΔΔg_is)
         self.mutation_ids = ["WT"] + self.mut_ids_exp + self.mut_ids_is
         self.ΔΔg = np.concatenate((np.array([0]), self.ΔΔg_exp, self.ΔΔg_is))
 
