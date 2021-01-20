@@ -232,7 +232,7 @@ def parse_and_assert_mutations(mutation: str) -> Tuple[str, int, str]:
     s_mutations = re.split(r'(\d+)([A-Z])', mutation)[:-1]
     for i in range(0, len(s_mutations), 3):
         seq_res = s_mutations[i]
-        seq_idx = int(s_mutations[i+1])-1 # offset - PDB-format counts from 1
+        seq_idx = int(s_mutations[i+1])-1 # offset - matlab/PDB-format counts from 1
         seq_mut = s_mutations[i+2]
         #assert self.sequence[seq_idx] == seq_res
         #assert self.contactmap.adjacency[seq_idx][0] == seq_res 
@@ -250,11 +250,12 @@ def parse_mutations(sequence: str, adjacency: List[tuple], mutation_dict: dict) 
         return mutated_sequences, mutated_adjacencies
     for (mutation, ddg) in tqdm(mutation_dict):
         ΔΔg.append(ddg)
-        mutation_ids.append(mutation)
         # deepcopy to ensure that the underlying wildtype is not overwritten
         seq = deepcopy(sequence)
         adj = deepcopy(adjacency)
         mutation_tuples = parse_and_assert_mutations(mutation)
+        mutation_string = "".join([str(t) for t in mutation_tuples])
+        mutation_ids.append(mutation_string)
         for _, idx, mut in mutation_tuples:
             seq[idx] = mut
             # change imutable reference tuple by creating new tuple
