@@ -270,12 +270,11 @@ class GPRegression:
                     "rmse": rmse}
         return results
 
-    def position_level_CV(self) -> Dict[str, list]:
+    def position_level_CV(self, ref=False) -> Dict[str, list]:
         self.cv_flag = "pos_lvl_CV"
         mutations = []
         optimization_parameters = []
         fit_parameters = []
-        # mutations include both insilico and experimental
         experimental_mutation_index = get_mutation_idx(self.protein.mut_ids_exp)
         for pos in tqdm(range(len(self.protein.sequence))):
             print("reset parameters ...")
@@ -286,7 +285,7 @@ class GPRegression:
             not_test_mutation_idx = np.where(~mutation_bool_mask)[0]
             n_mutations = len(test_mutation_idx)
             # split into train and test
-            self.set_test_index(1+test_mutation_idx)
+            self.set_test_index(1+test_mutation_idx) # offset with WT 
             # combine WT + not selected + in silico for training data
             train_index = np.concatenate([np.array([0]), 1+not_test_mutation_idx, 
                             np.arange(start=len(self.X_exp)+1, stop=self.X.shape[0])]) # all simulated data are training data
@@ -302,7 +301,7 @@ class GPRegression:
                 print("Optimization broke.")
                 self.reset_trainable_parameters()
             nll_end = self.neg_ll()
-            f_μ, cov = self._fit()
+            f_μ, cov = self._fit(ref=ref)
             # write optimization results
             optimization_parameters.append({"w": self.weights.get_value(),
                                         "sigma_S": self.σ_S.get_value(),
