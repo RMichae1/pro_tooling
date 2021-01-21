@@ -11,8 +11,9 @@ from utility import convert_aa_sequence, preprocess_observations
 import numpy as np
 import pickle
 
-todos = ["2RN2", "4LYZ","2LZM", "1RTB", "1BVC"]
-pdbs = ["1PGA", "1CSP", "1BPI", "1RGG"]
+todos = ["2RN2", "4LYZ","2LZM", "1BVC"]
+done = []
+pdbs = ["1PGA", "1CSP", "1BPI", "1RGG", "1RTB"]
 mutlvl_pdbs = ["1PGA"]
 buggy = ["1BNI", "1VQB", "1LZI", "2CI2","1RN1", "1PIN"]
 
@@ -22,7 +23,7 @@ sim_mutations = parse_matlab_mutation_file("./data/ddg_rosetta_single.mat", quer
 
 for pdb in pdbs:
     # load data from reference files
-    filename = f"./pdb/{pdb.lower()}.pdb"
+    filename = f"/home/rcml/pdb/{pdb.lower()}.pdb"
     save_fig = os.path.join(os.path.abspath(''), "fig/")
     ref_file = loadmat(f"./data/{pdb.upper()}.mat")
     ref_adj = convert_graph_from_matlab_file(ref_file["contact_map"])
@@ -71,25 +72,29 @@ for pdb in pdbs:
     sigma_e = gpr.σ_E.get_value()
     t = gpr.t.get_value()
     end_nll = gpr.neg_ll()
-    hyper_dict = {"w": weights, "sigma_s": sigma_s, "sigma_e": sigma_e, "t": t}
-    with open(f"./hyperparameters_X_all_{pdb}.pickle", "wb") as outfile:
-        pickle.dump(hyper_dict, outfile)
+    # hyper_dict = {"w": weights, "sigma_s": sigma_s, "sigma_e": sigma_e, "t": t}
+    # with open(f"./hyperparameters_X_all_{pdb}.pickle", "wb") as outfile:
+    #     pickle.dump(hyper_dict, outfile)
     
-    # as done in reference (2xsigma and position level naive)
-    ref_results = gpr.position_level_CV_reference(ref=True)
-    with open(f"./results_REFERENCE_pos_lvl_{pdb}.pickle", "wb") as outfile:
-        pickle.dump(ref_results, outfile)
+    # # as done in reference (2xsigma and position level naive)
+    # ref_results = gpr.position_level_CV_reference(ref=True)
+    # with open(f"./results_ALL_pos_lvl_{pdb}.pickle", "wb") as outfile:
+    #     pickle.dump(ref_results, outfile)
 
-    # position level naive corrected
-    corrected_res = gpr.position_level_CV(ref=False)
-    with open(f"./results_NO_ERROR_REFERENCE_pos_lvl_{pdb}.pickle", "wb") as outfile:
-        pickle.dump(corrected_res, outfile)
+    # # position level naive corrected
+    # corrected_res = gpr.position_level_CV(ref=False)
+    # with open(f"./results_NO_ERROR_ALL_pos_lvl_{pdb}.pickle", "wb") as outfile:
+    #     pickle.dump(corrected_res, outfile)
         
-    # experimentals in testing
-    pos_results = gpr.position_level_CV()
-    with open(f"./results_pos_lvl_{pdb}.pickle", "wb") as outfile:
-        pickle.dump(pos_results, outfile)
+    # # experimentals in testing
+    # pos_results = gpr.position_level_CV()
+    # with open(f"./results_pos_lvl_{pdb}.pickle", "wb") as outfile:
+    #     pickle.dump(pos_results, outfile)
+
+    pos_err_result = gpr.position_level_CV(ref=True)
+    with open(f"./results_REF_ERROR_pos_lvl_{pdb}.pickle", "wb") as outfile:
+        pickle.dump(pos_err_result, outfile)
     
-    # mut_results = gpr.mutation_level_CV()
-    # with open(f"./results_mut_lvl_{pdb}.pickle", "wb") as outfile:
-    #     pickle.dump(mut_results, outfile)
+    mut_results = gpr.mutation_level_CV()
+    with open(f"./results_mut_lvl_{pdb}.pickle", "wb") as outfile:
+        pickle.dump(mut_results, outfile)
