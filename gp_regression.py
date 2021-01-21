@@ -327,21 +327,25 @@ class GPRegression:
         """
         iteratively sets train and test splits, where one mutation is in the test-set
         has side-effects
-        This trains on N-1 data and includes the excluded for test
+        This trains on N-1 data and includes the excluded for test - LOO CV
         TODO not optimal - different approaches needed
+        This has been adapted to only use experimental mutations for efficiency
         """
         self.cv_flag = "mut_lvl_CV"
         optimization_parameters = []
         fit_parameters = []
-        pbar = tqdm(enumerate(self.X))
+        n_mutations = []
+        # get all experimental mutations incl WT
+        pbar = tqdm(enumerate(self.X[:(len(self.protein.mut_ids_exp)+1), :]))
         for idx, _ in pbar:
             pbar.set_description(f"Pos: {idx}")
-            if idx == 1: # exclude WT
+            if idx == 1: # exclude WT from CV
                 continue 
             self.reset_GPR()
             # set train and testing indices
-            self.set_train_index( np.delete(np.arange(0, self.X.shape[0]), idx))
+            self.set_train_index(np.delete(np.arange(0, len(self.protein.mut_S_exp)+1), idx))
             self.set_test_index(np.array([idx]))
+            n_mutations.append(len(self.protein.mut_ids_exp[idx-1])) # offset by WT as its not included in mutation-list
             nll_init = self.neg_ll() 
             try:
                 self.parameter_optimization()
@@ -356,8 +360,8 @@ class GPRegression:
                                             "t": self.t.get_value()})
             f_μ, cov = self._fit()
             fit_parameters.append({"mu": f_μ.squeeze().detach().numpy(),
-                            "cov": cov.squeeze().detach().numpy(),
-                            "y_exp": self.y_test.detach().numpy()})
+                                "cov": cov.squeeze().detach().numpy(),
+                                "y_exp": self.y_test.detach().numpy()})
         predictions = np.concatenate([np.atleast_1d(x) for x in [elem.get('mu') for elem in fit_parameters]])
         experimental = np.concatenate([x for sub in [elem.get('y_exp') for elem in fit_parameters] for x in sub])
         results = {"optimization": optimization_parameters, 
