@@ -323,7 +323,7 @@ class GPRegression:
                     "rmse": rmse}
         return results
 
-    def mutation_level_CV(self) -> Tuple[List[dict], List[dict]]:
+    def mutation_level_CV(self, ref=False) -> Tuple[List[dict], List[dict]]:
         """
         iteratively sets train and test splits, where one mutation is in the test-set
         has side-effects
@@ -358,7 +358,7 @@ class GPRegression:
                                             "sigma_S": self.σ_S.get_value(),
                                             "sigma_E": self.σ_E.get_value(),
                                             "t": self.t.get_value()})
-            f_μ, cov = self._fit()
+            f_μ, cov = self._fit(ref=ref)
             fit_parameters.append({"mu": f_μ.squeeze().detach().numpy(),
                                 "cov": cov.squeeze().detach().numpy(),
                                 "y_exp": self.y_test.detach().numpy()})
