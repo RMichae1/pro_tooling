@@ -14,9 +14,21 @@ from utility import get_mutation_idx
 from scipy.stats import norm, spearmanr
 from sklearn.metrics import mean_squared_error
 
-colormap = ["grey", "black", "yellow", "blue", "red", "pink", "orange", "lightblue", "green"]
-legend_circles = [Line2D([0], [0], marker="o", markersize=15, color=c, label=str(m)) for c, m in zip(colormap, np.arange(1,10,1))]
+colormap = ["grey", "black", "yellow", "blue", "red", "pink", "orange", "lightblue", "green", "darkred"]
+legend_circles = [Line2D([0], [0], marker="o", markersize=15, color=c, label=str(m)) for c, m in zip(colormap, np.arange(1,11,1))]
 mutation_legend_handle = legend_circles
+
+matrix_legend = ['22-29 PAM \n(Benner et al., 1994)', 'Residue Replace \n(Cserzo et al., 1994)', 
+    'Initially aligning \n(Gonnet et al., 1992)', 'BLOSUM45 \n(Henikoff-Henikoff, 1992)',
+    'BLOSUM62 \n(Henikoff-Henikoff, 1992)', 'BLOSUM80 \n (Henikoff-Henikoff, 1992)', 
+    'Structure comparison \n(Luthy et al. 1991)', 'Structure comparison \n(Luthy et al., 1991)', 
+    'Structure comparison alpha helix \n(Luthy et al., 1991)', 'Structure comparison beta strand \n(Luthy et al., 1991)',
+    'Chemical similarity scores \n (McLachlan, 1972)', 'EMPAR \n(Mohana Rao, 1987)', 
+    'Structure correlation matrix 1 \n(Niefind-Schomburg, 1991)', 
+    'Cross-correlation main chain \n(Qu et al., 1993)', 'Cross-correlation side chain \n(Qu et al., 1993)',
+    'The mutant spatial preference \n(Qu et al., 1993)', 'isomorphicity replacements \n(Tudos et al., 1990)',
+    'BLOSUM50 \n(Henikoff-Henikoff, 1992)', 'PHAT \n(Ng et al., 2000)', 
+    'SLIM \n(Mueller et al., 2001)', 'Dirichlet Mixture Model \n(Crooks-Brenner, 2005)']
 
 def get_mutation_number_ref_cv(protein_representation) -> list:
     """
@@ -122,19 +134,19 @@ def plot_hyperparameters(proteins: list, save_fig="./fig/", dir="./results/hyper
     assert ws.shape[1] == len(results_p)
     df = pd.DataFrame(data=ws, columns=results_p, index=kernels.sub_matrices_ids)
     descriptions = [m_info[0] for _, _, m_info in loadmat("./data/subMats.mat").get('subMats')] 
-    df["Description"] = descriptions
+    #df["Description"] = descriptions
+    df["Description"] = matrix_legend
+    plt.rcParams.update({'figure.autolayout': True})
     fig, (ax, cbar_ax) = plt.subplots(2, figsize=(5, 20), gridspec_kw={"height_ratios": (.9, .05), "hspace": .3})
     im = sns.heatmap(ws, ax=ax, linewidths=0.5, cmap=sns.cm.rocket_r,# vmax=0.025, 
             cbar_ax=cbar_ax, cbar_kws={"orientation":"horizontal"})
     ax.set_xticklabels(results_p)
-    ax.set_ylabel("Matrices", color='k', labelpad=200)
     ax.set_yticklabels(df.Description)
     plt.setp(ax.get_xticklabels(), rotation=0, ha="right",
          rotation_mode="anchor")
-    plt.setp(ax.get_yticklabels(), rotation=0, rotation_mode="anchor")
-    plt.tight_layout()
+    plt.setp(ax.get_yticklabels(), rotation=45, rotation_mode="anchor", fontsize=10)
     plt.title("Kernel Weights Table")
-    plt.savefig(filename)
+    plt.savefig(filename, bbox_inches = "tight")
     plt.show()
 
 
@@ -161,11 +173,13 @@ def plot_sigmas(proteins: list, save_fig="./fig", dir="./results/hyper/", suffix
     ax.set_xticklabels(result_p)
     ax.set_yticklabels(["σ_S", "σ_E"])
     plt.title(f"Optimized noise parameters {suffix}")
+    plt.tight_layout()
     plt.savefig(filename)
     plt.show()
 
 
 def plot_mean_over_weights(proteins: list, save_fig="./fig", dir="./results/", suffix=""):
+    plt.rcParams.update({'figure.autolayout': True})
     filename = os.path.join(save_fig, f"weights_mean_table_{suffix}.png")
     kernels = KernelLoader()
     mean_ws = []
@@ -181,7 +195,8 @@ def plot_mean_over_weights(proteins: list, save_fig="./fig", dir="./results/", s
     assert mean_ws.shape[1] == len(result_p)
     df = pd.DataFrame(data=mean_ws, columns=result_p, index=kernels.sub_matrices_ids)
     descriptions = [m_info[0] for _, _, m_info in loadmat("./data/subMats.mat").get('subMats')] 
-    df["Description"] = descriptions
+    #df["Description"] = descriptions
+    df["Description"] = matrix_legend
     fig, (ax, cbar_ax) = plt.subplots(2, figsize=(5, 20), gridspec_kw={"height_ratios": (.9, .05), "hspace": .3})
     im = sns.heatmap(mean_ws, ax=ax, linewidths=0.5, cmap=sns.cm.rocket_r, #vmax=0.025, 
             cbar_ax=cbar_ax, cbar_kws={"orientation":"horizontal"})
@@ -189,9 +204,9 @@ def plot_mean_over_weights(proteins: list, save_fig="./fig", dir="./results/", s
     ax.set_yticklabels(df.Description)
     plt.setp(ax.get_xticklabels(), rotation=0, ha="right",
          rotation_mode="anchor")
-    plt.setp(ax.get_yticklabels(), rotation=0, rotation_mode="anchor")
+    plt.setp(ax.get_yticklabels(), rotation=45, rotation_mode="anchor", fontsize=10)
     plt.title(f"Kernel weights μ \n after pos.-lvl CV {suffix}")
-    plt.savefig(filename)
+    plt.savefig(filename, bbox_inches = "tight")
     plt.show()
 
 
@@ -294,10 +309,12 @@ def plot_pos_lvl_gpr_individual(proteins:list, results_dir="./results/mGPfusion"
     save_fig="./fig/", suffix="", title="", y_n=3, x_n=4) -> None:
     assert x_n*y_n >= len(proteins)
     filename = os.path.join(save_fig, f"gpr_pos_lvl_individual_{suffix}.png")
-    fig, ax = plt.subplots(y_n, x_n, figsize=(8.3,11.7))
+    fig, ax = plt.subplots(y_n, x_n, figsize=(15,15))
     index = [(i,j) for i in range(y_n) for j in range(x_n)]
     for (i,j), p in zip(index, proteins):
         ax[i,j].axline((-4, -4), (4, 4), color="grey", linestyle="--")
+        ax[i,j].set_xlim((-3,3))
+        ax[i,j].set_ylim((-3,3))
         ax[i,j].grid(True)
         mu, y_test, _, _ = parse_regression_results(p, directory=results_dir)
         mutations = parse_mutations(p, results_dir)
@@ -308,16 +325,16 @@ def plot_pos_lvl_gpr_individual(proteins:list, results_dir="./results/mGPfusion"
         y_test = np.concatenate([elem for sub in y_test for elem in sub])
         mapped_color = [colormap[mut-1] for mut in mutations]
         ax[i, j].scatter(y_test, f_μ, s=100., color=mapped_color, edgecolors="darkgrey")
-        ax[i, j].set_title(f"{p}", fontsize=20)
+        ax[i, j].set_title(f"{p}", fontsize=12)
     # TODO delete axes from a range of diff values between proteins and provided last axis length
     fig.delaxes(ax[2][3])
     fig.delaxes(ax[2][2])
     fig.delaxes(ax[2][1])
     fig.legend(handles=mutation_legend_handle, loc="lower right", title="Number of mutations")
     for i in range(y_n):
-        ax[i,0].set_ylabel("predicted ΔΔG", fontsize=18)
+        ax[i,0].set_ylabel("predicted ΔΔG", fontsize=12)
     for i in range(x_n):
-        ax[y_n-1,i].set_xlabel("experimental ΔΔG", fontsize=18)
+        ax[y_n-1,i].set_xlabel("experimental ΔΔG", fontsize=12)
     plt.suptitle(f"GP Regression (position lvl CV) {suffix}")
     plt.savefig(filename)
     plt.show()
@@ -371,22 +388,25 @@ def plot_pos_lvl_gpr_total(proteins:list, results_dir="./results/mGPfusion",
 
 def plot_mut_lvl_gpr_individual(proteins:list, results_dir="./results/mGPfusion", save_fig="./fig/", suffix="", 
     y_n=3, x_n=4, uncertainties=False) -> None:
-    filename = os.path.join(save_fig, f"gpr_mut_lvl_{str(proteins)}.png")
-    fig, ax = plt.subplots(y_n, x_n, figsize=(10,10))
+    filename = os.path.join(save_fig, f"gpr_mut_lvl_individual_{suffix}.png")
+    fig, ax = plt.subplots(y_n, x_n, figsize=(15,15))
     index = [(i,j) for i in range(y_n) for j in range(x_n)]
     for (i,j), p in zip(index, proteins):
-        ax[i, j].set_ylim((-10, 5))
-        ax[i, j].set_xlim((-10, 5))
-        ax[i, j].axline((-4, -4), (4,4), color="grey", linestyle="--")
+        ax[i,j].set_xlim((-3,3))
+        ax[i,j].set_ylim((-3,3))
+        ax[i,j].axline((-4, -4), (4,4), color="grey", linestyle="--")
         mu, y_test, cov, _ = parse_regression_results(pdb_id=p, directory=results_dir)
         mutations = parse_mutations(p, results_dir)
-        if mu is None or mutations is None:
+        if mu is None:
             continue
         f_μ = np.concatenate([np.atleast_1d(elem) for elem in mu])
+        color = "black"
         y_test = np.concatenate([elem for sub in y_test for elem in sub])
-        mapped_color = [colormap[mut-1] for mut in mutations]
-        ax[i,j].scatter(y_test, f_μ, s=100., color=mapped_color,
+        if mutations is not None:
+            color = [colormap[mut-1] for mut in mutations]
+        ax[i,j].scatter(y_test, f_μ, s=100., color=color,
          edgecolors="darkgrey")
+        ax[i,j].set_title(f"{p}", fontsize=12)
         if not uncertainties:
             continue # if uncertainties run the loop below
         for idx, (μ, var, y) in enumerate(zip(f_μ, cov, y_test)):
@@ -399,18 +419,18 @@ def plot_mut_lvl_gpr_individual(proteins:list, results_dir="./results/mGPfusion"
     fig.delaxes(ax[2][3])
     fig.delaxes(ax[2][2])
     fig.delaxes(ax[2][1])
-    fig.legend(handles=mutation_legend_handle, loc="lower right", title="Number of mutations")
+    #fig.legend(handles=mutation_legend_handle, loc="lower right", title="Number of mutations")
     for i in range(y_n):
-        ax[i,0].set_ylabel("predicted ΔΔG", fontsize=18)
+        ax[i,0].set_ylabel("predicted ΔΔG", fontsize=12)
     for i in range(x_n):
-        ax[y_n-1,i].set_xlabel("experimental ΔΔG", fontsize=18)
-    plt.title(f"GP Regression (mutation lvl CV) {suffix}")
+        ax[y_n-1,i].set_xlabel("experimental ΔΔG", fontsize=12)
+    plt.suptitle(f"GP Regression (mutation lvl CV) {suffix}")
     plt.legend()
     plt.savefig(filename)
     plt.show()
 
 def plot_mut_lvl_gpr_total(proteins:list, results_dir="./results/mGPfusion/", save_fig="./fig/", suffix="", uncertainties=False) -> None:
-    filename = os.path.join(save_fig, f"gpr_mut_lvl_{str(proteins)}.png")
+    filename = os.path.join(save_fig, f"gpr_mut_lvl_total_{suffix}.png")
     fig, ax = plt.subplots(1,1, figsize=(10,10))
     ax.axline((-4, -4), (4,4), color="grey", linestyle="--")
     for p in proteins:
@@ -431,15 +451,15 @@ def plot_mut_lvl_gpr_total(proteins:list, results_dir="./results/mGPfusion/", sa
             if idx == 2:
                 break
             xx = np.arange(-5, 5, 0.1)
-            f = norm.pdf(xx, μ, var)
+            f = norm.pdf(xx, μ, np.sqrt(var))
             x_vals = np.array(y+f)
             ax.plot(x_vals, xx, "k--", alpha=0.1)
    # fig.legend(handles=mutation_legend_handle, loc="lower right", title="Number of mutations")
-    ax.set_ylim((-10, 5))
-    ax.set_xlim((-10, 5))
+    ax.set_ylim((-3, 3))
+    ax.set_xlim((-3, 3))
     ax.set_xlabel("experimental ΔΔG", fontsize=18)
     ax.set_ylabel("predicted ΔΔG", fontsize=18)
-    plt.title(f"GP Regression (mutation lvl CV) {suffix}")
+    plt.suptitle(f"GP Regression (mutation lvl CV) {suffix}")
     plt.legend()
     plt.savefig(filename)
     plt.show()
@@ -459,4 +479,27 @@ def plot_log_prob(lml, mutations, x_test, y) -> None:
     ax.set_ylabel("log marginal likelihood")
     plt.title(f"Log Marginal Likelihood over training data {self.id}")
     plt.savefig(f"./fig/gpr_logmarginal_{self.id}.png")
+    plt.show()
+
+def plot_covariance_matrices(pcol, mats) -> None:
+    
+    labels = ["".join([m for m in mut]) for mut in pcol.mutation_ids[:10]]
+    for mat in mats:
+        fig, ax = plt.subplots(1, 1, figsize=(10,10))
+        sns.heatmap(mat[:10, :10], ax=ax)
+        ax.set_xticks(np.arange(0, 10))
+        ax.set_xticklabels(labels, rotation=0, ha="right", rotation_mode="anchor")
+        ax.set_yticks(np.arange(0, 10))
+        ax.set_yticklabels(labels, rotation=0, rotation_mode="anchor", fontsize=10)
+    plt.show()
+
+def plot_mWDK(pcol, mWDK) -> None:
+    labels = ["".join([m for m in mut]) for mut in pcol.mutation_ids[:10]]
+    fig, ax = plt.subplots(1, 1, figsize=(10,10))
+    sns.heatmap(mWDK[:10, :10], ax=ax)
+    ax.set_xticks(np.arange(0, 10))
+    ax.set_xticklabels(labels, rotation=45, ha="right", rotation_mode="anchor")
+    ax.set_yticks(np.arange(0, 10))
+    ax.set_yticklabels(labels, rotation=0, rotation_mode="anchor", fontsize=10)
+    plt.savefig("./fig/mWDK_matrix.png")
     plt.show()
