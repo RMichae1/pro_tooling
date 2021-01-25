@@ -157,5 +157,5 @@ class BayesScaler:
         plt.tight_layout()
         plt.savefig(filename)
         plt.legend()
-        plt.show()
+        #plt.show()
        
