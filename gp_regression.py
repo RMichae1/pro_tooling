@@ -8,8 +8,6 @@ from utility import get_mutation_idx
 import torch
 from torch import cholesky, cholesky_solve
 from torch.distributions import MultivariateNormal, Gamma
-import matplotlib.pyplot as plt
-import seaborn as sns
 from typing import Tuple
 from protein_representation import ProteinCollection
 from graphkernel import KernelLoader
