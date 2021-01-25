@@ -126,36 +126,34 @@ class BayesScaler:
 
     def plot_scaling(self, save_fig="./fig/"):
         filename = f"{save_fig}/bayes_scaling_{self.pdb_ID}.png"
-        fig, ax = plt.subplots(1,2 ,figsize=(25,10))
-        ax[1].set_aspect(aspect=0.4)
+        fig, ax = plt.subplots(1,1 ,figsize=(15,15))
         # plot sampled theta for background (% of the last drawn samples)
-        for y in self.θ_xx_samples[-int(0.25*self.samples_N):]:
-            ax[0].plot(self.xx, y, "k-", alpha=0.005)
+        for y in self.θ_xx_samples[-int(0.2*self.samples_N):]:
+            ax.plot(self.xx, y, "k-", alpha=0.005)
         # plot final theta over complete range
         y = list(map(self.transform, self.xx))
-        ax[0].plot(self.xx, y, "k-", label="μ scaling")
-        sns.scatterplot(x=self.ΔΔg_is.numpy(), y=self.θ, ci=self.σ_T, s=30, color="green", ax=ax[0], label="scaled simulated data")
-        sns.scatterplot(x=self.ΔΔg_is.numpy(), y=self.ΔΔg_exp.numpy(), s=250, color="blue", ax=ax[0], label="experimental")
+        ax.plot(self.xx, y, "k-", label="μ scaling")
+        sns.scatterplot(x=self.ΔΔg_is.numpy(), y=self.θ, ci=self.σ_T, s=30, color="green", ax=ax, label="scaled simulated data")
+        sns.scatterplot(x=self.ΔΔg_is.numpy(), y=self.ΔΔg_exp.numpy(), s=250, color="blue", ax=ax, label="experimental")
         # TODO account for confidence interval correctly
         ci_pos = np.array(list(map(self.transform, self.xx))) + 2 * self.σ_T_xx
         ci_neg = np.array(list(map(self.transform, self.xx))) - 2 * self.σ_T_xx
         # draw confidence intervals at val +/- one σ_T around all sampled range
-        ax[0].plot(self.xx, ci_pos, "r--") # TODO order points for smoother plotting
-        ax[0].plot(self.xx, ci_neg, "r--")
+        ax.plot(self.xx, ci_pos, "r--") # TODO order points for smoother plotting
+        ax.plot(self.xx, ci_neg, "r--")
         # TODO add green interval for sampling posterior
-        # barplot over scaled y values
-        sns.histplot(self.σ_T_xx, ax=ax[1], label="σ_T over range", alpha=0.3, stat="density")
-        sns.histplot(self.σ_T_samples, ax=ax[1], label="σ_T per sample", color="black", stat="count")
+        # # barplot over scaled y values
+        # sns.histplot(self.σ_T_xx, ax=ax[1], label="σ_T over range", alpha=0.3, stat="density")
+        # sns.histplot(self.σ_T_samples, ax=ax[1], label="σ_T per sample", color="black", stat="count")
         # sns.barplot(x=self.σ_T_sampled, y=np.array(list(map(self.transform, self.xx))), 
         #             label="σ values", ax=ax[1])
-        ax[0].set_xlabel("ΔΔG original", fontsize=18)
-        ax[1].set_xlabel("σT", fontsize=18)
-        ax[0].set_ylabel("ΔΔG yE, yS", fontsize=18)
-        ax[0].set_ylim((-12, 7))
-        ax[0].set_xlim(self.x_range)
+        ax.set_xlabel("ΔΔG original", fontsize=18)
+        ax.set_ylabel("ΔΔG yE, yS", fontsize=18)
+        ax.set_ylim((-12, 7))
+        ax.set_xlim(self.x_range)
         plt.suptitle(f"Stability Transformation {self.pdb_ID}", fontsize=22)
         plt.tight_layout()
-        plt.savefig(filename)
         plt.legend()
+        plt.savefig(filename)
         #plt.show()
        
