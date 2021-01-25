@@ -74,20 +74,5 @@ class MatrixKernel:
             k += temp_k
         norm = np.sqrt(np.diag(k))[:, np.newaxis]
         k_hat = k / norm.dot(norm.T)
-
-            # TODO imperformant and deprecated
-            # k_xy = self.matrix[x_idx][y_idx] * self.averaged_neighborhood(p_res=res_x, q_res=res_y, 
-            #                 p_seq=p_sequence, q_seq=q_sequence, 
-            #                 p_adj=p_adjacency[idx], q_adj=q_adjacency[idx])
-            # TODO this is how normalization is described in the paper, but not how it is done in practice!
-            # # compute for normalization
-            # k_xx = self.matrix[x_idx][x_idx] * self.averaged_neighborhood(p_res=res_x, q_res=res_x, 
-            #                     p_seq=p_sequence, q_seq=p_sequence,
-            #                     p_adj=p_adjacency[idx], q_adj=p_adjacency[idx])
-            # k_yy = self.matrix[y_idx][y_idx] * self.averaged_neighborhood(p_res=res_y, q_res=res_y, 
-            #                     p_seq=q_sequence, q_seq=q_sequence, 
-            #                     p_adj=q_adjacency[idx], q_adj=q_adjacency[idx])
-            # normalized_k = k_xy / np.sqrt(k_xx*k_yy)
-            # k += normalized_k
         return torch.Tensor(k_hat).type(torch.float64)
 
