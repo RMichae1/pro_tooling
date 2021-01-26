@@ -16,15 +16,40 @@ from visualization import generate_results_table, generate_total_results_table
 from visualization import plot_mut_lvl_gpr_total, plot_mut_lvl_gpr_individual
 from visualization import plot_pos_lvl_gpr_total, plot_pos_lvl_gpr_individual
 from visualization import plot_covariance_matrices, plot_mWDK
+from scipy.stats import norm, spearmanr
+from sklearn.metrics import mean_squared_error
 
 def write_results(gpr_results: dict, gpr, suffix=""):
-    with open(f"./results/1PGA_gpr_results_{gpr.cv_flag}_{suffix}.pickle", "wb") as outfile:
+    with open(f"./results/results_{gpr.cv_flag}_{gpr.protein.pdb_ID}_{suffix}.pickle", "wb") as outfile:
         pickle.dump(gpr_results, outfile)
 
 pdbs = ["1PGA", "1CSP", "1BPI", "1RGG", "1RTB", "2RN2", "4LYZ","2LZM", "1BVC"]
 
-if __name__ == "__main__":
-    pdb="1PGA"
+def run_plotting(pdbs=pdbs):
+    plot_pos_lvl_gpr_individual(proteins=pdbs, results_dir="./results/mGPfusion/pos_cv/")
+    # plot position level reference
+    plot_pos_lvl_gpr_total(proteins=pdbs, results_dir="./results/mGPfusion/pos_cv/", 
+                save_fig="./fig/gpr/", suffix="pos-lvl")
+    plot_pos_lvl_gpr_total(proteins=pdbs, results_dir="./results/mGPfusion/pos_cv_ref_error/", 
+            save_fig="./fig/gpr/", suffix="2σ-pos-lvl")
+    # plot_hyperparameters(proteins=pdbs)
+    # plot_sigmas(proteins=pdbs)
+    # plot_mean_over_weights(proteins=pdbs, dir="./results/mGPfusion/pos_cv/", suffix="pos-lvl")
+    # plot_mean_over_weights(proteins=pdbs, dir="./results/mGPfusion/mut_cv/", suffix="mut-lvl")
+    # # plot_mean_over_weights(proteins=pdbs, dir="./results/mGPfusion/mut_cv_ref_error/", suffix="2σ")
+    result_df = generate_results_table(proteins=pdbs, method=["mGPfusion", "2σ mGPfusion"], 
+        dir="./results/")
+    print(result_df)
+    print(result_df.to_latex(index=True, bold_rows=True))
+    total_results_df = generate_total_results_table(proteins=pdbs, dir="./results/")
+    print(total_results_df)
+    print(total_results_df.to_latex(index=True, bold_rows=True))
+    plot_mut_lvl_gpr_total(proteins=pdbs, results_dir="./results/mGPfusion/mut_cv/")
+    plot_mut_lvl_gpr_individual(proteins=pdbs, results_dir="./results/mGPfusion/mut_cv/")
+    # plot_mut_lvl_gpr_individual(proteins=pdbs, results_dir="./results/mGPfusion/mut_cv/", suffix="uncertainties",
+    #         uncertainties=True)
+
+def run_gpr(pdb):
     print(pdb)
     # Contact Mapper
     # example case 1PGA - residue distance
@@ -48,20 +73,19 @@ if __name__ == "__main__":
     y_wt = np.array([0])[:, np.newaxis]
     X_wt = convert_aa_sequence([pcol.sequence])
 
-    # # scale using Bayesian Scaling
-    # bs_rosetta = BayesScaler(is_mutations=mut_ids_is, ΔΔg=pcol.ΔΔg_is, exp_mutations=mut_ids_exp, 
-    #                     experimentally_observed_ΔΔg=pcol.ΔΔg_exp, TESTING=False, pdb_ID=pdb)
-    # bs_rosetta.plot_scaling()
-    # ΔΔg_exp = ΔΔg_exp[:, np.newaxis]
-    # ΔΔg_is_scaled = bs_rosetta.transform(ΔΔg_is)[:, np.newaxis]
+    # scale using Bayesian Scaling
+    bs_rosetta = BayesScaler(is_mutations=mut_ids_is, ΔΔg=pcol.ΔΔg_is, exp_mutations=mut_ids_exp, 
+                        experimentally_observed_ΔΔg=pcol.ΔΔg_exp, TESTING=False, pdb_ID=pdb)
+    bs_rosetta.plot_scaling()
+    ΔΔg_exp = ΔΔg_exp[:, np.newaxis]
+    ΔΔg_is_scaled = bs_rosetta.transform(ΔΔg_is)[:, np.newaxis]
 
+    # Scale y-values as done in the implementation by normalizing with mean and max
+    mean_y, max_y, y_wt, ΔΔg_exp, ΔΔg_is_scaled = preprocess_observations(y_wt, ΔΔg_exp, ΔΔg_is_scaled)
 
-    # # Scale y-values as done in the implementation by normalizing with mean and max
-    # mean_y, max_y, y_wt, ΔΔg_exp, ΔΔg_is_scaled = preprocess_observations(y_wt, ΔΔg_exp, ΔΔg_is_scaled)
-
-    # gpr = GPRegression(protein_representation=pcol, X_wt=X_wt, X_exp=X_exp, X_is=X_is, 
-    #                      y_wt=y_wt, y_exp=ΔΔg_exp, y_is=ΔΔg_is_scaled, adjacencies=ref_adj, 
-    #                      σ_T=bs_rosetta.σ_T, y_max=max_y, y_mean=mean_y)
+    gpr = GPRegression(protein_representation=pcol, X_wt=X_wt, X_exp=X_exp, X_is=X_is, 
+                         y_wt=y_wt, y_exp=ΔΔg_exp, y_is=ΔΔg_is_scaled, adjacencies=ref_adj, 
+                         σ_T=bs_rosetta.σ_T, y_max=max_y, y_mean=mean_y)
 
     # # get optimization values
     # init_neg_ll = gpr.neg_ll()
@@ -78,37 +102,24 @@ if __name__ == "__main__":
     # experimental pos-lvl CV
     # gpr_results_pos_lvl = gpr.position_level_CV()
     # write_results(gpr_results_pos_lvl, gpr)
-    # # reference ALL pos-lvl CV
+    # reference ALL pos-lvl CV 
     # gpr_results_pos_lvl_ref = gpr.position_level_CV_reference()
     # write_results(gpr_results_pos_lvl_ref, gpr)
     # mutation lvl CV (LOO)
-    # gpr_results_mutation_lvl = gpr.mutation_level_CV()
-    # write_results(gpr_results_mutation_lvl, gpr)
+    # gpr_results_mutation_lvl = gpr.mutation_level_CV(ref=False)
+    # write_results(gpr_results_mutation_lvl, gpr, suffix="fixed")
+    # gpr_results_mutation_lvl = gpr.mutation_level_CV(ref=True)
+    # write_results(gpr_results_mutation_lvl, gpr, suffix="2sigma_fixed")
+    ## TEST ALL DATA TRAIN AND TEST
+    gpr.parameter_optimization()
+    gpr.set_train_index(np.arange(0, gpr.X.shape[0]))
+    gpr.set_test_index(np.arange(0, gpr.X.shape[0]))
+    mu, cov = gpr._fit()
+    print(spearmanr(mu.detach().numpy(), gpr.y_test))
+    print(mean_squared_error(gpr.y_test, mu.detach().numpy()))
 
 
-    # TODO run below for plotting
-    # plot results
-    pdbs = ["1PGA", "1CSP", "1BPI", "1RGG", "2RN2", "4LYZ","2LZM", "1RTB", "1BVC"]
-    # plot_pos_lvl_gpr_total(proteins=pdbs, results_dir="./results/mGPfusion/pos_cv/")
-    plot_pos_lvl_gpr_individual(proteins=pdbs, results_dir="./results/mGPfusion/pos_cv/")
-    # plot position level reference
-    plot_pos_lvl_gpr_total(proteins=pdbs, results_dir="./results/mGPfusion/pos_cv/", 
-                save_fig="./fig/gpr/", suffix="pos-lvl")
-    plot_pos_lvl_gpr_total(proteins=pdbs, results_dir="./results/mGPfusion/pos_cv_ref_error/", 
-            save_fig="./fig/gpr/", suffix="2σ-pos-lvl")
-    plot_hyperparameters(proteins=pdbs)
-    plot_sigmas(proteins=pdbs)
-    plot_mean_over_weights(proteins=pdbs, dir="./results/mGPfusion/pos_cv/", suffix="pos-lvl")
-    plot_mean_over_weights(proteins=pdbs, dir="./results/mGPfusion/mut_cv/", suffix="mut-lvl")
-    # plot_mean_over_weights(proteins=pdbs, dir="./results/mGPfusion/mut_cv_ref_error/", suffix="2σ")
-    result_df = generate_results_table(proteins=pdbs, method=["mGPfusion", "2σ mGPfusion"], 
-        dir="./results/")
-    print(result_df)
-    print(result_df.to_latex(index=True, bold_rows=True))
-    total_results_df = generate_total_results_table(proteins=pdbs, dir="./results/")
-    print(total_results_df)
-    print(total_results_df.to_latex(index=True, bold_rows=True))
-    plot_mut_lvl_gpr_total(proteins=pdbs, results_dir="./results/mGPfusion/mut_cv/")
-    plot_mut_lvl_gpr_individual(proteins=pdbs, results_dir="./results/mGPfusion/mut_cv/")
-    # plot_mut_lvl_gpr_individual(proteins=pdbs, results_dir="./results/mGPfusion/mut_cv/", suffix="uncertainties",
-    #         uncertainties=True)
+if __name__ == "__main__":
+    run_gpr(pdb="1PGA")
+    # run_plotting()
+    # run_plotting(pdbs=["1PGA", "1CSP", "2RN2"])
