@@ -21,7 +21,8 @@ np.random.seed(42)
 class GPRegression:
     def __init__(self, protein_representation: ProteinCollection, X_wt: np.ndarray, 
                 X_exp: np.ndarray, X_is: np.ndarray, y_wt: np.ndarray, y_exp: np.ndarray, y_is: np.ndarray,
-                y_max: float, y_mean: float, adjacencies: np.ndarray, σ_T: float, n_optimization=15, fusion=True):
+                y_max: float, y_mean: float, adjacencies: np.ndarray, σ_T: float, n_optimization=15, 
+                fusion=True):
         self.X_wt, self.X_exp, self.X_is = X_wt, X_exp, X_is
         self.y_wt, self.y_exp, self.y_is = y_is, y_exp, y_is
         self.y_max, self.y_mean = y_max, y_mean
@@ -29,8 +30,7 @@ class GPRegression:
         self.adjacencies = adjacencies
         self.cv_flag: str = None
         self.fusion_flag: bool = fusion
-        # set hyperparameters - see Appendix mGPfusion
-        σ_0=1e-6 
+        # set hyperparameters - see Appendix mGPfusion 
         α_E=2.5
         β_E=1/0.02
         α_S=50.
@@ -45,7 +45,7 @@ class GPRegression:
         self.init_σ_S = 0.1 * torch.ones([1, 1], dtype=torch.float64)
         self.σ_E = Variable(self.init_σ_E, lower=0.001, upper=10)
         self.σ_S = Variable(self.init_σ_S, lower=0.001, upper=10)
-        self.σ_0 = 1e-5 * torch.ones([1, 1], dtype=torch.float64)
+        self.σ_0 = 1e-6 * torch.ones([1, 1], dtype=torch.float64)
         self.init_σ_T = σ_T
         self.σ_T = self.init_σ_T * torch.ones([1, 1], dtype=torch.float64)
         self.σ = self.set_noise_term()
@@ -58,13 +58,10 @@ class GPRegression:
 
         _kernels = KernelLoader()
         self._kernels = _kernels.kernels
-        # init weights randomly
+        # init weights 
         self.init_w = (0.9/len(self._kernels)) * torch.ones([len(self._kernels), 1], dtype=torch.float64)
         self.weights = Variable(self.init_w, lower=0, upper=1) 
         
-        # TODO WARN: what matrix size to compute matters!
-        # TODO set train_idx, set test_idx
-        # TODO reset function for training -> trainable parameters init
         self.covariance_matrices = self.compute_matrices(X=self.X, 
                                                         adjacencies=self.adjacencies[:len(self.X)])
         # trainable parameters for testing
@@ -308,7 +305,7 @@ class GPRegression:
             mutations.append(n_mutations)
             fit_parameters.append({'mu': f_μ.squeeze().detach().numpy(),
                                     'cov': cov.squeeze().detach().numpy(),
-                                    'y_exp': self.y_test.detach().numpy()
+                                    'y_exp': (self.y_test.detach().numpy() * self.y_max) + self.y_mean
                                     })
         predictions = np.concatenate([np.atleast_1d(x) for x in [elem.get('mu') for elem in fit_parameters]])
         experimental = np.concatenate([x for sub in [elem.get('y_exp') for elem in fit_parameters] for x in sub])
@@ -334,14 +331,14 @@ class GPRegression:
         fit_parameters = []
         n_mutations = []
         # get all experimental mutations incl WT
-        pbar = tqdm(enumerate(self.X[:(len(self.protein.mut_ids_exp)+1), :]))
-        for idx, _ in pbar:
+        pbar = tqdm(range(self.X_exp.shape[0] + 1))
+        for idx in pbar:
             pbar.set_description(f"Pos: {idx}")
-            if idx == 1: # exclude WT from CV
+            if idx == 0: # exclude WT from CV
                 continue 
             self.reset_GPR()
             # set train and testing indices
-            self.set_train_index(np.delete(np.arange(0, len(self.protein.mut_S_exp)+1), idx))
+            self.set_train_index(np.delete(np.arange(0, self.X.shape[0]), idx))
             self.set_test_index(np.array([idx]))
             n_mutations.append(len(self.protein.mut_ids_exp[idx-1])) # offset by WT as its not included in mutation-list
             nll_init = self.neg_ll() 
@@ -359,13 +356,15 @@ class GPRegression:
             f_μ, cov = self._fit(ref=ref)
             fit_parameters.append({"mu": f_μ.squeeze().detach().numpy(),
                                 "cov": cov.squeeze().detach().numpy(),
-                                "y_exp": self.y_test.detach().numpy()})
+                                "y_exp": (self.y_test.detach().numpy() * self.y_max) + self.y_mean
+                                })
         predictions = np.concatenate([np.atleast_1d(x) for x in [elem.get('mu') for elem in fit_parameters]])
         experimental = np.concatenate([x for sub in [elem.get('y_exp') for elem in fit_parameters] for x in sub])
         results = {"optimization": optimization_parameters, 
                     "regression": fit_parameters,
                     "rho": self.compute_ρ(y_vec=experimental, y_pred_μ=predictions),
-                    "rmse": self.compute_rmse(y=experimental, y_pred_μ=predictions)}
+                    "rmse": self.compute_rmse(y=experimental, y_pred_μ=predictions),
+                    "mutations": n_mutations}
         return results
 
     def derive_Xx(self):
