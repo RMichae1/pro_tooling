@@ -313,8 +313,8 @@ def plot_pos_lvl_gpr_individual(proteins:list, results_dir="./results/mGPfusion"
     index = [(i,j) for i in range(y_n) for j in range(x_n)]
     for (i,j), p in zip(index, proteins):
         ax[i,j].axline((-4, -4), (4, 4), color="grey", linestyle="--")
-        ax[i,j].set_xlim((-3,3))
-        ax[i,j].set_ylim((-3,3))
+        ax[i,j].set_xlim((-11,6))
+        ax[i,j].set_ylim((-11,6))
         ax[i,j].grid(True)
         mu, y_test, _, _ = parse_regression_results(p, directory=results_dir)
         mutations = parse_mutations(p, results_dir)
@@ -392,8 +392,8 @@ def plot_mut_lvl_gpr_individual(proteins:list, results_dir="./results/mGPfusion"
     fig, ax = plt.subplots(y_n, x_n, figsize=(15,15))
     index = [(i,j) for i in range(y_n) for j in range(x_n)]
     for (i,j), p in zip(index, proteins):
-        ax[i,j].set_xlim((-3,3))
-        ax[i,j].set_ylim((-3,3))
+        ax[i,j].set_xlim((-11,6))
+        ax[i,j].set_ylim((-11,6))
         ax[i,j].axline((-4, -4), (4,4), color="grey", linestyle="--")
         mu, y_test, cov, _ = parse_regression_results(pdb_id=p, directory=results_dir)
         mutations = parse_mutations(p, results_dir)
