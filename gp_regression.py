@@ -22,7 +22,7 @@ class GPRegression:
     def __init__(self, protein_representation: ProteinCollection, X_wt: np.ndarray, 
                 X_exp: np.ndarray, X_is: np.ndarray, y_wt: np.ndarray, y_exp: np.ndarray, y_is: np.ndarray,
                 y_max: float, y_mean: float, adjacencies: np.ndarray, σ_T: float, n_optimization=15, 
-                fusion=True):
+                fusion=True, sub_matrices=None):
         self.X_wt = X_wt
         self.X_exp = X_exp
         self.X_is = X_is
@@ -60,7 +60,7 @@ class GPRegression:
 
         self.μ, self.cov, self.lml, self.p_sample = [], [], [], []
 
-        _kernels = KernelLoader()
+        _kernels = KernelLoader(sub_matrices=sub_matrices)
         self._kernels = _kernels.kernels
         # init weights 
         self.init_w = (0.9/len(self._kernels)) * torch.ones([len(self._kernels), 1], dtype=torch.float64)
@@ -294,20 +294,20 @@ class GPRegression:
                 print(f"No Mutation at pos:{pos} - skipping...")
                 continue
             # optimize
-            nll_init = self.neg_ll() 
-            try:
-                self.parameter_optimization()
-            except RuntimeError as _:
-                print("Optimization broke.")
-                self.reset_trainable_parameters()
-            nll_end = self.neg_ll()
+            # nll_init = self.neg_ll() 
+            # try:
+            #     self.parameter_optimization()
+            # except RuntimeError as _:
+            #     print("Optimization broke.")
+            #     self.reset_trainable_parameters()
+            # nll_end = self.neg_ll()
             f_μ, cov = self._fit(ref=ref)
             # write optimization results
-            optimization_parameters.append({"w": self.weights.get_value(),
-                                        "sigma_S": self.σ_S.get_value(),
-                                        "sigma_E": self.σ_E.get_value(),
-                                        "t": self.t.get_value(),
-                                        "nll": (nll_init, nll_end)})
+            # optimization_parameters.append({"w": self.weights.get_value(),
+            #                             "sigma_S": self.σ_S.get_value(),
+            #                             "sigma_E": self.σ_E.get_value(),
+            #                             "t": self.t.get_value(),
+            #                             "nll": (nll_init, nll_end)})
             # TODO compute rho and rmse after training from results
             mutations.append(n_mutations)
             fit_parameters.append({'mu': f_μ.squeeze().detach().numpy(),
@@ -318,7 +318,7 @@ class GPRegression:
         experimental = np.concatenate([x for sub in [elem.get('y_exp') for elem in fit_parameters] for x in sub])
         rho = self.compute_ρ(y_vec=experimental, y_pred_μ=predictions)
         rmse = self.compute_rmse(y=experimental, y_pred_μ=predictions)
-        results = {"optimization": optimization_parameters, 
+        results = {#"optimization": optimization_parameters, 
                     "regression": fit_parameters, 
                     "mutations": mutations,
                     "rho": rho,
@@ -348,18 +348,18 @@ class GPRegression:
             self.set_train_index(np.delete(np.arange(0, self.X.shape[0]), idx))
             self.set_test_index(np.array([idx]))
             n_mutations.append(self.protein.mutation_ids[idx].count(")")) # get mutations by closing brackets on tuple
-            nll_init = self.neg_ll() 
-            try:
-                self.parameter_optimization()
-            except RuntimeError as _:
-                print("Optimization broke.")
-                self.reset_trainable_parameters()
-            nll_end = self.neg_ll()
-            optimization_parameters.append({"nll": (nll_init, nll_end),
-                                            "w": self.weights.get_value(),
-                                            "sigma_S": self.σ_S.get_value(),
-                                            "sigma_E": self.σ_E.get_value(),
-                                            "t": self.t.get_value()})
+            # nll_init = self.neg_ll() 
+            # try:
+            #     self.parameter_optimization()
+            # except RuntimeError as _:
+            #     print("Optimization broke.")
+            #     self.reset_trainable_parameters()
+            # nll_end = self.neg_ll()
+            # optimization_parameters.append({"nll": (nll_init, nll_end),
+            #                                 "w": self.weights.get_value(),
+            #                                 "sigma_S": self.σ_S.get_value(),
+            #                                 "sigma_E": self.σ_E.get_value(),
+            #                                 "t": self.t.get_value()})
             f_μ, cov = self._fit(ref=ref)
             fit_parameters.append({"mu": f_μ.squeeze().detach().numpy(),
                                 "cov": cov.squeeze().detach().numpy(),
@@ -367,7 +367,7 @@ class GPRegression:
                                 })
         predictions = np.concatenate([np.atleast_1d(x) for x in [elem.get('mu') for elem in fit_parameters]])
         experimental = np.concatenate([x for sub in [elem.get('y_exp') for elem in fit_parameters] for x in sub])
-        results = {"optimization": optimization_parameters, 
+        results = { #"optimization": optimization_parameters, 
                     "regression": fit_parameters,
                     "rho": self.compute_ρ(y_vec=experimental, y_pred_μ=predictions),
                     "rmse": self.compute_rmse(y=experimental, y_pred_μ=predictions),

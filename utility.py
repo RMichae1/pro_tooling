@@ -275,7 +275,7 @@ def convert_aa_sequence(sequences: list):
     return np.array([np.array([aa2index(aa) for aa in seq], dtype=np.int64) for seq in sequences], dtype=np.int64)
 
 
-class Variable:
+class   Variable:
     def __init__(self, v, lower, upper):
         self.unconstrained = self.inverse(v, lower, upper)
         # TODO: make sure unconstrained requires grad

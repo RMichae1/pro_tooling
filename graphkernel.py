@@ -13,8 +13,7 @@ from contact_mapper import ContactMapper
 
 
 class KernelLoader:
-    def __init__(self, sub_matrices: list=["BLOSUM62", "BLOSUM50", "BLOSUM45", "BLOSUM80"], 
-                        sub_mat_ids: list=[]):
+    def __init__(self, sub_matrices: list=[], sub_mat_ids: list=[]):
         """
         Interface to MatrixKernel that encapsulates the collection of substitution matrices
         used. 
@@ -26,14 +25,27 @@ class KernelLoader:
         s_mat_id = []
         # check for provided sub_matrices in data subMat
         for m_vals, m_id, m_info in matrices:
-            # TODO make sub-matrices selectable
-            #for s in sub_matrices:
-                #if m_id in sub_mat_ids or s in str(m_info):
-            s_mat_id.append(m_id[0])
-            s_mat.append(m_vals)
+            if sub_matrices or sub_mat_ids:
+                if self.select_sub_matrices(m_id[0], m_info[0], sub_matrices, sub_mat_ids):
+                    s_mat_id.append(m_id[0])
+                    s_mat.append(m_vals)
+                else:
+                    continue
+            else:
+                s_mat_id.append(m_id[0])
+                s_mat.append(m_vals)
         self.kernels: list = [MatrixKernel(matrix=s, matrix_id=m_id) for s, m_id in zip(s_mat, s_mat_id)]
         self.sub_matrices_ids = s_mat_id
         assert len(self.kernels) == len(self.sub_matrices_ids)
+    
+    @staticmethod
+    def select_sub_matrices(matrix_id, matrix_info, sub_matrices, s_mat_ids) -> bool:
+        if matrix_id in s_mat_ids: # check with IDs
+            return True
+        elif any([bool(s in matrix_info) for s in sub_matrices]):
+            return True # check with info IDs
+        else:
+            False
     
 
 class MatrixKernel:

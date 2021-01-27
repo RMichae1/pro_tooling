@@ -262,6 +262,8 @@ def get_all_predictions_and_ys(pdbs, dir):
     all_exp_y = np.concatenate(all_exp_y)
     return all_predictions, all_exp_y
 
+def root_mean_squared_error(y, pred):
+    return np.sqrt(mean_squared_error(y, pred))
 
 def generate_total_results_table(proteins, dir="./results/", measures=["ρ", "rmse"], 
         cvs=["all-pos.lvl.", "pos.lvl.", "mut.lvl."], methods=["mGPfusion", "2σ mGPfusion"]):
@@ -270,37 +272,37 @@ def generate_total_results_table(proteins, dir="./results/", measures=["ρ", "rm
     all_predictions, all_exp_y = get_all_predictions_and_ys(pdbs=proteins, 
         dir="./results/mGPfusion/all_pos_cv/")
     rho = spearmanr(all_predictions, all_exp_y)[0]
-    rmse = mean_squared_error(all_exp_y, all_predictions)
+    rmse = root_mean_squared_error(all_exp_y, all_predictions)
     results_df.loc["mGPfusion", ("ρ", "all-pos.lvl.")] = rho
     results_df.loc["mGPfusion", ("rmse", "all-pos.lvl.")] = rmse
     all_predictions, all_exp_y = get_all_predictions_and_ys(pdbs=proteins, 
         dir="./results/mGPfusion/all_pos_cv_error/")
     rho = spearmanr(all_predictions, all_exp_y)[0]
-    rmse = mean_squared_error(all_exp_y, all_predictions)
+    rmse = root_mean_squared_error(all_exp_y, all_predictions)
     results_df.loc["2σ mGPfusion", ("ρ", "all-pos.lvl.")] = rho
     results_df.loc["2σ mGPfusion", ("rmse", "all-pos.lvl.")] = rmse
     all_predictions, all_exp_y = get_all_predictions_and_ys(pdbs=proteins, 
         dir="./results/mGPfusion/pos_cv/")
     rho = spearmanr(all_predictions, all_exp_y)[0]
-    rmse = mean_squared_error(all_exp_y, all_predictions)
+    rmse = root_mean_squared_error(all_exp_y, all_predictions)
     results_df.loc["mGPfusion", ("ρ", "pos.lvl.")] = rho
     results_df.loc["mGPfusion", ("rmse", "pos.lvl.")] = rmse
     all_predictions, all_exp_y = get_all_predictions_and_ys(pdbs=proteins, 
         dir="./results/mGPfusion/pos_cv_ref_error/")
     rho = spearmanr(all_predictions, all_exp_y)[0]
-    rmse = mean_squared_error(all_exp_y, all_predictions)
+    rmse = root_mean_squared_error(all_exp_y, all_predictions)
     results_df.loc["2σ mGPfusion", ("ρ", "pos.lvl.")] = rho
     results_df.loc["2σ mGPfusion", ("rmse", "pos.lvl.")] = rmse
     all_predictions, all_exp_y = get_all_predictions_and_ys(pdbs=proteins, 
         dir="./results/mGPfusion/mut_cv/")
     rho = spearmanr(all_predictions, all_exp_y)[0]
-    rmse = mean_squared_error(all_exp_y, all_predictions)
+    rmse = root_mean_squared_error(all_exp_y, all_predictions)
     results_df.loc["mGPfusion", ("ρ", "mut.lvl.")] = rho
     results_df.loc["mGPfusion", ("rmse", "mut.lvl.")] = rmse
     all_predictions, all_exp_y = get_all_predictions_and_ys(pdbs=proteins, 
         dir="./results/mGPfusion/mut_cv_ref_error/")
     rho = spearmanr(all_predictions, all_exp_y)[0]
-    rmse = mean_squared_error(all_exp_y, all_predictions)
+    rmse = root_mean_squared_error(all_exp_y, all_predictions)
     results_df.loc["2σ mGPfusion", ("ρ", "mut.lvl.")] = rho
     results_df.loc["2σ mGPfusion", ("rmse", "mut.lvl.")] = rmse
     return results_df
