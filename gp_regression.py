@@ -23,8 +23,12 @@ class GPRegression:
                 X_exp: np.ndarray, X_is: np.ndarray, y_wt: np.ndarray, y_exp: np.ndarray, y_is: np.ndarray,
                 y_max: float, y_mean: float, adjacencies: np.ndarray, σ_T: float, n_optimization=15, 
                 fusion=True):
-        self.X_wt, self.X_exp, self.X_is = X_wt, X_exp, X_is
-        self.y_wt, self.y_exp, self.y_is = y_is, y_exp, y_is
+        self.X_wt = X_wt
+        self.X_exp = X_exp
+        self.X_is = X_is
+        self.y_wt = y_wt
+        self.y_exp = y_exp
+        self.y_is = y_is
         self.y_max, self.y_mean = y_max, y_mean
         self.protein = protein_representation
         self.adjacencies = adjacencies
@@ -133,6 +137,9 @@ class GPRegression:
         if self.fusion_flag:
             X = torch.Tensor(np.vstack([X_wt, X_exp, X_is])).type(dtype=torch.float64)
             y = torch.Tensor(np.vstack([y_wt, y_exp, y_is])).type(dtype=torch.float64)
+            assert X.shape[1] == len(self.protein.sequence)
+            assert X.shape[0] == y.shape[0]
+            assert y.shape[0] == self.protein.ΔΔg.shape[0] # check against original reference
         else:
             X = torch.Tensor(np.vstack([X_wt, X_exp])).type(dtype=torch.float64)
             y = torch.Tensor(np.vstack([y_wt, y_exp])).type(dtype=torch.float64)
@@ -340,7 +347,7 @@ class GPRegression:
             # set train and testing indices
             self.set_train_index(np.delete(np.arange(0, self.X.shape[0]), idx))
             self.set_test_index(np.array([idx]))
-            n_mutations.append(len(self.protein.mut_ids_exp[idx-1])) # offset by WT as its not included in mutation-list
+            n_mutations.append(self.protein.mutation_ids[idx].count(")")) # get mutations by closing brackets on tuple
             nll_init = self.neg_ll() 
             try:
                 self.parameter_optimization()

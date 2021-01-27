@@ -18,7 +18,7 @@ See reference paper [by Jokinen et al. - mGPfusion](https://academic.oup.com/bio
 `requirements.txt` contains Python environment required packages to run the code.
 
 ### File Structure
-+ `./data/` contains reference matlab files for all proteins presented in the reference paper, as well as experimental and in-silico data
++ `./data/` contains reference matlab files for all proteins presented in the reference paper, as well as experimental and in-silico data. `ddg_protherm.mat` contains the experimental observations and associated mutations with their ΔΔG values, while `rosetta_multi.mat` and `rosetta_single.mat` contain in-silico mutations with associated ΔΔG values.
 + `./pdb/` pdb files for the listed proteins have been directly downloaded from the [RCSB Protein Data Bank](https://www.rcsb.org/)
 + `./fig/` contains all figures created from running the `main.py` function
 + `./results/` contains all results computed from `main.py` runs as well as `run_experiments.py` - `./results/hyper/` contains MKL results for e.g. mean weights from MKL, while other subdirectories are method specific results
