@@ -11,7 +11,7 @@ from torch.distributions import MultivariateNormal, Gamma
 from typing import Tuple
 from protein_representation import ProteinCollection
 from graphkernel import KernelLoader
-from utility import Variable
+from utility import Variable, compute_rmse, compute_ρ
 
 # for reproducability:
 torch.manual_seed(42)
@@ -22,7 +22,7 @@ class GPRegression:
     def __init__(self, protein_representation: ProteinCollection, X_wt: np.ndarray, 
                 X_exp: np.ndarray, X_is: np.ndarray, y_wt: np.ndarray, y_exp: np.ndarray, y_is: np.ndarray,
                 y_max: float, y_mean: float, adjacencies: np.ndarray, σ_T: float, n_optimization=15, 
-                fusion=True, sub_matrices=None):
+                fusion=True, sub_matrices=None, cached=False):
         self.X_wt = X_wt
         self.X_exp = X_exp
         self.X_is = X_is
@@ -34,6 +34,9 @@ class GPRegression:
         self.adjacencies = adjacencies
         self.cv_flag: str = None
         self.fusion_flag: bool = fusion
+        self.cached: bool = cached
+        #self.cache_dir: str = os.path.join(os.path.dirname(__file__), "/cache/")
+        self.cache_dir: str = os.path.join("C://pro_tooling/cache/")
         # set hyperparameters - see Appendix mGPfusion 
         α_E=2.5
         β_E=1/0.02
@@ -61,18 +64,34 @@ class GPRegression:
         self.μ, self.cov, self.lml, self.p_sample = [], [], [], []
 
         _kernels = KernelLoader(sub_matrices=sub_matrices)
+        self._kernel_ids = _kernels.sub_matrices_ids
         self._kernels = _kernels.kernels
         # init weights 
         self.init_w = (0.9/len(self._kernels)) * torch.ones([len(self._kernels), 1], dtype=torch.float64)
         self.weights = Variable(self.init_w, lower=0, upper=1) 
-        
-        self.covariance_matrices = self.compute_matrices(X=self.X, 
-                                                        adjacencies=self.adjacencies[:len(self.X)])
+        if cached:
+            try:
+                self.covariance_matrices = self.load_cov_matrices()
+            except FileNotFoundError as e:
+                print(f"Error: Matrix not found! - {e}")
+                self.covariance_matrices = self.compute_matrices(X=self.X, 
+                                                            adjacencies=self.adjacencies[:len(self.X)])
+        else:
+            self.covariance_matrices = self.compute_matrices(X=self.X, 
+                                                            adjacencies=self.adjacencies[:len(self.X)])
         # trainable parameters for testing
         self.trainable_parameters: list = [w for w in self.weights.get_value()] + [self.σ_E, self.σ_S, self.t]
         # DEFAULT: train set to complete data to compute neg-ll correctly while testing
         self.X_train, self.x_test, self.y_train, self.y_test = self.X, None, self.y, None
         self.idx_train, self.idx_test = np.arange(0, self.X.shape[0]), None
+
+    def load_cov_matrices(self) -> list:
+        covariance_mats = []
+        for k_id in tqdm(self._kernel_ids):
+            kernel_name = f"{self.protein.pdb_ID}_{k_id}.pt"
+            k = torch.load(os.path.join(self.cache_dir, kernel_name))
+            covariance_mats.append(k)
+        return covariance_mats 
 
     def reset_trainable_parameters(self) -> None:
         """
@@ -97,27 +116,6 @@ class GPRegression:
         self.reset_trainable_parameters()
         return None
     
-    @staticmethod
-    def compute_ρ(y_vec: np.ndarray, y_pred_μ: np.ndarray) -> float:
-        """
-        ρ computation as defined in (S7)
-        """
-        pred_μ = np.mean(y_pred_μ)
-        exp_μ = np.mean(y_vec)
-        ρ = np.sum((y_vec - exp_μ)*(y_pred_μ - pred_μ))
-        norm = np.sqrt(np.sum((y_vec-exp_μ)**2)*np.sum((y_pred_μ-pred_μ)**2))
-        ρ /= norm 
-        return ρ
-
-    @staticmethod
-    def compute_rmse(y: np.ndarray, y_pred_μ) -> float:
-        """
-        RMSE computation as defined in (S8)
-        """
-        n_obs = y.shape[0]
-        rmse = np.sqrt(np.sum((y - y_pred_μ)**2)/n_obs)
-        return rmse
-
     @staticmethod
     def check_and_add_axis(x: np.ndarray) -> np.ndarray:
         return x[:, np.newaxis] if len(x.shape) == 1 else x
@@ -158,9 +156,12 @@ class GPRegression:
         X = X.detach().numpy().astype(np.int64)
         n = X.shape[0]
         covariance_mats = []
-        for i, kernel in tqdm(enumerate(self._kernels)):
+        for i, (kernel, k_id) in tqdm(enumerate(zip(self._kernels, self._kernel_ids))):
             k = torch.zeros([n, n], dtype=torch.float64)
             k += kernel.k(X, adjacencies)
+            if self.cached:
+                kernel_name = f"{self.protein.pdb_ID}_{k_id}.pt"
+                torch.save(k, os.path.join(self.cache_dir, kernel_name))
             covariance_mats.append(k)
         return covariance_mats
 
@@ -259,8 +260,8 @@ class GPRegression:
                                     })
         predictions = np.concatenate([np.atleast_1d(x) for x in [elem.get('mu') for elem in fit_parameters]])
         experimental = np.concatenate([x for sub in [elem.get('y_exp') for elem in fit_parameters] for x in sub])
-        rho = self.compute_ρ(y_vec=experimental, y_pred_μ=predictions)
-        rmse = self.compute_rmse(y=experimental, y_pred_μ=predictions)
+        rho = compute_ρ(y_vec=experimental, y_pred_μ=predictions)
+        rmse = compute_rmse(y=experimental, y_pred_μ=predictions)
         results = {"optimization": optimization_parameters, 
                     "regression": fit_parameters, 
                     "mutations": mutations,
@@ -313,8 +314,8 @@ class GPRegression:
         experimental = np.concatenate([x for sub in [elem.get('y_exp') for elem in fit_parameters] for x in sub])
         results = { "optimization": optimization_parameters, 
                     "regression": fit_parameters,
-                    "rho": self.compute_ρ(y_vec=experimental, y_pred_μ=predictions),
-                    "rmse": self.compute_rmse(y=experimental, y_pred_μ=predictions),
+                    "rho": compute_ρ(y_vec=experimental, y_pred_μ=predictions),
+                    "rmse": compute_rmse(y=experimental, y_pred_μ=predictions),
                     "mutations": n_mutations}
         return results
 

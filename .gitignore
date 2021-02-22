@@ -2,6 +2,7 @@ fig/
 data/
 pdb/
 serialized/
+cache/
 .idea/
 .vscode/
 .ipynb_checkpoints/
