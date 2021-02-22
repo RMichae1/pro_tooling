@@ -70,7 +70,7 @@ class GPRegression:
                                                         adjacencies=self.adjacencies[:len(self.X)])
         # trainable parameters for testing
         self.trainable_parameters: list = [w for w in self.weights.get_value()] + [self.σ_E, self.σ_S, self.t]
-        # DEFAULT train set to complete data to compute neg-ll correctly while testing
+        # DEFAULT: train set to complete data to compute neg-ll correctly while testing
         self.X_train, self.x_test, self.y_train, self.y_test = self.X, None, self.y, None
         self.idx_train, self.idx_test = np.arange(0, self.X.shape[0]), None
 
@@ -139,7 +139,7 @@ class GPRegression:
             y = torch.Tensor(np.vstack([y_wt, y_exp, y_is])).type(dtype=torch.float64)
             assert X.shape[1] == len(self.protein.sequence)
             assert X.shape[0] == y.shape[0]
-            assert y.shape[0] == self.protein.ΔΔg.shape[0] # check against original reference
+           # assert y.shape[0] == self.protein.ΔΔg.shape[0] # check against original reference
         else:
             X = torch.Tensor(np.vstack([X_wt, X_exp])).type(dtype=torch.float64)
             y = torch.Tensor(np.vstack([y_wt, y_exp])).type(dtype=torch.float64)
@@ -213,63 +213,7 @@ class GPRegression:
         self.X_train = self.X[index]
         self.y_train = self.y[index]
 
-    def position_level_CV_reference(self, ref) -> Dict[str, list]:
-        """
-        Position level cross-validation that assigns test data-set from
-        position as done in the reference implementation - has double noise term
-        """
-        self.cv_flag = "pos_lvl_CV_REFERENCE"
-        mutations = []
-        optimization_parameters = []
-        fit_parameters = []
-        # mutations include both insilico and experimental
-        mutation_index = get_mutation_idx(self.protein.mutation_ids) # includes WT
-        for pos in tqdm(range(len(self.protein.sequence))):
-            print("reset parameters ...")
-            self.reset_GPR() # reset trainable parameters
-            # gather all mutations at that position and assign train and test indices
-            mutation_bool_mask = np.array([bool(pos in mut) for mut in mutation_index])
-            test_mutation_idx = np.where(mutation_bool_mask)[0]
-            not_test_mutation_idx = np.where(~mutation_bool_mask)[0]
-            n_mutations = np.array([len(mut) for mut in mutation_index if bool(pos in mut)])
-            # split into train and test
-            self.set_test_index(test_mutation_idx)
-            self.set_train_index(not_test_mutation_idx)
-            if self.x_test.shape[0] == 0:
-                print(f"No Mutation at pos:{pos} - skipping...")
-                continue
-            # optimize
-            nll_init = self.neg_ll() 
-            try:
-                self.parameter_optimization()
-            except RuntimeError as _:
-                print("Optimization broke.")
-                self.reset_trainable_parameters()
-            nll_end = self.neg_ll()
-            f_μ, cov = self._fit(ref=ref)
-            # write optimization results
-            optimization_parameters.append({"w": self.weights.get_value(),
-                                        "sigma_S": self.σ_S.get_value(),
-                                        "sigma_E": self.σ_E.get_value(),
-                                        "t": self.t.get_value(),
-                                        "nll": (nll_init, nll_end)})
-            mutations.append(n_mutations)
-            fit_parameters.append({'mu': f_μ.squeeze().detach().numpy(),
-                                    'cov': cov.squeeze().detach().numpy(),
-                                    'y_exp': self.y_test.detach().numpy()
-                                    })
-        predictions = np.concatenate([np.atleast_1d(x) for x in [elem.get('mu') for elem in fit_parameters]])
-        experimental = np.concatenate([x for sub in [elem.get('y_exp') for elem in fit_parameters] for x in sub])
-        rho = self.compute_ρ(y_vec=experimental, y_pred_μ=predictions)
-        rmse = self.compute_rmse(y=experimental, y_pred_μ=predictions)
-        results = {"optimization": optimization_parameters, 
-                    "regression": fit_parameters, 
-                    "mutations": mutations,
-                    "rho": rho,
-                    "rmse": rmse}
-        return results
-
-    def position_level_CV(self, ref=False) -> Dict[str, list]:
+    def position_level_CV(self, ref=False, optim=True) -> Dict[str, list]:
         self.cv_flag = "pos_lvl_CV"
         mutations = []
         optimization_parameters = []
@@ -284,7 +228,6 @@ class GPRegression:
             not_test_mutation_idx = np.where(~mutation_bool_mask)[0]
             n_mutations = np.array([len(mut) for mut in experimental_mutation_index if bool(pos in mut)])
             # split into train and test
-            # TODO check if offset is justified
             self.set_test_index(1+test_mutation_idx) # offset with WT 
             # combine WT + not selected + in silico for training data
             train_index = np.concatenate([np.array([0]), 1+not_test_mutation_idx, 
@@ -294,12 +237,13 @@ class GPRegression:
                 print(f"No Mutation at pos:{pos} - skipping...")
                 continue
             # optimize
-            nll_init = self.neg_ll() 
-            try:
-                self.parameter_optimization()
-            except RuntimeError as _:
-                print("Optimization broke.")
-                self.reset_trainable_parameters()
+            nll_init = self.neg_ll()
+            if optim:
+                try:
+                    self.parameter_optimization()
+                except RuntimeError as _:
+                    print("Optimization broke.")
+                    self.reset_trainable_parameters()
             nll_end = self.neg_ll()
             f_μ, cov = self._fit(ref=ref)
             # write optimization results
@@ -324,7 +268,7 @@ class GPRegression:
                     "rmse": rmse}
         return results
 
-    def mutation_level_CV(self, ref=False) -> Tuple[List[dict], List[dict]]:
+    def mutation_level_CV(self, ref=False, optim=True) -> Tuple[List[dict], List[dict]]:
         """
         iteratively sets train and test splits, where one mutation is in the test-set
         has side-effects
@@ -347,12 +291,13 @@ class GPRegression:
             self.set_train_index(np.delete(np.arange(0, self.X.shape[0]), idx))
             self.set_test_index(np.array([idx]))
             n_mutations.append(self.protein.mutation_ids[idx].count(")")) # get mutations by closing brackets on tuple
-            nll_init = self.neg_ll() 
-            try:
-                self.parameter_optimization()
-            except RuntimeError as _:
-                print("Optimization broke.")
-                self.reset_trainable_parameters()
+            nll_init = self.neg_ll()
+            if optim:
+                try:
+                    self.parameter_optimization()
+                except RuntimeError as _:
+                    print("Optimization broke.")
+                    self.reset_trainable_parameters()
             nll_end = self.neg_ll()
             optimization_parameters.append({"nll": (nll_init, nll_end),
                                             "w": self.weights.get_value(),
