@@ -23,3 +23,11 @@ See reference paper [by Jokinen et al. - mGPfusion](https://academic.oup.com/bio
 + `./fig/` contains all figures created from running the `main.py` function
 + `./results/` contains all results computed from `main.py` runs as well as `run_experiments.py` - `./results/hyper/` contains MKL results for e.g. mean weights from MKL, while other subdirectories are method specific results
 + `./test/` contains test modules against the reference implementation that can be run with `pytest ${modulename}`
+
+
+### Experiments
+The original data was run on Protherm and Rosetta simulations and in reference to the mgpfusion publication the data can be found in data/mgp.
+
+To test against other data-sets the beta-lactamase dataset was analyzed with reference to previous publications.
+
+(internal VAE work uses Ranganathan2015, whereas ddG values are available in Palzkill2012)
