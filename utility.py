@@ -275,6 +275,27 @@ def convert_aa_sequence(sequences: list):
     return np.array([np.array([aa2index(aa) for aa in seq], dtype=np.int64) for seq in sequences], dtype=np.int64)
 
 
+def compute_ρ(y_vec: np.ndarray, y_pred_μ: np.ndarray) -> float:
+    """
+    ρ computation as defined in (S7)
+    """
+    pred_μ = np.mean(y_pred_μ)
+    exp_μ = np.mean(y_vec)
+    ρ = np.sum((y_vec - exp_μ)*(y_pred_μ - pred_μ))
+    norm = np.sqrt(np.sum((y_vec-exp_μ)**2)*np.sum((y_pred_μ-pred_μ)**2))
+    ρ /= norm 
+    return ρ
+
+
+def compute_rmse(y: np.ndarray, y_pred_μ) -> float:
+    """
+    RMSE computation as defined in (S8)
+    """
+    n_obs = y.shape[0]
+    rmse = np.sqrt(np.sum((y - y_pred_μ)**2)/n_obs)
+    return rmse
+
+
 class   Variable:
     def __init__(self, v, lower, upper):
         self.unconstrained = self.inverse(v, lower, upper)
