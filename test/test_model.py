@@ -117,12 +117,10 @@ def test_noise_term():
     np.testing.assert_almost_equal(np.square(ref_noise), model_noise)
 
 def test_log_likelihood_loss_w_prior():
-    model.parameter_optimization()
     gp_loss = model.neg_ll().detach().numpy()
     np.testing.assert_almost_equal(gp_loss[0][0], ref_gp_loss[0,0])
 
 def test_training_loss():
-    model.parameter_optimization()
     loss = model.neg_ll().detach().numpy()
     loss = loss - 2 * np.log(max_y)  # a contribution from the Gamma priors
     np.testing.assert_almost_equal(loss, ref_loss, decimal=6)
