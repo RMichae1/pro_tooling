@@ -247,9 +247,9 @@ def parse_mutations(sequence: str, adjacency: List[tuple], mutation_dict: dict) 
     mutation_ids = []
     if not mutation_dict:
         print("WARNING: No mutations provided.")
-        return mutated_sequences, mutated_adjacencies
+        return mutated_sequences, mutated_adjacencies, np.array(ΔΔg), mutation_ids
     for (mutation, ddg) in tqdm(mutation_dict):
-        ΔΔg.append(ddg)
+        ΔΔg.append(float(ddg))
         # deepcopy to ensure that the underlying wildtype is not overwritten
         seq = deepcopy(sequence)
         adj = deepcopy(adjacency)
