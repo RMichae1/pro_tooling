@@ -1,3 +1,4 @@
+import os
 import numpy as np
 import pandas as pd
 from typing import List
@@ -8,8 +9,6 @@ from torch.distributions.gamma import Gamma
 from torch.distributions.normal import Normal
 from tqdm import tqdm
 from scipy.io import loadmat
-from utility import aa2index
-from contact_mapper import ContactMapper  
 
 
 class KernelLoader:
@@ -20,7 +19,7 @@ class KernelLoader:
         Has list of kernels as class property.
         sub_mat_ids takes IDs from SubMat Matlab
         """
-        matrices = loadmat("./data/subMats.mat").get('subMats')
+        matrices = loadmat(f"{os.path.dirname(__file__)}/data/mgp/subMats.mat").get('subMats')
         s_mat = []
         s_mat_id = []
         # check for provided sub_matrices in data subMat
