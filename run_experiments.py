@@ -225,6 +225,47 @@ def run_mgpfusion_experiment(pdb):
 
 
 def run_BLAT_experiment():
+    blat_file = os.path.join(os.path.dirname(__file__), os.path.join("data/blat/BLAT_ECOLX_Ranganathan2015.csv"))
+    blat_df = pd.read_csv(blat_file)
+    blat_df["growth"] = blat_df["2500"]
+    clipped_mutations = [(mut, growth) for (mut, growth) in zip(blat_df.mutant, blat_df.growth) if int(mut[1:-1])<=263]
+    # WARNING: we clip mutations at position 263 - mutations go until 286, however pdb is only 263 (main chain) long
+    mutation_dict = {"1FQG" : clipped_mutations}
+    
+    pdb_file = "./pdb/1fqg.pdb"
+    contact_map = ContactMapper(pdb_file=pdb_file, tri_dist=True)
+    # contact_map.plot_distance_matrix()
+    # contact_map.plot_contact_map()
+
+    pcol = ProteinCollection(contact_map, pdb_ID="1FQG", mutations_exp=mutation_dict, mutations_sim={})
+    adjacencies = contact_map.adjacency
+    mut_S_exp, mut_adj_exp, ΔΔg_exp, mut_ids_exp = parse_mutations(mutation_dict=mutation_dict.get(pcol.pdb_ID), 
+                                                    sequence=pcol.sequence, adjacency=adjacencies)
+    X_exp = convert_aa_sequence(mut_S_exp)
+    y_wt = np.array([0.])[:, np.newaxis]
+    X_wt = convert_aa_sequence([pcol.sequence])
+
+    ΔΔg_exp = np.array(ΔΔg_exp)[:, np.newaxis]
+    ΔΔg_is = np.array([])[:, np.newaxis]
+
+     # Scale y-values as done in the implementation by normalizing with mean and max
+    mean_y, max_y, y_wt, ΔΔg_exp, ΔΔg_is_scaled = preprocess_observations(y_wt, ΔΔg_exp,  ΔΔg_is)
+
+    gpr = GPRegression(protein_representation=pcol, X_wt=X_wt, X_exp=X_exp, X_is=np.array([]), 
+                        y_wt=y_wt, y_exp=ΔΔg_exp, y_is=ΔΔg_is_scaled, adjacencies=adjacencies, 
+                        σ_T=torch.Tensor([0.]), y_max=max_y, y_mean=mean_y, fusion=False, cached=True)
+    
+    gpr_results_mutation_lvl = gpr.mutation_level_CV(ref=False, optim=False)
+    write_results(gpr_results_mutation_lvl, gpr, dir="mGPfusion/blat/mut_cv", suffix="_no_optim")
+    gpr_results_mutation_lvl = gpr.mutation_level_CV(ref=False, optim=True)
+    write_results(gpr_results_mutation_lvl, gpr, dir="mGPfusion/blat/mut_cv", suffix="_")
+    gpr_results_pos_lvl = gpr.position_level_CV(ref=False, optim=False)
+    write_results(gpr_results_pos_lvl, gpr, dir="mGPfusion/blat/pos_cv", suffix="_no_optim")
+    gpr_results_pos_lvl = gpr.position_level_CV(ref=False, optim=True)
+    write_results(gpr_results_pos_lvl, gpr, dir="mGPfusion/blat/pos_cv", suffix="_")
+
+
+def run_BLAT_experiment_PALZKILL_1BTL():
     blat_file = os.path.join(os.path.dirname(__file__), os.path.join("data/blat/BLAT_ECOLX_Palzkill2012.csv"))
     blat_df = pd.read_csv(blat_file, sep=";", index_col=0)
     blat_df.ddG_stat = blat_df.ddG_stat.str.replace(",", ".").astype(float)
@@ -266,8 +307,9 @@ def run_BLAT_experiment():
 
 
 if __name__ == "__main__":
-    for pdb in pdbs:
-        run_mgpfusion_experiment(pdb=pdb)
+    # for pdb in pdbs:
+    #     run_mgpfusion_experiment(pdb=pdb)
     # run_plotting()
     run_BLAT_experiment()
+    # run_BLAT_experiment_2()
     # run_plotting(pdbs=["1PGA", "1CSP", "2RN2"])
