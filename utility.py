@@ -296,7 +296,17 @@ def compute_rmse(y: np.ndarray, y_pred_μ) -> float:
     return rmse
 
 
-class   Variable:
+def one_hot_encoding(arr: np.ndarray) -> np.ndarray:
+    oh_arr = np.zeros((arr.size, arr.max()+1))
+    oh_arr[np.arange(arr.size), arr] = 1
+    return oh_arr
+
+
+def oh_to_le_encoding(arr):
+    return np.argmax(arr[0])
+
+
+class Variable:
     def __init__(self, v, lower, upper):
         self.unconstrained = self.inverse(v, lower, upper)
         # TODO: make sure unconstrained requires grad
