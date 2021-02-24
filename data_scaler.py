@@ -6,9 +6,10 @@ from pyro.infer import MCMC, NUTS
 from pyro.infer.mcmc.util import initialize_model
 import pyro.distributions as dist
 import pickle
-from os.path import isfile
+from os import path
 import matplotlib.pyplot as plt
 import seaborn as sns
+
 
 class BayesScaler:
     """
@@ -17,16 +18,18 @@ class BayesScaler:
     """
     def __init__(self, is_mutations: list, ΔΔg: np, exp_mutations, experimentally_observed_ΔΔg,
                     α_a=2., β_a=1.5, α_b=1.3, β_b=2., α_c=2, β_c=5., σ_d=0.15, σ_n=0.5,
-                    samples_N=10000, warmup_N=500, TESTING=False, pdb_ID=None):
+                    samples_N=10000, warmup_N=500, TESTING=False, pdb_ID=None, cached=False):
         pyro.set_rng_seed(42)
         pyro.clear_param_store()
         self.pdb_ID = pdb_ID
+        self.cached = cached
+        self.cached_filename = path.join("./cache/", f"{self.pdb_ID}_scaler_.pkl")
         self.samples_N = samples_N if not TESTING else 500
         self.warmup_N = warmup_N
         self.chains_N = 1
         self.x_range = (-10, 7)
         self.is_mutations = is_mutations
-        self.exp_mutations= exp_mutations
+        self.exp_mutations = exp_mutations
         self.ΔΔg_is = ΔΔg
         self.experimentally_observed_ΔΔg = experimentally_observed_ΔΔg
 
@@ -39,9 +42,9 @@ class BayesScaler:
         self.α_b, self.β_b = α_a, β_a
         self.α_c, self.β_c = α_c, β_c
         self.σ_d, self.σ_n = σ_d, σ_n
-        self.mcmc = self.run_mcmc()
 
-        self.mcmc = {k: v.detach().cpu().numpy() for k, v in self.mcmc.get_samples().items()}
+        self.mcmc = self.get_mcmc_results()
+
         self.a_samples = self.mcmc.get("a")
         self.b_samples = self.mcmc.get("b")
         self.c_samples = self.mcmc.get("c")
@@ -64,6 +67,23 @@ class BayesScaler:
         self.σ_T_samples = np.sum(np.square(self.θ_samples - self.θ), axis=0) / self.samples_N
         # compute sigma over the whole range of possible inputs
         self.σ_T_xx = np.sum(np.square(self.θ_xx_samples - self.θ_xx), axis=0) / self.samples_N
+
+    def get_mcmc_results(self):
+        """
+        Checks if cached MCMC samples exist and loads them.
+        If not MCMC sampling is conducted on specified model.
+        """
+        if self.cached and path.isfile(self.cached_filename):
+            print(f"Loading saved MCMC run from {self.cached_filename}")
+            with open(self.cached_filename, "rb") as infile:
+                mcmc = pickle.load(infile)
+        else:
+            mcmc = self.run_mcmc()
+            mcmc = {k: v.detach().cpu().numpy() for k, v in mcmc.get_samples().items()}
+            if self.cached:
+                with open(self.cached_filename, "wb") as outfile:
+                    pickle.dump(mcmc, outfile)
+        return mcmc
 
     def transform(self, x: float) -> float:
         return self.a * np.exp(np.dot(self.c, x)) + np.dot(self.b, x) + self.d
@@ -101,7 +121,6 @@ class BayesScaler:
     
     def run_mcmc(self):
         nuts_kernel = NUTS(self._model, jit_compile=True)
-        # TODO Hamiltonian Scaling also
         mcmc = MCMC(nuts_kernel, num_samples=self.samples_N, warmup_steps=self.warmup_N)
         mcmc.run(self.ΔΔg_is, self.ΔΔg_exp)
         return mcmc
@@ -119,7 +138,6 @@ class BayesScaler:
         return site_stats
 
     def print_summary(self):
-        #for site, values in self.summary(self.mcmc_samples).items():
         for site, values in self.summary(self.mcmc).items():
             print("Site: {}".format(site))
             print(values, "\n")

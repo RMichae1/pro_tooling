@@ -36,7 +36,7 @@ class GPRegression:
         self.fusion_flag: bool = fusion
         self.cached: bool = cached
         #self.cache_dir: str = os.path.join(os.path.dirname(__file__), "/cache/")
-        self.cache_dir: str = os.path.join("C://pro_tooling/cache/")
+        self.cache_dir: str = os.path.join("./cache/")
         # set hyperparameters - see Appendix mGPfusion 
         α_E=2.5
         β_E=1/0.02
