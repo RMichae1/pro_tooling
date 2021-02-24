@@ -17,26 +17,27 @@ from visualization import plot_pos_lvl_gpr_total, plot_pos_lvl_gpr_individual
 from visualization import plot_covariance_matrices, plot_mWDK
 from scipy.stats import norm, spearmanr
 from sklearn.metrics import mean_squared_error
+import tracemalloc
 
 import numpy as np
 import pandas as pd
 import pickle
 
 todos = []
-done = []
-pdbs = ["1PGA", "1CSP", "1BPI", "1RGG", "1RTB", "2RN2", "4LYZ","2LZM", "1BVC"]
+done = ["1PGA"]
+pdbs = [  "1RGG", "1RTB", "2RN2", "4LYZ", "1CSP", "1BPI", "2LZM", "1BVC"]
 buggy = ["1BNI", "1VQB", "1LZI", "2CI2","1RN1", "1PIN"]
 
 # get mutations for pdb
-exp_mutations = parse_matlab_mutation_file(f"{os.path.dirname(__file__)}/data/mgp/ddg_protherm.mat", 
+exp_mutations = parse_matlab_mutation_file(f"./data/mgp/ddg_protherm.mat",
                 query="ddg_protherm")
-sim_mutations = parse_matlab_mutation_file(f"{os.path.dirname(__file__)}/data/mgp/ddg_rosetta_single.mat", 
+sim_mutations = parse_matlab_mutation_file(f"./data/mgp/ddg_rosetta_single.mat",
                 query="ddg_rosetta_single")
 
 
 def write_results(gpr_results: dict, dir, cv: str="", pdb: str=""):
     ref_dir = os.path.dirname(__file__)
-    with open(f"{ref_dir}/results/{dir}/{cv}_{pdb}.pickle", "wb") as outfile:
+    with open(f"./results/{dir}/{cv}_{pdb}.pickle", "wb") as outfile:
         pickle.dump(gpr_results, outfile)
 
 
@@ -49,8 +50,7 @@ def run_plotting(pdbs=pdbs):
     plot_sigmas(proteins=pdbs)
     plot_mean_over_weights(proteins=pdbs, dir="./results/mGPfusion/pos_cv/", suffix="pos-lvl")
     plot_mean_over_weights(proteins=pdbs, dir="./results/mGPfusion/mut_cv/", suffix="mut-lvl")
-    result_df = generate_results_table(proteins=pdbs, method=["mGPfusion", "2σ mGPfusion"], 
-        dir="./results/")
+    result_df = generate_results_table(proteins=pdbs, method=["mGPfusion", "2σ mGPfusion"], dir="./results/")
     print(result_df)
     print(result_df.to_latex(index=True, bold_rows=True))
     total_results_df = generate_total_results_table(proteins=pdbs, dir="./results/")
@@ -60,6 +60,7 @@ def run_plotting(pdbs=pdbs):
     plot_mut_lvl_gpr_individual(proteins=pdbs, results_dir="./results/mGPfusion/mut_cv/")
     # plot_mut_lvl_gpr_individual(proteins=pdbs, results_dir="./results/mGPfusion/mut_cv/", suffix="uncertainties",
     #         uncertainties=True)
+
 
 def init_experiment_run(pdb: str) -> tuple:
     pga_file = loadmat(os.path.join(os.path.dirname(__file__), os.path.join("data/mgp/", f"{pdb}.mat")))
@@ -79,29 +80,31 @@ def init_experiment_run(pdb: str) -> tuple:
     X_wt = convert_aa_sequence([pcol.sequence])
     # scale using Bayesian Scaling
     bs_rosetta = BayesScaler(is_mutations=mut_ids_is, ΔΔg=pcol.ΔΔg_is, exp_mutations=mut_ids_exp, 
-                        experimentally_observed_ΔΔg=pcol.ΔΔg_exp, TESTING=False, pdb_ID=pdb)
-    bs_rosetta.plot_scaling()
+                        experimentally_observed_ΔΔg=pcol.ΔΔg_exp, TESTING=False, pdb_ID=pdb, cached=True)
     ΔΔg_exp = ΔΔg_exp[:, np.newaxis]
     ΔΔg_is_scaled = bs_rosetta.transform(ΔΔg_is)[:, np.newaxis]
     # Scale y-values as done in the implementation by normalizing with mean and max
     mean_y, max_y, y_wt, ΔΔg_exp, ΔΔg_is_scaled = preprocess_observations(y_wt, ΔΔg_exp, ΔΔg_is_scaled)
-    return pcol, X_wt, X_exp, X_is, y_wt, ΔΔg_exp, ΔΔg_is_scaled, ref_adj, bs_rosetta, max_y, mean_y
+    return pcol, X_wt, X_exp, X_is, y_wt, ΔΔg_exp, ΔΔg_is_scaled, ref_adj, bs_rosetta.σ_T, max_y, mean_y
 
-def init_mgp_regression(pcol, X_wt, X_exp, X_is, y_wt, ΔΔg_exp, ΔΔg_is_scaled, ref_adj, 
-                    bs_rosetta, max_y, mean_y):
+
+def init_mgp_regression(pcol, X_wt, X_exp, X_is, y_wt, ΔΔg_exp, ΔΔg_is_scaled, ref_adj, σ_T, max_y, mean_y):
     gpr = GPRegression(protein_representation=pcol, X_wt=X_wt, X_exp=X_exp, X_is=X_is, 
                          y_wt=y_wt, y_exp=ΔΔg_exp, y_is=ΔΔg_is_scaled, adjacencies=ref_adj, 
-                         σ_T=bs_rosetta.σ_T, y_max=max_y, y_mean=mean_y, cached=True)
+                         σ_T=σ_T, y_max=max_y, y_mean=mean_y, cached=True)
     return gpr
 
+
 def cached_pos_lvl_CV(pdb, reference: bool=False, optim: bool=True) -> dict:
-    pcol, X_wt, X_exp, X_is, y_wt, ΔΔg_exp, ΔΔg_is_scaled, ref_adj, bs_rosetta, max_y, mean_y = init_experiment_run(pdb)
+    pcol, X_wt, X_exp, X_is, y_wt, ΔΔg_exp, ΔΔg_is_scaled, ref_adj, σ_T, max_y, mean_y = init_experiment_run(pdb)
     mutations = []
     optimization_parameters = []
     fit_parameters = []
+    tracemalloc.start(25)
+    mem_snaps = []
     for pos in tqdm(range(len(pcol.sequence))):
         print("reinitialize ...")
-        gpr = init_mgp_regression(pcol, X_wt, X_exp, X_is, y_wt, ΔΔg_exp, ΔΔg_is_scaled, ref_adj, bs_rosetta, max_y, mean_y)
+        gpr = init_mgp_regression(pcol, X_wt, X_exp, X_is, y_wt, ΔΔg_exp, ΔΔg_is_scaled, ref_adj, σ_T, max_y, mean_y)
         experimental_mutation_index = get_mutation_idx(gpr.protein.mut_ids_exp)
         # gather all mutations at that position and assign train and test indices
         mutation_bool_mask = np.array([bool(pos in mut) for mut in experimental_mutation_index])
@@ -109,9 +112,9 @@ def cached_pos_lvl_CV(pdb, reference: bool=False, optim: bool=True) -> dict:
         not_test_mutation_idx = np.where(~mutation_bool_mask)[0]
         n_mutations = np.array([len(mut) for mut in experimental_mutation_index if bool(pos in mut)])
         # split into train and test
-        gpr.set_test_index(1+test_mutation_idx) # offset with WT 
+        gpr.set_test_index(1+test_mutation_idx) # offset with WT
         # combine WT + not selected + in silico for training data
-        train_index = np.concatenate([np.array([0]), 1+not_test_mutation_idx, 
+        train_index = np.concatenate([np.array([0]), 1+not_test_mutation_idx,
                         np.arange(start=len(gpr.X_exp)+1, stop=gpr.X.shape[0])]) # all simulated data are training data
         gpr.set_train_index(train_index)
         if gpr.x_test.shape[0] == 0:
@@ -127,6 +130,14 @@ def cached_pos_lvl_CV(pdb, reference: bool=False, optim: bool=True) -> dict:
                 gpr.reset_trainable_parameters()
         nll_end = gpr.neg_ll()
         f_μ, cov = gpr._fit(ref=reference)
+        current_snap = tracemalloc.take_snapshot()
+        if len(mem_snaps) > 1:
+            stats = current_snap.compare_to(mem_snaps[-1], 'filename')
+            for stat in stats:
+                print(f"{stat.count} mem blocks: {stat.size / 1024} KiB")
+                for line in stat.traceback.format():
+                    print(line)
+        mem_snaps.append(current_snap)
         # write optimization results
         optimization_parameters.append({"w": gpr.weights.get_value(),
                                     "sigma_S": gpr.σ_S.get_value(),
@@ -148,6 +159,7 @@ def cached_pos_lvl_CV(pdb, reference: bool=False, optim: bool=True) -> dict:
                 "rho": rho,
                 "rmse": rmse}
     return results
+
 
 def cached_mut_lvl_CV(pdb, reference: bool=False, optim: bool=True) -> dict:
     optimization_parameters = []
@@ -193,35 +205,37 @@ def cached_mut_lvl_CV(pdb, reference: bool=False, optim: bool=True) -> dict:
                 "mutations": n_mutations}
     return results
 
+
 def run_mgpfusion_experiment(pdb):
     print(pdb)
     ### POSITION LEVEL CV
-    # pos-lvl CV
-    gpr_results_pos_lvl = cached_pos_lvl_CV(reference=False, pdb=pdb)
-    write_results(gpr_results_pos_lvl, dir="mGPfusion/pos_cv", cv="pos_lvl", pdb=pdb)
-    # pos-lvl CV w/ mGP reference error
-    gpr_results_pos_lvl = cached_pos_lvl_CV(reference=True, pdb=pdb)
-    write_results(gpr_results_pos_lvl, dir="mGPfusion/pos_cv", cv="pos_lvl_REF", pdb=pdb)
     # pos-lvl CV no optimization
     gpr_results_pos_lvl = cached_pos_lvl_CV(reference=False, optim=False, pdb=pdb)
     write_results(gpr_results_pos_lvl, dir="mGPfusion/pos_cv", cv="pos_lvl_no_optim", pdb=pdb)
     # pos-lvl CV no optimization w/ reference error
     gpr_results_pos_lvl = cached_pos_lvl_CV(reference=True, optim=False, pdb=pdb)
     write_results(gpr_results_pos_lvl, dir="mGPfusion/pos_cv", cv="pos_lvl_no_optim_REF", pdb=pdb)
+    # pos-lvl CV
+    gpr_results_pos_lvl = cached_pos_lvl_CV(reference=False, pdb=pdb)
+    write_results(gpr_results_pos_lvl, dir="mGPfusion/pos_cv", cv="pos_lvl", pdb=pdb)
+    # pos-lvl CV w/ mGP reference error
+    gpr_results_pos_lvl = cached_pos_lvl_CV(reference=True, pdb=pdb)
+    write_results(gpr_results_pos_lvl, dir="mGPfusion/pos_cv", cv="pos_lvl_REF", pdb=pdb)
 
-    ### MUTATION LEVEL CV
-    # mutation lvl CV (LOO)
-    gpr_results_mutation_lvl = cached_mut_lvl_CV(reference=False, pdb=pdb)
-    write_results(gpr_results_mutation_lvl, dir="mGPfusion/mut_cv", cv="mut_lvl")
-    # mutation lvl CV w/ mGP reference error
-    gpr_results_mutation_lvl = cached_mut_lvl_CV(reference=True, pdb=pdb)
-    write_results(gpr_results_mutation_lvl, dir="mGPfusion/mut_cv", cv="mut_lvl_REF")
-    # mutation lvl CV no optimization
-    gpr_results_mutation_lvl = cached_mut_lvl_CV(reference=False, optim=False, pdb=pdb)
-    write_results(gpr_results_mutation_lvl, dir="mGPfusion/mut_cv", cv="mut_lvl_no_optim")
-    # mutation lvl CV no optimization w/ reference error
-    gpr_results_mutation_lvl = cached_mut_lvl_CV(reference=True, optim=False, pdb=pdb)
-    write_results(gpr_results_mutation_lvl, dir="mGPfusion/mut_cv", suffix="mut_lvl_no_optim_REF")
+
+    # ### MUTATION LEVEL CV
+    # # mutation lvl CV (LOO)
+    # gpr_results_mutation_lvl = cached_mut_lvl_CV(reference=False, pdb=pdb)
+    # write_results(gpr_results_mutation_lvl, dir="mGPfusion/mut_cv", cv="mut_lvl")
+    # # mutation lvl CV w/ mGP reference error
+    # gpr_results_mutation_lvl = cached_mut_lvl_CV(reference=True, pdb=pdb)
+    # write_results(gpr_results_mutation_lvl, dir="mGPfusion/mut_cv", cv="mut_lvl_REF")
+    # # mutation lvl CV no optimization
+    # gpr_results_mutation_lvl = cached_mut_lvl_CV(reference=False, optim=False, pdb=pdb)
+    # write_results(gpr_results_mutation_lvl, dir="mGPfusion/mut_cv", cv="mut_lvl_no_optim")
+    # # mutation lvl CV no optimization w/ reference error
+    # gpr_results_mutation_lvl = cached_mut_lvl_CV(reference=True, optim=False, pdb=pdb)
+    # write_results(gpr_results_mutation_lvl, dir="mGPfusion/mut_cv", suffix="mut_lvl_no_optim_REF")
 
 
 def run_BLAT_experiment():
@@ -266,8 +280,9 @@ def run_BLAT_experiment():
 
 
 if __name__ == "__main__":
+
     for pdb in pdbs:
         run_mgpfusion_experiment(pdb=pdb)
     # run_plotting()
-    run_BLAT_experiment()
+    # run_BLAT_experiment()
     # run_plotting(pdbs=["1PGA", "1CSP", "2RN2"])
