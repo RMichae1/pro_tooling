@@ -1,5 +1,6 @@
 import pyro
 import pyro.distributions as dist
+from pyro.distributions import constraints
 import pandas as pd
 import torch
 from torch import nn
@@ -54,7 +55,7 @@ class VAE(nn.Module):
         with pyro.plate("data", x.shape[0]):
             z_loc = x.new_zeros(torch.Size((x.shape[0], self.z_dim)))
             z_scale = x.new_ones(torch.Size((x.shape[0], self.z_dim)))
-            z = pyro.sample("latent", dist.Normal(z_loc, z_scale).to_event(1))
+            z = pyro.sample("latent", dist.Normal(z_loc, z_scale, constraints.positive).to_event(1))
             loc_seq = self.decoder.forward(z)
             pyro.sample("obs", dist.Bernoulli(loc_seq, validate_args=True).to_event(1), obs=x.reshape(-1,
                                                                                                        self.input_dims))
@@ -63,7 +64,7 @@ class VAE(nn.Module):
         pyro.module("encoder", self.encoder)
         with pyro.plate("data", x.shape[0]):
             z_loc, z_scale = self.encoder.forward(x)
-            pyro.sample("latent", dist.Normal(z_loc, z_scale).to_event(1))
+            pyro.sample("latent", dist.Normal(z_loc, z_scale, constraints.positive).to_event(1))
 
     def reconstruct_seq(self, x):
         z_loc, z_scale = self.encoder(x)

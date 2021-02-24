@@ -3,7 +3,7 @@ import pickle
 from utility import one_hot_encoding
 from vae import train, evaluate
 from pyro.infer import SVI, JitTrace_ELBO
-from pyro.optim import Adam
+from pyro.optim import Adam, ClippedAdam
 import matplotlib.pyplot as plt
 import pandas as pd
 import numpy as np
@@ -32,14 +32,15 @@ if __name__ == "__main__":
     train_loader = torch.utils.data.DataLoader(seq_train, batch_size=batch_size)
     test_loader = torch.utils.data.DataLoader(seq_test, batch_size=batch_size)
 
-    LEARNING_RATE = 5e-3
+    LEARNING_RATE = 5e-4
     USE_CUDA = False
     NUM_EPOCHS = 1000
     TEST_FREQ = 10
     INPUT_DIM = int(one_hot_sequence.shape[1] * one_hot_sequence.shape[2])
 
-    vae = VAE(z_dim=100, hidden_dim=200, input_dims=INPUT_DIM, use_cuda=USE_CUDA)
+    vae = VAE(z_dim=50, hidden_dim=400, input_dims=INPUT_DIM, use_cuda=USE_CUDA)
     optimizer = Adam({"lr": LEARNING_RATE})
+    #optimizer = ClippedAdam({"lr": LEARNING_RATE})
     svi = SVI(vae.model, vae.guide, optimizer, loss=JitTrace_ELBO())
 
     train_elbo = []
