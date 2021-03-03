@@ -29,8 +29,8 @@ def get_positions(pdb: str) -> str:
 
 
 def run_sys_CV(pdb, idx, cv, ref=False, optim=True, verbose=False):
-    command_lst = ["c:/Users/rmich/miniconda3/envs/mgpfusion/python.exe", 
-                    "c:/pro_tooling/run_experiments.py", 
+    command_lst = ["python",
+                    "/home/rimichael/pro_tooling/run_experiments.py",
                     "-p", f"{pdb}", "-i", f"{idx}", "-r", f"{cv}", "--seed", "3032021"]
     if optim:
         command_lst += ["-o"]

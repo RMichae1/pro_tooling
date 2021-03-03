@@ -162,10 +162,10 @@ def run_mgpfusion_experiment_pos_lvl(pdb: str, idx: int, optim: bool, ref: bool,
     mlflow.log_metric(key="spearman r", value=spearman_r, step=idx)
     mlflow.log_metric(key="spearman p", value=spearman_p, step=idx)
     mlflow.log_metric(key="mse", value=mse, step=idx)
-    filename = f"./output/{pdb}_pos_lvl_opt_{optim}_ref_{ref}_{idx}.pkl"
+    filename = f"/home/rimichael/pro_tooling/output/{pdb}_pos_lvl_opt_{optim}_ref_{ref}_{idx}.pkl"
     if write and bool(opt_params):
         data_dict = {**opt_params, **fit_params, "idx": idx, "n_mut": n_mutations}
-        with open(filename, "rb") as outfile:
+        with open(filename, "wb") as outfile:
             pickle.dump(data_dict, outfile)
         mlflow.log_artifact(filename)
     return 
