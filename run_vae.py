@@ -9,9 +9,35 @@ import pandas as pd
 import numpy as np
 import torch
 from tqdm import tqdm
+import logging
+import warnings
+import argparse
+import mlflow
+
+logging.basicConfig(level=logging.WARN)
+logger = logging.getLogger(__name__)
 
 if __name__ == "__main__":
-    with open("./data/BLAT_data_df.pkl", "rb") as infile:
+    warnings.filterwarnings("ignore")
+    parser = argparse.ArgumentParser(description="VAE Module - train and run VAE.")
+    parser.add_argument("-lr", "--learn_rate", type=float, default=5e-4, help="learning rate for optimizer")
+    parser.add_argument("--cuda", action="store_true", help="Boolean flag to use cuda.")
+    parser.add_argument("-v", "--verbose", action='store_true', help="Verbosity boolean.")
+    parser.add_argument("--seed", type=int, default=42, help="Random Seed for reproducability.")
+    parser.add_argument("-e", "--epochs", type=int, default=1000, help="Training epochs.")
+    parser.add_argument("--latent_dim", type=int, help="Dimensionality of hidden latent random variable.")
+    parser.add_argument("-s", "--save", type=str, help="Destination for model output.")
+    parser.add_argument("--hidden_dim", type=int, help="Hidden dimension for VAE internals.")
+    parser.add_argument("--test_split", type=float, default=0.1, choices=np.arange(0, 1, 0.001), help="Fraction of test data from total data-set.")
+    parser.add_argument("--validate", type=int, default=10, help="Frequency of validation step.")
+    parser.add_argument("-b", "--batch_size", type=int, default=128, help="Int size of batches.")
+    parser.add_argument("--experiment", type=str, help="experiment str as ID for tracking.")
+    args = parser.parse_args()
+
+    np.random.seed(args.seed)
+    torch.manual_seed(args.seed)
+
+    with open("./data/blat/BLAT_data_df.pkl", "rb") as infile:
         blat_df = pickle.load(infile)
     # stored values without assay entries are BLAT TEM1 ECOLX
     blat_df = blat_df[blat_df.assay.isna()]
@@ -24,48 +50,51 @@ if __name__ == "__main__":
     one_seq = all_seqs.reshape(x*y, )
     one_hot_sequence = one_hot_encoding(one_seq).reshape(x, y, 23)
 
+    # load and encode data set
     seq_dataset = torch.utils.data.TensorDataset(torch.tensor(one_hot_sequence,
                                                               dtype=torch.float))
-    test_size = int(0.1 * x)
+    test_size = int(args.test_split * x)
     seq_train, seq_test = torch.utils.data.random_split(seq_dataset, [ x - test_size, test_size])
-    batch_size = 128
+    batch_size = args.batch_size
     train_loader = torch.utils.data.DataLoader(seq_train, batch_size=batch_size)
     test_loader = torch.utils.data.DataLoader(seq_test, batch_size=batch_size)
 
-    LEARNING_RATE = 5e-4
-    USE_CUDA = False
-    NUM_EPOCHS = 1000
-    TEST_FREQ = 10
-    INPUT_DIM = int(one_hot_sequence.shape[1] * one_hot_sequence.shape[2])
+    # parameters
+    param_dict = {"LEARNING_RATE": args.learn_rate,
+            "USE_CUDA": args.cuda,
+            "NUM_EPOCHS": args.epochs,
+            "TEST_FREQ": args.validate,
+            "LATENT_DIM": args.latent_dim,
+            "HIDDEN_DIM": args.hidden_dim,
+            "INPUT_DIM": int(one_hot_sequence.shape[1] * one_hot_sequence.shape[2]),
+            "test_split": args.test_split, 
+            "batch_size": args.batch_size}
 
-    vae = VAE(z_dim=50, hidden_dim=400, input_dims=INPUT_DIM, use_cuda=USE_CUDA)
-    optimizer = Adam({"lr": LEARNING_RATE})
-    #optimizer = ClippedAdam({"lr": LEARNING_RATE})
-    svi = SVI(vae.model, vae.guide, optimizer, loss=JitTrace_ELBO())
+    experiment_name = args.experiment if args.experiment else f"VAE_Adam_e{args.epochs}_z{args.latent_dim}_h{args.hidden_dim}"
+    mlflow.set_experiment(experiment_name)
+    print(f"Tracking URI: {mlflow.get_tracking_uri()}")
+    with mlflow.start_run():
+        vae = VAE(z_dim=param_dict["LATENT_DIM"], hidden_dim=param_dict["HIDDEN_DIM"], 
+                    input_dims=param_dict["INPUT_DIM"], use_cuda=args.cuda)
+        optimizer = Adam({"lr": param_dict["LEARNING_RATE"]})
+        #optimizer = ClippedAdam({"lr": LEARNING_RATE})
+        svi = SVI(vae.model, vae.guide, optimizer, loss=JitTrace_ELBO())
 
-    train_elbo = []
-    test_elbo = []
-    for epoch in tqdm(range(NUM_EPOCHS)):
-        total_epoch_loss_train = train(svi, train_loader, USE_CUDA)
-        train_elbo.append(-total_epoch_loss_train)
-        print(f"[epoch {epoch}] avrg. train loss: {total_epoch_loss_train}")
+        mlflow.log_params(param_dict)
 
-        if epoch % TEST_FREQ == 0:
-            total_epoch_loss_test = evaluate(svi, test_loader, USE_CUDA)
-            test_elbo.append(-total_epoch_loss_test)
-            print(f"[epoch {epoch}] avrg. test loss: {total_epoch_loss_test}")
+        for epoch in tqdm(range(args.epochs)):
+            total_epoch_loss_train = train(svi, train_loader, args.cuda)
+            mlflow.log_metric(key="neg loss train", value=-total_epoch_loss_train, step=epoch)
+            print(f"[epoch {epoch}] avrg. train loss: {total_epoch_loss_train}")
 
-    plt.plot(train_elbo, label="train")
-    plt.legend()
-    plt.title("ELBO Training over iterations")
-    plt.ylabel("neg. training loss [ELBO]")
-    plt.xlabel("validation step")
-    plt.show()
-
-    plt.plot(test_elbo, label="test")
-    plt.legend()
-    plt.title("ELBO validation over validation-steps")
-    plt.ylabel("neg. validation loss [ELBO]")
-    plt.xlabel("validation steps")
-    plt.xticks(np.arange(0, int(NUM_EPOCHS / TEST_FREQ) + .1, step=1))
-    plt.show()
+            if epoch % args.validate == 0:
+                total_epoch_loss_test = evaluate(svi, test_loader, args.cuda)
+                mlflow.log_metric(key="neg loss validate", value=-total_epoch_loss_test, step=epoch)
+                print(f"[epoch {epoch}] avrg. test loss: {total_epoch_loss_test}")
+        
+        model_FILENAME = f"./models/VAE_{args.latent_dim}_{args.hidden_dim}_{args.epochs}"
+        optimizer_FILENAME = f"./model/Adam_{args.latent_dim}_{args.hidden_dim}_{args.epochs}"
+        torch.save(vae.state_dict(), model_FILENAME)
+        #torch.save(optimizer.state_dict(), optimizer_FILENAME)
+        mlflow.log_artifact(model_FILENAME)
+        #mlflow.log_artifact(optimizer_FILENAME)
