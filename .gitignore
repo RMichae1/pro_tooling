@@ -6,6 +6,7 @@ cache/
 .idea/
 .vscode/
 .ipynb_checkpoints/
+mlruns/
 
 *.log
 *.pyc
