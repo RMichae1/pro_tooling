@@ -19,7 +19,7 @@ import pickle
 
 todos = []
 done = []
-pdbs = ["2LZM", "1BVC","1PGA","1CSP", "1BPI", "1RGG", "1RTB", "2RN2", "4LYZ"]
+pdbs = ["1BVC", "2LZM", "1PGA", "1CSP", "1BPI", "1RGG", "1RTB", "2RN2", "4LYZ"]
 
 
 def get_positions(pdb: str) -> str:
