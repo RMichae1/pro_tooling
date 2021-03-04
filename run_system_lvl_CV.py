@@ -19,7 +19,7 @@ import pickle
 
 todos = []
 done = []
-pdbs = ["2LZM", "1BVC","1PGA","1CSP", "1BPI", "1RGG", "1RTB", "2RN2", "4LYZ"]
+pdbs = ["1BVC", "2LZM", "1PGA", "1CSP", "1BPI", "1RGG", "1RTB", "2RN2", "4LYZ"]
 
 
 def get_positions(pdb: str) -> str:
@@ -42,9 +42,9 @@ def run_sys_CV(pdb, idx, cv, experiment, run_id, ref=False, optim=True, verbose=
     subprocess.run(command_lst)
 
 
-def create_mlflow_run(pdb: str, cv: str, optim: bool, ref: str, name: str) -> None:
+def create_mlflow_run(pdb: str, cv: str, optim: bool, ref: str) -> None:
     sequence = get_positions(pdb)
-    experiment_name = f"{pdb}: {name}"
+    experiment_name = f"{pdb}: {cv}"
     experiment = mlflow.set_experiment(experiment_name)
     with mlflow.start_run(experiment_id=experiment) as run:
         exp_params = {"pdb": pdb, "cv": cv, "optimization": optim, "2σ": ref}
@@ -61,14 +61,10 @@ def create_mlflow_run(pdb: str, cv: str, optim: bool, ref: str, name: str) -> No
 def main() -> None:
     print(f"Tracking URI: {mlflow.get_tracking_uri()}")
     for pdb in pdbs:
-        create_mlflow_run(pdb=pdb, cv="pos_lvl", optim=False, ref=False, 
-                        name="mGPfusion run - pos-lvl NO OPTIM")
-        create_mlflow_run(pdb=pdb, cv="pos_lvl", optim=True, ref=False, 
-                        name="mGPfusion run - pos-lvl OPTIM")
-        create_mlflow_run(pdb=pdb, cv="pos_lvl", optim=False, ref=True, 
-                        name="mGPfusion run - pos-lvl 2σ NO OPTIM")
-        create_mlflow_run(pdb=pdb, cv="pos_lvl", optim=True, ref=True, 
-                        name="mGPfusion run - pos-lvl 2σ OPTIM")
+        create_mlflow_run(pdb=pdb, cv="pos_lvl", optim=False, ref=False)
+        create_mlflow_run(pdb=pdb, cv="pos_lvl", optim=True, ref=False)
+        create_mlflow_run(pdb=pdb, cv="pos_lvl", optim=False, ref=True)
+        create_mlflow_run(pdb=pdb, cv="pos_lvl", optim=True, ref=True)
         done.append(pdb)
     print(f"Done: {done}")
     # TODO handle results
