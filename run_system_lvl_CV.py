@@ -28,10 +28,11 @@ def get_positions(pdb: str) -> str:
     return cm_tri.sequence
 
 
-def run_sys_CV(pdb, idx, cv, ref=False, optim=True, verbose=False):
+def run_sys_CV(pdb, idx, cv, experiment, run_id, ref=False, optim=True, verbose=False):
     command_lst = ["python",
                     "/home/rimichael/pro_tooling/run_experiments.py",
-                    "-p", f"{pdb}", "-i", f"{idx}", "-r", f"{cv}", "--seed", "3032021"]
+                    "-p", f"{pdb}", "-i", f"{idx}", "-r", f"{cv}", "--seed", "3032021", "--experiment", f"{experiment}",
+                   "--run_id", f"{run_id}"]
     if optim:
         command_lst += ["-o"]
     if ref:
@@ -43,13 +44,15 @@ def run_sys_CV(pdb, idx, cv, ref=False, optim=True, verbose=False):
 
 def create_mlflow_run(pdb: str, cv: str, optim: bool, ref: str, name: str) -> None:
     sequence = get_positions(pdb)
-    experiment = mlflow.set_experiment(f"{pdb}: {name}")
-    mlf_run = mlflow.start_run(experiment_id=experiment, run_name="")
-    exp_params = {"pdb": pdb, "cv": cv, "optimization": optim, "2σ": ref}
-    mlflow.log_params(exp_params)
-    for idx, _ in enumerate(sequence):
-        # run position lvl no optimization
-        run_sys_CV(pdb, idx, cv=cv, ref=ref, optim=optim, verbose=True)
+    experiment_name = f"{pdb}: {name}"
+    experiment = mlflow.set_experiment(experiment_name)
+    with mlflow.start_run(experiment_id=experiment) as run:
+        exp_params = {"pdb": pdb, "cv": cv, "optimization": optim, "2σ": ref}
+        mlflow.log_params(exp_params)
+        for idx, _ in enumerate(sequence):
+            # run position lvl no optimization
+            run_sys_CV(pdb, idx, cv=cv, ref=ref, optim=optim, experiment=experiment_name, run_id=run.info.run_id,
+                       verbose=True)
     # TODO compute overall stats for experiment
     mlflow.end_run()
     return None

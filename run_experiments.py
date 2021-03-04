@@ -24,6 +24,7 @@ import numpy as np
 import pandas as pd
 import pickle
 import mlflow
+from mlflow.tracking import MlflowClient
 
 
 def run_plotting(pdbs):
@@ -116,7 +117,8 @@ def cached_mut_lvl_CV(idx, pdb, reference: bool=False, optim: bool=True) -> dict
     return optimization_parameters, n_mutations, fit_parameters
 
 
-def run_mgpfusion_experiment_pos_lvl(pdb: str, idx: int, optim: bool, ref: bool, verbose=False, write=True) -> bool:
+def run_mgpfusion_experiment_pos_lvl(pdb: str, idx: int, optim: bool, ref: bool, experiment: str, run_id: str,
+                                     verbose=False, write=True) -> bool:
     if verbose:
         print(f"{pdb} - pos: {idx},  optim: {optim}, reference: {ref}")
     pcol, X_wt, X_exp, X_is, y_wt, ΔΔg_exp, ΔΔg_is_scaled, ref_adj, bs_rosetta, max_y, mean_y = init_experiment_run(pdb)
@@ -157,17 +159,23 @@ def run_mgpfusion_experiment_pos_lvl(pdb: str, idx: int, optim: bool, ref: bool,
                             'cov': cov.squeeze().detach().numpy(),
                             'y_exp': (gpr.y_test.detach().numpy() * gpr.y_max) + gpr.y_mean
                             }
+    #run = mlflow.active_run()
+    #experiment = mlflow.get_experiment_by_name(experiment)
+    client = MlflowClient()
+    run = client.get_run(run_id)
+    print(run.info.run_id)
     spearman_r, spearman_p = spearmanr(fit_params.get('mu'), fit_params.get("y_exp"))
-    mse = mean_squared_error(fit_params.get('mu'), fit_params.get("y_exp"))
-    mlflow.log_metric(key="spearman r", value=spearman_r, step=idx)
-    mlflow.log_metric(key="spearman p", value=spearman_p, step=idx)
-    mlflow.log_metric(key="mse", value=mse, step=idx)
+    mse = mean_squared_error(np.atleast_1d(fit_params.get('mu')), np.atleast_1d(fit_params.get("y_exp")))
+    client.log_metric(run_id=run.info.run_id, key="spearman r", value=spearman_r, step=idx)
+    client.log_metric(run_id=run.info.run_id, key="spearman p", value=spearman_p, step=idx)
+    client.log_metric(run_id=run.info.run_id, key="mse", value=mse, step=idx)
     filename = f"/home/rimichael/pro_tooling/output/{pdb}_pos_lvl_opt_{optim}_ref_{ref}_{idx}.pkl"
     if write and bool(opt_params):
         data_dict = {**opt_params, **fit_params, "idx": idx, "n_mut": n_mutations}
         with open(filename, "wb") as outfile:
             pickle.dump(data_dict, outfile)
-        mlflow.log_artifact(filename)
+        client.log_artifact(run.info.run_id, filename)
+    #mlflow.end_run()
     return 
 
     # ### MUTATION LEVEL CV
@@ -184,7 +192,7 @@ def run_mgpfusion_experiment_pos_lvl(pdb: str, idx: int, optim: bool, ref: bool,
     # gpr_results_mutation_lvl = cached_mut_lvl_CV(reference=True, optim=False, pdb=pdb)
     # write_results(gpr_results_mutation_lvl, dir="mGPfusion/mut_cv", suffix="mut_lvl_no_optim_REF")
 
-def run_mgpfusion_experiment_mut_lvl(pdb: str, idx: int, optim: bool, ref: bool, verbose=False) -> dict:
+def run_mgpfusion_experiment_mut_lvl(pdb: str, idx: int, optim: bool, ref: bool, experiment: str, verbose=False) -> dict:
     """
     Runs Loo CV routine on experiment
     """
@@ -331,6 +339,8 @@ if __name__ == "__main__":
     parser.add_argument("-o", "--optim", action='store_true', help="Run optimization boolean flag.")
     parser.add_argument("-m", "--mode", action='store_true', help="Run reference modus (2 sigma) boolean flag.")
     parser.add_argument("--seed", type=int, default=42, help="Randomness seed for replicability.")
+    parser.add_argument("-e", "--experiment", type=str, help="experiment ID for mlflow")
+    parser.add_argument("--run_id", type=str, help="Run ID of mlflow run.")
     args = parser.parse_args()
 
     np.random.seed(args.seed)
@@ -342,16 +352,15 @@ if __name__ == "__main__":
     sim_mutations = parse_matlab_mutation_file(f"{os.path.dirname(__file__)}/data/mgp/ddg_rosetta_single.mat", 
                     query="ddg_rosetta_single")
 
-    with mlflow.start_run():
-        if args.run == "pos_lvl":
-            run_mgpfusion_experiment_pos_lvl(pdb=args.pdb, idx=args.idx, 
-                                                optim=args.optim, ref=args.mode, verbose=args.verbose)
-        elif args.run == "mut_lvl":
-            run_mgpfusion_experiment_mut_lvl(pdb=args.pdb, idx=args.idx, optim=args.optim, 
-                                                ref=args.mode, verbose=args.verbose)
-        else:
-            parser.print_help()
-            raise RuntimeError("Wrong CV option provided. See help.")
+    if args.run == "pos_lvl":
+        run_mgpfusion_experiment_pos_lvl(pdb=args.pdb, idx=args.idx, optim=args.optim, ref=args.mode,
+                                         verbose=args.verbose, experiment=args.experiment, run_id=args.run_id)
+    elif args.run == "mut_lvl":
+        run_mgpfusion_experiment_mut_lvl(pdb=args.pdb, idx=args.idx, optim=args.optim,
+                                        ref=args.mode, verbose=args.verbose, experiment=args.experiment)
+    else:
+        parser.print_help()
+        raise RuntimeError("Wrong CV option provided. See help.")
     # run_plotting()
     # run_BLAT_experiment()
     # run_BLAT_experiment_2()
