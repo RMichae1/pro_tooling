@@ -195,6 +195,7 @@ def run_mgpfusion_experiment_pos_lvl(pdb: str, idx: int, optim: bool, ref: bool,
     # gpr_results_mutation_lvl = cached_mut_lvl_CV(reference=True, optim=False, pdb=pdb)
     # write_results(gpr_results_mutation_lvl, dir="mGPfusion/mut_cv", suffix="mut_lvl_no_optim_REF")
 
+
 def run_mgpfusion_experiment_mut_lvl(pdb: str, idx: int, optim: bool, ref: bool, experiment: str, verbose=False) -> dict:
     """
     Runs Loo CV routine on experiment
@@ -205,12 +206,12 @@ def run_mgpfusion_experiment_mut_lvl(pdb: str, idx: int, optim: bool, ref: bool,
     return gpr_results_mutation_lvl
 
 
-def prepare_blat(in_file: str):
+def prepare_blat(in_file: str="./data/blat/BLAT_ECOLX_Ranganathan2015.csv"):
     blat_df = pd.read_csv(in_file)
     blat_df["growth"] = blat_df["2500"]
     clipped_mutations = [(mut, growth) for (mut, growth) in zip(blat_df.mutant, blat_df.growth) if int(mut[1:-1])<=263]
     # WARNING: we clip mutations at position 263 - mutations go until 286, however pdb is only 263 (main chain) long
-    mutation_dict = {"1FQG" : clipped_mutations}
+    mutation_dict = {"1FQG": clipped_mutations}
     return blat_df, mutation_dict
 
 
@@ -227,12 +228,11 @@ def prepare_tll(in_file: str="./data/tll/TLL_data.csv"):
 def run_pos_lvl_CV_no_fusion(pdb:str, idx: int, mutation_dict: dict,  run_id: int, ref: bool=False, optim: bool=True, write: bool=True) -> dict:
     pdb_file = f"./pdb/{pdb.lower()}.pdb"
     contact_map = ContactMapper(pdb_file=pdb_file, tri_dist=True)
-    # contact_map.plot_distance_matrix()
-    # contact_map.plot_contact_map()
+
     pcol = ProteinCollection(contact_map, pdb_ID=pdb, mutations_exp=mutation_dict, mutations_sim={})
     adjacencies = contact_map.adjacency
-    mut_S_exp, mut_adj_exp, ΔΔg_exp, mut_ids_exp = parse_mutations(mutation_dict=mutation_dict.get(pcol.pdb_ID), 
-                                                    sequence=pcol.sequence, adjacency=adjacencies)
+    mut_S_exp, mut_adj_exp, ΔΔg_exp, mut_ids_exp = parse_mutations(mutation_dict=mutation_dict.get(pcol.pdb_ID),
+                                                                   sequence=pcol.sequence, adjacency=adjacencies)
     X_exp = convert_aa_sequence(mut_S_exp)
     y_wt = np.array([0.])[:, np.newaxis]
     X_wt = convert_aa_sequence([pcol.sequence])
@@ -355,6 +355,7 @@ def run_BLAT_experiment_PALZKILL_1BTL():
 
 if __name__ == "__main__":
     cv_options = ["pos_lvl", "mut_lvl"]
+    data_options = ["tll", "blat"]
     parser = argparse.ArgumentParser(description="Experiment Module - run specific Regression calls.")
     parser.add_argument("-p", "--pdb", type=str, help="str identifier of pdb file")
     parser.add_argument("-i", "--idx", type=int, help="index of CV run")
@@ -366,7 +367,7 @@ if __name__ == "__main__":
     parser.add_argument("-e", "--experiment", type=str, help="experiment ID for mlflow")
     parser.add_argument("--run_id", type=str, help="Run ID of mlflow run.")
     parser.add_argument("--no_fusion", action="store_true", help="Run mGP instead of mGPfusion")
-    parser.add_argument("--input", type=str, help="path to data .csv if exists")
+    parser.add_argument("--data", type=str, choices=data_options, help="Type of run")
     args = parser.parse_args()
 
     np.random.seed(args.seed)
@@ -384,9 +385,14 @@ if __name__ == "__main__":
     elif args.run == "mut_lvl" and not args.no_fusion:
         run_mgpfusion_experiment_mut_lvl(pdb=args.pdb, idx=args.idx, optim=args.optim,
                                         ref=args.mode, verbose=args.verbose, experiment=args.experiment)
-    elif args.run == "pos_lvl" and args.no_fusion:
+    elif args.run == "pos_lvl" and args.no_fusion and args.data=="tll":
         _, mutation_dict = prepare_tll() # TODO cleanup this mess, function parameters and unused dataframes
-        run_pos_lvl_CV_no_fusion(pdb=args.pdb, idx=args.idx, mutation_dict=mutation_dict, optim=args.optim, ref=args.mode, run_id=args.run_id)
+        run_pos_lvl_CV_no_fusion(pdb=args.pdb, idx=args.idx, mutation_dict=mutation_dict, optim=args.optim,
+                                 ref=args.mode, run_id=args.run_id)
+    elif args.run == "pos_lvl" and args.no_fusion and args.data=="blat":
+        _, mutation_dict = prepare_blat()
+        run_pos_lvl_CV_no_fusion(pdb=args.pdb, idx=args.idx, mutation_dict=mutation_dict, optim=args.optim,
+                                 ref=args.mode, run_id=args.run_id)
     else:
         parser.print_help()
         raise RuntimeError("Wrong CV option provided. See help.")
