@@ -23,10 +23,13 @@ from mlflow.tracking import MlflowClient
 
 
 def init_experiment_run(pdb: str) -> tuple:
-    pga_file = loadmat(os.path.join(os.path.dirname(__file__), os.path.join("data/mgp/", f"{pdb}.mat")))
-    ref_adj = convert_graph_from_matlab_file(pga_file["contact_map"])
     cm_tri = ContactMapper(pdb_file=f"./pdb/{pdb.lower()}.pdb", tri_dist=True)
-    cm_tri.adjacency = ref_adj # just to make sure adjacencies are propagated correctly
+    ref_adj = cm_tri.adjacency
+    ref_mat_file = os.path.join(os.path.dirname(__file__), os.path.join("data/mgp/", f"{pdb.upper()}.mat"))
+    if os.path.isfile(ref_mat_file):
+        pga_file = loadmat(ref_mat_file)
+        ref_adj = convert_graph_from_matlab_file(pga_file["contact_map"]) # in case precalculated contacts exist
+        cm_tri.adjacency = ref_adj # propagate contactmap to all dependencies
     mutations_dict_exp = parse_matlab_mutation_file("./data/mgp/ddg_protherm.mat", query="ddg_protherm")
     mutations_dict_is = parse_matlab_mutation_file("./data/mgp/ddg_rosetta_single.mat", query="ddg_rosetta_single")
     pcol = ProteinCollection(cm_tri, pdb_ID=pdb, mutations_exp=mutations_dict_exp, mutations_sim=mutations_dict_is,
@@ -166,6 +169,7 @@ def run_mgpfusion_experiment_pos_lvl(pdb: str, idx: int, optim: bool, ref: bool,
     # gpr_results_mutation_lvl = cached_mut_lvl_CV(reference=True, optim=False, pdb=pdb)
     # write_results(gpr_results_mutation_lvl, dir="mGPfusion/mut_cv", suffix="mut_lvl_no_optim_REF")
 
+
 def run_mgpfusion_experiment_mut_lvl(pdb: str, idx: int, optim: bool, ref: bool, experiment: str, verbose=False) -> dict:
     """
     Runs Loo CV routine on experiment
@@ -176,21 +180,33 @@ def run_mgpfusion_experiment_mut_lvl(pdb: str, idx: int, optim: bool, ref: bool,
     return gpr_results_mutation_lvl
 
 
-def cached_BLAT_pos_lvl_CV(reference: bool=False, optim: bool=True) -> dict:
-    blat_file = os.path.join(os.path.dirname(__file__), os.path.join("data/blat/BLAT_ECOLX_Ranganathan2015.csv"))
-    blat_df = pd.read_csv(blat_file)
+def prepare_blat(in_file: str="./data/blat/BLAT_ECOLX_Ranganathan2015.csv"):
+    blat_df = pd.read_csv(in_file)
     blat_df["growth"] = blat_df["2500"]
     clipped_mutations = [(mut, growth) for (mut, growth) in zip(blat_df.mutant, blat_df.growth) if int(mut[1:-1])<=263]
     # WARNING: we clip mutations at position 263 - mutations go until 286, however pdb is only 263 (main chain) long
-    mutation_dict = {"1FQG" : clipped_mutations}
-    pdb_file = "./pdb/1fqg.pdb"
+    mutation_dict = {"1FQG": clipped_mutations}
+    return blat_df, mutation_dict
+
+
+def prepare_tll(in_file: str="./data/tll/TLL_data.csv"):
+    tll_df = pd.read_csv(in_file, sep=";")
+    tll_df = tll_df[["mutations", "stabIF"]].dropna()
+    tll_df["mutations"] = tll_df.mutations.str.replace(" ", "")
+    tll_df["stabIF"] = tll_df.stabIF.str.replace(",", ".").astype(float)
+    mutations = [(mut, y) for (mut, y) in zip(tll_df.mutations, tll_df.stabIF)]
+    mutation_dict = {"1TIB": mutations}
+    return tll_df, mutation_dict
+
+
+def run_pos_lvl_CV_no_fusion(pdb:str, idx: int, mutation_dict: dict,  run_id: int, ref: bool=False, optim: bool=True, write: bool=True) -> dict:
+    pdb_file = f"./pdb/{pdb.lower()}.pdb"
     contact_map = ContactMapper(pdb_file=pdb_file, tri_dist=True)
-    # contact_map.plot_distance_matrix()
-    # contact_map.plot_contact_map()
-    pcol = ProteinCollection(contact_map, pdb_ID="1FQG", mutations_exp=mutation_dict, mutations_sim={})
+
+    pcol = ProteinCollection(contact_map, pdb_ID=pdb, mutations_exp=mutation_dict, mutations_sim={})
     adjacencies = contact_map.adjacency
-    mut_S_exp, mut_adj_exp, ΔΔg_exp, mut_ids_exp = parse_mutations(mutation_dict=mutation_dict.get(pcol.pdb_ID), 
-                                                    sequence=pcol.sequence, adjacency=adjacencies)
+    mut_S_exp, mut_adj_exp, ΔΔg_exp, mut_ids_exp = parse_mutations(mutation_dict=mutation_dict.get(pcol.pdb_ID),
+                                                                   sequence=pcol.sequence, adjacency=adjacencies)
     X_exp = convert_aa_sequence(mut_S_exp)
     y_wt = np.array([0.])[:, np.newaxis]
     X_wt = convert_aa_sequence([pcol.sequence])
@@ -200,59 +216,67 @@ def cached_BLAT_pos_lvl_CV(reference: bool=False, optim: bool=True) -> dict:
      # Scale y-values as done in the implementation by normalizing with mean and max
     mean_y, max_y, y_wt, ΔΔg_exp, ΔΔg_is_scaled = preprocess_observations(y_wt, ΔΔg_exp,  ΔΔg_is)
 
-    mutations = []
-    optimization_parameters = []
-    fit_parameters = []
-    for pos in tqdm(range(len(pcol.sequence))):
-        print("reinitialize ...")
-        gpr = init_mgp_regression(pcol, X_wt, X_exp, np.array([]), y_wt, ΔΔg_exp, ΔΔg_is_scaled, adjacencies, 
-                                σ_T=torch.Tensor([0.]), max_y=max_y, mean_y=mean_y, fusion=False)
-        experimental_mutation_index = get_mutation_idx(gpr.protein.mut_ids_exp)
-        # gather all mutations at that position and assign train and test indices
-        mutation_bool_mask = np.array([bool(pos in mut) for mut in experimental_mutation_index])
-        test_mutation_idx = np.where(mutation_bool_mask)[0]
-        not_test_mutation_idx = np.where(~mutation_bool_mask)[0]
-        n_mutations = np.array([len(mut) for mut in experimental_mutation_index if bool(pos in mut)])
-        # split into train and test
-        gpr.set_test_index(1+test_mutation_idx) # offset with WT 
-        # combine WT + not selected + in silico for training data
-        train_index = np.concatenate([np.array([0]), 1+not_test_mutation_idx, 
-                        np.arange(start=len(gpr.X_exp)+1, stop=gpr.X.shape[0])]) # all simulated data are training data
-        gpr.set_train_index(train_index)
-        if gpr.x_test.shape[0] == 0:
-            print(f"No Mutation at pos:{pos} - skipping...")
-            continue
-        # optimize
-        nll_init = gpr.neg_ll()
-        if optim:
-            try:
-                gpr.parameter_optimization()
-            except RuntimeError as _:
-                print("Optimization broke.")
-                gpr.reset_trainable_parameters()
-        nll_end = gpr.neg_ll()
-        f_μ, cov = gpr._fit(ref=reference)
-        # write optimization results
-        optimization_parameters.append({"w": gpr.weights.get_value(),
-                                    "sigma_S": gpr.σ_S.get_value(),
-                                    "sigma_E": gpr.σ_E.get_value(),
-                                    "t": gpr.t.get_value(),
-                                    "nll": (nll_init, nll_end)})
-        mutations.append(n_mutations)
-        fit_parameters.append({'mu': f_μ.squeeze().detach().numpy(),
-                                'cov': cov.squeeze().detach().numpy(),
-                                'y_exp': (gpr.y_test.detach().numpy() * gpr.y_max) + gpr.y_mean
-                                })
-    predictions = np.concatenate([np.atleast_1d(x) for x in [elem.get('mu') for elem in fit_parameters]])
-    experimental = np.concatenate([x for sub in [elem.get('y_exp') for elem in fit_parameters] for x in sub])
-    rho = compute_ρ(y_vec=experimental, y_pred_μ=predictions)
-    rmse = compute_rmse(y=experimental, y_pred_μ=predictions)
+    experimental_mutation_index = get_mutation_idx(pcol.mut_ids_exp)
+    # gather all mutations at that position and assign train and test indices
+    mutation_bool_mask = np.array([bool(idx in mut) for mut in experimental_mutation_index])
+    test_mutation_idx = np.where(mutation_bool_mask)[0]
+    if len(test_mutation_idx) == 0:
+        print(f"No Mutation at pos:{idx} - skipping...")
+        return 
+    not_test_mutation_idx = np.where(~mutation_bool_mask)[0]
+    gpr = init_mgp_regression(pcol, X_wt, X_exp, np.array([]), y_wt, ΔΔg_exp, ΔΔg_is_scaled, adjacencies, 
+                            σ_T=torch.Tensor([0.]), max_y=max_y, mean_y=mean_y, fusion=False)
+    n_mutations = np.array([len(mut) for mut in experimental_mutation_index if bool(idx in mut)])
+    # split into train and test
+    gpr.set_test_index(1+test_mutation_idx) # offset with WT 
+    # combine WT + not selected + in silico for training data
+    train_index = np.concatenate([np.array([0]), 1+not_test_mutation_idx, 
+                    np.arange(start=len(gpr.X_exp)+1, stop=gpr.X.shape[0])]) # all simulated data are training data
+    gpr.set_train_index(train_index)
+    # optimize
+    nll_init = gpr.neg_ll()
+    if optim:
+        try:
+            gpr.parameter_optimization()
+        except RuntimeError as _:
+            print("Optimization broke.")
+            gpr.reset_trainable_parameters()
+    nll_end = gpr.neg_ll()
+    f_μ, cov = gpr._fit(ref=ref)
+    # write optimization results
+    optimization_params = {"w": gpr.weights.get_value(),
+                                "sigma_S": gpr.σ_S.get_value(),
+                                "sigma_E": gpr.σ_E.get_value(),
+                                "t": gpr.t.get_value(),
+                                "nll": (nll_init, nll_end)}
+    mutations = n_mutations
+    fit_params = {'mu': f_μ.squeeze().detach().numpy(),
+                            'cov': cov.squeeze().detach().numpy(),
+                            'y_exp': (gpr.y_test.detach().numpy() * gpr.y_max) + gpr.y_mean
+                            }
+    # predictions = np.concatenate([np.atleast_1d(x) for x in [elem.get('mu') for elem in fit_parameters]])
+    # experimental = np.concatenate([x for sub in [elem.get('y_exp') for elem in fit_parameters] for x in sub])
+    # rho = compute_ρ(y_vec=experimental, y_pred_μ=predictions)
+    # rmse = compute_rmse(y=experimental, y_pred_μ=predictions)
+    client = MlflowClient()
+    run = client.get_run(run_id)
+    print(run.info.run_id)
+    spearman_r, spearman_p = spearmanr(fit_params.get('mu'), fit_params.get("y_exp"))
+    mse = mean_squared_error(np.atleast_1d(fit_params.get('mu')), np.atleast_1d(fit_params.get("y_exp")))
+    client.log_metric(run_id=run.info.run_id, key="spearman r", value=spearman_r, step=idx)
+    client.log_metric(run_id=run.info.run_id, key="spearman p", value=spearman_p, step=idx)
+    client.log_metric(run_id=run.info.run_id, key="mse", value=mse, step=idx)
     results = {"optimization": optimization_parameters, 
                 "regression": fit_parameters, 
                 "mutations": mutations,
-                "rho": rho,
-                "rmse": rmse}
-    return results
+                "spearman corr": (spearman_r, spearman_p),
+                "mse": mse}
+    filename = f"/home/rimichael/pro_tooling/output/{pdb}_pos_lvl_opt_{optim}_ref_{ref}_{idx}.pkl"
+    if write:
+        with open(filename, "wb") as outfile:
+            pickle.dump(results, outfile)
+        client.log_artifact(run.info.run_id, filename)
+    return 
 
 
 def run_BLAT_experiment():    
@@ -305,6 +329,7 @@ def run_BLAT_experiment_PALZKILL_1BTL():
 
 if __name__ == "__main__":
     cv_options = ["pos_lvl", "mut_lvl"]
+    data_options = ["tll", "blat"]
     parser = argparse.ArgumentParser(description="Experiment Module - run specific Regression calls.")
     parser.add_argument("-p", "--pdb", type=str, help="str identifier of pdb file")
     parser.add_argument("-i", "--idx", type=int, help="index of CV run")
@@ -315,6 +340,8 @@ if __name__ == "__main__":
     parser.add_argument("--seed", type=int, default=42, help="Randomness seed for replicability.")
     parser.add_argument("-e", "--experiment", type=str, help="experiment ID for mlflow")
     parser.add_argument("--run_id", type=str, help="Run ID of mlflow run.")
+    parser.add_argument("--no_fusion", action="store_true", help="Run mGP instead of mGPfusion")
+    parser.add_argument("--data", type=str, choices=data_options, help="Type of run")
     args = parser.parse_args()
 
     np.random.seed(args.seed)
@@ -326,12 +353,20 @@ if __name__ == "__main__":
     sim_mutations = parse_matlab_mutation_file(f"{os.path.dirname(__file__)}/data/mgp/ddg_rosetta_single.mat", 
                     query="ddg_rosetta_single")
 
-    if args.run == "pos_lvl":
+    if args.run == "pos_lvl" and not args.no_fusion:
         run_mgpfusion_experiment_pos_lvl(pdb=args.pdb, idx=args.idx, optim=args.optim, ref=args.mode,
                                          verbose=args.verbose, experiment=args.experiment, run_id=args.run_id)
-    elif args.run == "mut_lvl":
+    elif args.run == "mut_lvl" and not args.no_fusion:
         run_mgpfusion_experiment_mut_lvl(pdb=args.pdb, idx=args.idx, optim=args.optim,
                                         ref=args.mode, verbose=args.verbose, experiment=args.experiment)
+    elif args.run == "pos_lvl" and args.no_fusion and args.data=="tll":
+        _, mutation_dict = prepare_tll() # TODO cleanup this mess, function parameters and unused dataframes
+        run_pos_lvl_CV_no_fusion(pdb=args.pdb, idx=args.idx, mutation_dict=mutation_dict, optim=args.optim,
+                                 ref=args.mode, run_id=args.run_id)
+    elif args.run == "pos_lvl" and args.no_fusion and args.data=="blat":
+        _, mutation_dict = prepare_blat()
+        run_pos_lvl_CV_no_fusion(pdb=args.pdb, idx=args.idx, mutation_dict=mutation_dict, optim=args.optim,
+                                 ref=args.mode, run_id=args.run_id)
     else:
         parser.print_help()
         raise RuntimeError("Wrong CV option provided. See help.")
