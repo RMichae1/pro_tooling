@@ -39,7 +39,7 @@ class Decoder(nn.Module):
 
 
 class VAE(nn.Module):
-    def __init__(self, z_dim, hidden_dim, input_dims, use_cuda=False):
+    def __init__(self, z_dim, hidden_dim, input_dims, wt, use_cuda=False):
         super().__init__()
         self.input_dims = input_dims
         self.encoder = Encoder(z_dim, hidden_dim, input_dims)
@@ -49,6 +49,7 @@ class VAE(nn.Module):
             self.cuda()
         self.use_cuda = use_cuda
         self.z_dim = z_dim
+        self.wt = wt
 
     def model(self, x):
         pyro.module("decoder", self.decoder)
@@ -69,8 +70,21 @@ class VAE(nn.Module):
     def reconstruct_seq(self, x):
         z_loc, z_scale = self.encoder(x)
         z = dist.Normal(z_loc, z_scale).sample()
-        loc_seq = self.decoder(z)
-        return loc_seq
+        seq = self.decoder(z)
+        return seq
+
+    def likelihood(self, x):
+        z_loc, z_scale = self.encoder(x)
+        p = dist.Normal(z_loc, z_scale).log_prob(torch.tensor(x)).exp()
+        return p
+
+    def log_odd_ratio(self, x):
+        wt_loc, wt_scale = self.encoder(self.wt)
+        wt_log_odds = dist.Normal(wt_loc, wt_scale).log_prob(torch.tensor(self.wt))
+        x_loc, x_scale = self.encoder(x)
+        x_log_odds = dist.Normal(x_loc, x_scale).log_prob(torch.tensor(x))
+        ratio = x_log_odds/wt_log_odds
+        return ratio
 
 
 def train(svi, train_loader, use_cuda=False):

@@ -59,6 +59,9 @@ if __name__ == "__main__":
     train_loader = torch.utils.data.DataLoader(seq_train, batch_size=batch_size)
     test_loader = torch.utils.data.DataLoader(seq_test, batch_size=batch_size)
 
+    wt = torch.tensor(one_hot_sequence[0])
+    seq_1 = torch.tensor(one_hot_sequence[1])
+
     # parameters
     param_dict = {"LEARNING_RATE": args.learn_rate,
             "USE_CUDA": args.cuda,
@@ -70,12 +73,13 @@ if __name__ == "__main__":
             "test_split": args.test_split, 
             "batch_size": args.batch_size}
 
-    experiment_name = args.experiment if args.experiment else f"VAE_Adam_e{args.epochs}_z{args.latent_dim}_h{args.hidden_dim}"
+    # TODO VAE of different flavors - sparse, dropout, etc.
+    experiment_name = args.experiment if args.experiment else f"VAE_Adam_z{args.latent_dim}"
     mlflow.set_experiment(experiment_name)
     print(f"Tracking URI: {mlflow.get_tracking_uri()}")
     with mlflow.start_run():
         vae = VAE(z_dim=param_dict["LATENT_DIM"], hidden_dim=param_dict["HIDDEN_DIM"], 
-                    input_dims=param_dict["INPUT_DIM"], use_cuda=args.cuda)
+                    input_dims=param_dict["INPUT_DIM"], use_cuda=args.cuda, wt=wt)
         optimizer = Adam({"lr": param_dict["LEARNING_RATE"]})
         #optimizer = ClippedAdam({"lr": LEARNING_RATE})
         svi = SVI(vae.model, vae.guide, optimizer, loss=JitTrace_ELBO())
@@ -95,6 +99,8 @@ if __name__ == "__main__":
         model_FILENAME = f"./models/VAE_{args.latent_dim}_{args.hidden_dim}_{args.epochs}"
         optimizer_FILENAME = f"./model/Adam_{args.latent_dim}_{args.hidden_dim}_{args.epochs}"
         torch.save(vae.state_dict(), model_FILENAME)
-        #torch.save(optimizer.state_dict(), optimizer_FILENAME)
         mlflow.log_artifact(model_FILENAME)
+        print(vae.likelihood(wt))
+        print(vae.log_odd_ratio(seq_1))
+        #torch.save(optimizer.state_dict(), optimizer_FILENAME)
         #mlflow.log_artifact(optimizer_FILENAME)
