@@ -11,11 +11,6 @@ from utility import parse_matlab_mutation_file, parse_mutations, convert_graph_f
 from utility import convert_aa_sequence, preprocess_observations
 from utility import compute_rmse, compute_ρ
 from utility import get_mutation_idx
-from visualization import plot_hyperparameters, plot_mean_over_weights, plot_pos_lvl_gpr_individual, plot_sigmas
-from visualization import generate_results_table, generate_total_results_table 
-from visualization import plot_mut_lvl_gpr_total, plot_mut_lvl_gpr_individual
-from visualization import plot_pos_lvl_gpr_total, plot_pos_lvl_gpr_individual
-from visualization import plot_covariance_matrices, plot_mWDK
 from scipy.stats import norm, spearmanr
 from sklearn.metrics import mean_squared_error
 import tracemalloc
@@ -25,27 +20,6 @@ import pandas as pd
 import pickle
 import mlflow
 from mlflow.tracking import MlflowClient
-
-
-def run_plotting(pdbs):
-    plot_pos_lvl_gpr_individual(proteins=pdbs, results_dir="./results/mGPfusion/pos_cv/")
-    # plot position level reference
-    plot_pos_lvl_gpr_total(proteins=pdbs, results_dir="./results/mGPfusion/pos_cv/", 
-                save_fig="./fig/gpr/", suffix="pos-lvl")
-    plot_hyperparameters(proteins=pdbs)
-    plot_sigmas(proteins=pdbs)
-    plot_mean_over_weights(proteins=pdbs, dir="./results/mGPfusion/pos_cv/", suffix="pos-lvl")
-    plot_mean_over_weights(proteins=pdbs, dir="./results/mGPfusion/mut_cv/", suffix="mut-lvl")
-    result_df = generate_results_table(proteins=pdbs, method=["mGPfusion", "2σ mGPfusion"], dir="./results/")
-    print(result_df)
-    print(result_df.to_latex(index=True, bold_rows=True))
-    total_results_df = generate_total_results_table(proteins=pdbs, dir="./results/")
-    print(total_results_df)
-    print(total_results_df.to_latex(index=True, bold_rows=True))
-    plot_mut_lvl_gpr_total(proteins=pdbs, results_dir="./results/mGPfusion/mut_cv/")
-    plot_mut_lvl_gpr_individual(proteins=pdbs, results_dir="./results/mGPfusion/mut_cv/")
-    # plot_mut_lvl_gpr_individual(proteins=pdbs, results_dir="./results/mGPfusion/mut_cv/", suffix="uncertainties",
-    #         uncertainties=True)
 
 
 def init_experiment_run(pdb: str) -> tuple:
