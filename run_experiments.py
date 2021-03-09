@@ -11,7 +11,7 @@ from utility import parse_matlab_mutation_file, parse_mutations, convert_graph_f
 from utility import convert_aa_sequence, preprocess_observations
 from utility import compute_rmse, compute_ρ
 from utility import get_mutation_idx
-from scipy.stats import norm, spearmanr
+from scipy.stats import spearmanr
 from sklearn.metrics import mean_squared_error
 import tracemalloc
 

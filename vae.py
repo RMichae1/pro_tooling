@@ -73,16 +73,21 @@ class VAE(nn.Module):
         seq = self.decoder(z)
         return seq
 
-    def likelihood(self, x):
+    def likelihood(self, x): 
         z_loc, z_scale = self.encoder(x)
-        p = dist.Normal(z_loc, z_scale).log_prob(torch.tensor(x)).exp()
+        z_dist = dist.Normal(z_loc, z_scale)
+        # TODO check if sampling is correct here - there is no y given
+        samples = pyro.sample("y", z_dist)
+        p = z_dist.log_prob(samples).exp()
         return p
 
     def log_odd_ratio(self, x):
         wt_loc, wt_scale = self.encoder(self.wt)
-        wt_log_odds = dist.Normal(wt_loc, wt_scale).log_prob(torch.tensor(self.wt))
+        wt_dist = dist.Normal(wt_loc, wt_scale)
+        wt_log_odds = wt_dist.log_prob(pyro.sample("y_wt", wt_dist)).exp()
         x_loc, x_scale = self.encoder(x)
-        x_log_odds = dist.Normal(x_loc, x_scale).log_prob(torch.tensor(x))
+        x_dist = dist.Normal(x_loc, x_scale)
+        x_log_odds = x_dist.log_prob(pyro.sample("y_x", x_dist)).exp()
         ratio = x_log_odds/wt_log_odds
         return ratio
 
