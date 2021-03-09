@@ -13,6 +13,7 @@ from typing import Tuple
 from utility import get_mutation_idx
 from scipy.stats import norm, spearmanr
 from sklearn.metrics import mean_squared_error
+from utility import compute_rmse, compute_ρ
 
 colormap = ["grey", "black", "yellow", "blue", "red", "pink", "orange", "lightblue", "green", "darkred"]
 legend_circles = [Line2D([0], [0], marker="o", markersize=15, color=c, label=str(m)) for c, m in zip(colormap, np.arange(1,11,1))]
@@ -115,33 +116,26 @@ def parse_regression_metrics(pdb_id, directory="./results/mGPfusion/") -> Tuple[
     rmse = h_file.get("rmse")
     return rho, rmse
 
-def plot_hyperparameters(proteins: list, save_fig="./fig/", dir="./results/hyper/"):
+def plot_weights(weight_df, save_fig="./fig/", opt=False, ref=False):
     """
     plots weight hyperparameters aquired from neg_ll optimization over all data
     """
-    filename = os.path.join(save_fig, "hyper_table.png")
+    df = weight_df[(weight_df.optimization==opt) & (weight_df.reference==ref)]
+    filename = os.path.join(save_fig, f"hyper_table_opt{opt}_ref{ref}.png")
     kernels = KernelLoader()
-    ws = []
-    results_p = []
-    for p in proteins:
-        w = parse_hyperparameter_weights(pdb_id=p, directory=dir)
-        if w is None:
-            continue
-        ws.append(w)
-        results_p.append(p)
-    ws = np.array(ws).T
-    assert ws.shape[0] == len(kernels.sub_matrices_ids)
-    assert ws.shape[1] == len(results_p)
-    df = pd.DataFrame(data=ws, columns=results_p, index=kernels.sub_matrices_ids)
-    descriptions = [m_info[0] for _, _, m_info in loadmat("./data/subMats.mat").get('subMats')] 
-    #df["Description"] = descriptions
-    df["Description"] = matrix_legend
+    kernel_names = kernels.sub_matrices_ids
+    proteins = weight_df.pdb.unique()
+    #df["matrices"] = kernel_names * len(proteins)
+    df["matrices"] = matrix_legend * len(proteins)
+    df = df.pivot("matrices", "pdb", "weights")
+    assert df.shape[0] == len(kernels.sub_matrices_ids)
+    assert df.shape[1] == len(proteins)
     plt.rcParams.update({'figure.autolayout': True})
     fig, (ax, cbar_ax) = plt.subplots(2, figsize=(5, 20), gridspec_kw={"height_ratios": (.9, .05), "hspace": .3})
-    im = sns.heatmap(ws, ax=ax, linewidths=0.5, cmap=sns.cm.rocket_r,# vmax=0.025, 
+    im = sns.heatmap(df, ax=ax, linewidths=0.5, cmap=sns.cm.rocket_r,# vmax=0.025, 
             cbar_ax=cbar_ax, cbar_kws={"orientation":"horizontal"})
-    ax.set_xticklabels(results_p)
-    ax.set_yticklabels(df.Description)
+    ax.set_xticklabels(proteins)
+    ax.set_yticklabels(matrix_legend)
     plt.setp(ax.get_xticklabels(), rotation=0, ha="right",
          rotation_mode="anchor")
     plt.setp(ax.get_yticklabels(), rotation=45, rotation_mode="anchor", fontsize=10)
@@ -150,27 +144,15 @@ def plot_hyperparameters(proteins: list, save_fig="./fig/", dir="./results/hyper
     plt.show()
 
 
-def plot_sigmas(proteins: list, save_fig="./fig", dir="./results/hyper/", suffix=""):
+def plot_sigmas(df, save_fig="./fig", dir="./results/hyper/", suffix=""):
     """
     plots trainable sigma parameters
     """
     filename = os.path.join(save_fig, f"hyper_sigmas.png")
-    param_list = []
-    result_p = []
-    for p in proteins:
-        p1, p2 = parse_hyperparameter_parameters(pdb_id=p, directory=dir)
-        if p1 is not None and p2 is not None:
-            param_list.append(np.array([p1, p2]))
-            result_p.append(p)
-    parameters = np.array(param_list)
-    s_S = parameters[:, 0]
-    s_E = parameters[:, 1]
-    trainable_params = np.hstack([s_S, s_E]).T
     fig, (ax, cbar_ax) = plt.subplots(2, figsize=(5, 5))
     cbar_ax.set_aspect(0.05)
-    im = sns.heatmap(trainable_params, ax=ax, annot=True, cmap=sns.cm.rocket_r,
+    im = sns.heatmap(df["sigma_S", "sigma_E"].values, ax=ax, annot=True, cmap=sns.cm.rocket_r,
             cbar_ax=cbar_ax, cbar_kws={"orientation":"horizontal"})
-    ax.set_xticklabels(result_p)
     ax.set_yticklabels(["σ_S", "σ_E"])
     plt.title(f"Optimized noise parameters {suffix}")
     plt.tight_layout()
@@ -210,41 +192,42 @@ def plot_mean_over_weights(proteins: list, save_fig="./fig", dir="./results/", s
     plt.show()
 
 
-def generate_results_table(proteins, cvs=["all-pos.lvl.", "pos.lvl.", "mut.lvl."], 
-    method=["mGPfusion", "2σ mGPfusion"], measures=["ρ", "rmse"], dir="./results/") -> None:
+def generate_results_table(df, cvs=["pos.lvl.", "mut.lvl."], 
+    method=["mGPfusion", "2σ mGPfusion", "NO mGPfusion", "NO 2σ mGPfusion"], measures=["ρ", "rmse"]) -> None:
     """
     extract rho rmse from result directory structure
     """
+    proteins = df.pdb.unique()
     idx = pd.MultiIndex.from_product([proteins, method], 
         names=["Protein", "Method"])
     cols = pd.MultiIndex.from_product([measures, cvs], names=["measure", "CV"])
     results_df = pd.DataFrame(data=np.zeros([len(idx), len(cols)]), index=idx, columns=cols)
     for p in proteins:
-        # all mutations pos-CV
-        rho, rmse = parse_regression_metrics(p, directory="./results/mGPfusion/all_pos_cv_error/")
-        results_df.loc[(p, "2σ mGPfusion"), ("ρ", "all-pos.lvl.")] = rho
-        results_df.loc[(p, "2σ mGPfusion"), ("rmse", "all-pos.lvl.")] = rmse
-        rho, rmse = parse_regression_metrics(p, directory="./results/mGPfusion/all_pos_cv/")
-        results_df.loc[(p, "mGPfusion"), ("ρ", "all-pos.lvl.")] = rho
-        results_df.loc[(p, "mGPfusion"), ("rmse", "all-pos.lvl.")] = rmse
-        # experimental mutations pos-CV
-        rho, rmse = parse_regression_metrics(p, directory="./results/mGPfusion/pos_cv/")
+        # pos lvl CV
+        sub_df = df[(df.pdb==p) & (df.reference==False) & (df.optimization==False)]
+        rho = compute_ρ(sub_df.y, sub_df.mu)
+        rmse = compute_rmse(sub_df.y, sub_df.mu)
+        results_df.loc[(p, "NO mGPfusion"), ("ρ", "pos.lvl.")] = rho
+        results_df.loc[(p, "NO mGPfusion"), ("rmse", "pos.lvl.")] = rmse
+        sub_df = df[(df.pdb==p) & (df.reference==True) & (df.optimization==False)]
+        rho = compute_ρ(sub_df.y, sub_df.mu)
+        rmse = compute_rmse(sub_df.y, sub_df.mu)
+        results_df.loc[(p, "NO 2σ mGPfusion"), ("ρ", "pos.lvl.")] = rho
+        results_df.loc[(p, "NO 2σ mGPfusion"), ("rmse", "pos.lvl.")] = rmse
+        sub_df = df[(df.pdb==p) & (df.reference==False) & (df.optimization==True)]
+        rho = compute_ρ(sub_df.y, sub_df.mu)
+        rmse = compute_rmse(sub_df.y, sub_df.mu)
         results_df.loc[(p, "mGPfusion"), ("ρ", "pos.lvl.")] = rho
         results_df.loc[(p, "mGPfusion"), ("rmse", "pos.lvl.")] = rmse
-        rho, rmse = parse_regression_metrics(p, directory="./results/mGPfusion/pos_cv_ref_error/")
+        sub_df = df[(df.pdb==p) & (df.reference==True) & (df.optimization==True)]
+        rho = compute_ρ(sub_df.y, sub_df.mu)
+        rmse = compute_rmse(sub_df.y, sub_df.mu)
         results_df.loc[(p, "2σ mGPfusion"), ("ρ", "pos.lvl.")] = rho
         results_df.loc[(p, "2σ mGPfusion"), ("rmse", "pos.lvl.")] = rmse
         # mut lvl CV
-        rho, rmse = parse_regression_metrics(p, directory="./results/mGPfusion/mut_cv")
-        results_df.loc[(p, "mGPfusion"), ("ρ", "mut.lvl.")] = rho
-        results_df.loc[(p, "mGPfusion"), ("rmse", "mut.lvl.")] = rmse
-        rho, rmse = parse_regression_metrics(p, directory="./results/mGPfusion/mut_cv_ref_error")
-        results_df.loc[(p, "2σ mGPfusion"), ("ρ", "mut.lvl.")] = rho
-        results_df.loc[(p, "2σ mGPfusion"), ("rmse", "mut.lvl.")] = rho
-        # # mGP
-        # mgp_rho, mgp_rmse = parse_regression_metrics(p, directory="./results/mGP/pos_cv/")
-        # results_df.loc[(p, "mGP"), ("ρ", "pos.lvl.")] = mgp_rho
-        # results_df.loc[(p, "mGP"), ("rmse", "pos.lvl.")] = mgp_rmse
+        # TODO
+        # mGP
+        # TODO
     return results_df
 
 def get_all_predictions_and_ys(pdbs, dir):
@@ -307,10 +290,23 @@ def generate_total_results_table(proteins, dir="./results/", measures=["ρ", "rm
     results_df.loc["2σ mGPfusion", ("rmse", "mut.lvl.")] = rmse
     return results_df
 
-def plot_pos_lvl_gpr_individual(proteins:list, results_dir="./results/mGPfusion", 
-    save_fig="./fig/", suffix="", title="", y_n=3, x_n=4) -> None:
+def plot_results_table(df, save_fig="./fig/"):
+    df.reset_index(inplace=True)
+    fig, ax = plt.subplots(1, 2)
+    f1 = sns.boxenplot(y=df["ρ", "pos.lvl."], x=df["Method"], ax=ax[0])
+    f2 = sns.boxenplot(y=df["rmse", "pos.lvl."], x=df["Method"], ax=ax[1])
+    f1.set_xticklabels(f1.get_xticklabels(), rotation=30, ha='right')
+    f2.set_xticklabels(f2.get_xticklabels(), rotation=30, ha='right')
+    plt.tight_layout()
+    plt.suptitle(f"GP Methods\n (pos-lvl CV)")
+    plt.savefig(f"{save_fig}/method_results_boxen.png")
+    plt.show()
+
+def plot_pos_lvl_gpr_individual(df, opt: bool, ref: bool, save_fig="./fig/", suffix="", y_n=3, x_n=4) -> None:
+    df = df[(df.optimization == opt) & (df.reference == ref)]
+    proteins = df.pdb.unique()
     assert x_n*y_n >= len(proteins)
-    filename = os.path.join(save_fig, f"gpr_pos_lvl_individual_{suffix}.png")
+    filename = os.path.join(save_fig, f"gpr_pos_lvl_individual_opt{opt}_ref{ref}_{suffix}.png")
     fig, ax = plt.subplots(y_n, x_n, figsize=(15,15))
     index = [(i,j) for i in range(y_n) for j in range(x_n)]
     for (i,j), p in zip(index, proteins):
@@ -318,15 +314,11 @@ def plot_pos_lvl_gpr_individual(proteins:list, results_dir="./results/mGPfusion"
         ax[i,j].set_xlim((-11,6))
         ax[i,j].set_ylim((-11,6))
         ax[i,j].grid(True)
-        mu, y_test, _, _ = parse_regression_results(p, directory=results_dir)
-        mutations = parse_mutations(p, results_dir)
-        if mu is None or mutations is None:
-            print(f"{p} cannot be found in {results_dir}")
-            continue
-        f_μ = np.concatenate([np.atleast_1d(elem) for elem in mu])
-        y_test = np.concatenate([elem for sub in y_test for elem in sub])
+        mu = df[df.pdb==p].mu
+        y = df[df.pdb==p].y
+        mutations = df[df.pdb==p].mutations
         mapped_color = [colormap[mut-1] for mut in mutations]
-        ax[i, j].scatter(y_test, f_μ, s=100., color=mapped_color, edgecolors="darkgrey")
+        ax[i, j].scatter(y, mu, s=100., color=mapped_color, edgecolors="darkgrey")
         ax[i, j].set_title(f"{p}", fontsize=12)
     # TODO delete axes from a range of diff values between proteins and provided last axis length
     fig.delaxes(ax[2][3])
@@ -337,7 +329,7 @@ def plot_pos_lvl_gpr_individual(proteins:list, results_dir="./results/mGPfusion"
         ax[i,0].set_ylabel("predicted ΔΔG", fontsize=12)
     for i in range(x_n):
         ax[y_n-1,i].set_xlabel("experimental ΔΔG", fontsize=12)
-    plt.suptitle(f"GP Regression (position lvl CV) {suffix}")
+    plt.suptitle(f"GP Regression\n (pos-lvl CV optimization:{opt} 2σ:{ref})\n{suffix}")
     plt.savefig(filename)
     plt.show()
 
