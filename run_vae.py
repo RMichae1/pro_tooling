@@ -3,6 +3,7 @@ import pickle
 import os
 from utility import one_hot_encoding
 from vae import train, evaluate
+import pyro
 from pyro.infer import SVI, JitTrace_ELBO
 from pyro.optim import Adam, ClippedAdam
 import matplotlib.pyplot as plt
@@ -19,6 +20,7 @@ logging.basicConfig(level=logging.WARN)
 logger = logging.getLogger(__name__)
 
 if __name__ == "__main__":
+    pyro.clear_param_store()
     warnings.filterwarnings("ignore")
     parser = argparse.ArgumentParser(description="VAE Module - train and run VAE.")
     parser.add_argument("-lr", "--learn_rate", type=float, default=5e-4, help="learning rate for optimizer")
@@ -78,6 +80,7 @@ if __name__ == "__main__":
     experiment_name = args.experiment if args.experiment else f"VAE_Adam_z{args.latent_dim}"
     mlflow.set_experiment(experiment_name)
     print(f"Tracking URI: {mlflow.get_tracking_uri()}")
+
     model_FILENAME = f"./models/VAE_{args.latent_dim}_{args.hidden_dim}_{args.epochs}.pt"
     optimizer_FILENAME = f"./model/Adam_{args.latent_dim}_{args.hidden_dim}_{args.epochs}.pt"
     vae = VAE(z_dim=param_dict["LATENT_DIM"], hidden_dim=param_dict["HIDDEN_DIM"], 
@@ -85,27 +88,32 @@ if __name__ == "__main__":
     optimizer = Adam({"lr": param_dict["LEARNING_RATE"]})
     #optimizer = ClippedAdam({"lr": LEARNING_RATE})
     svi = SVI(vae.model, vae.guide, optimizer, loss=JitTrace_ELBO())
+    
     if os.path.exists(model_FILENAME):
         vae.load_state_dict(torch.load(model_FILENAME))
+        svi.load(optimizer_FILENAME)
     else:
-        with mlflow.start_run():
-            mlflow.log_params(param_dict)
-            for epoch in tqdm(range(args.epochs)):
-                total_epoch_loss_train = train(svi, train_loader, args.cuda)
-                mlflow.log_metric(key="neg loss train", value=-total_epoch_loss_train, 
-                                    step=epoch)
-                print(f"[epoch {epoch}] avrg. train loss: {total_epoch_loss_train}")
+        mlflow.start_run()
+        mlflow.log_params(param_dict)
+        for epoch in tqdm(range(args.epochs)):
+            total_epoch_loss_train = train(svi, train_loader, args.cuda)
+            mlflow.log_metric(key="neg loss train", value=-total_epoch_loss_train, 
+                                step=epoch)
+            print(f"[epoch {epoch}] avrg. train loss: {total_epoch_loss_train}")
 
-                if epoch % args.validate == 0:
-                    total_epoch_loss_test = evaluate(svi, test_loader, args.cuda)
-                    mlflow.log_metric(key="neg loss validate", value=-total_epoch_loss_test, 
-                                        step=epoch)
-                    print(f"[epoch {epoch}] avrg. test loss: {total_epoch_loss_test}")
-            
-            
-            torch.save(vae.state_dict(), model_FILENAME)
-            mlflow.log_artifact(model_FILENAME)
-            print(vae.likelihood(wt))
-            print(vae.log_odd_ratio(seq_1))
-            #torch.save(optimizer.state_dict(), optimizer_FILENAME)
-            #mlflow.log_artifact(optimizer_FILENAME)
+            if epoch % args.validate == 0:
+                total_epoch_loss_test = evaluate(svi, test_loader, args.cuda)
+                mlflow.log_metric(key="neg loss validate", value=-total_epoch_loss_test, 
+                                    step=epoch)
+                print(f"[epoch {epoch}] avrg. test loss: {total_epoch_loss_test}")
+        
+        
+        torch.save(vae.state_dict(), model_FILENAME)
+        optimizer.save(optimizer_FILENAME)
+        mlflow.log_artifact(model_FILENAME)
+        mlflow.log_artifact(optimizer_FILENAME)
+        mlflow.end_run()
+        
+    print(vae.log_p(wt))
+    print(vae.log_p(seq_1))
+        
