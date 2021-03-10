@@ -4,6 +4,8 @@ from pyro.distributions import constraints
 import pandas as pd
 import torch
 from torch import nn
+from torch.distributions import kl_divergence
+from torch.nn.functional import nll_loss
 pyro.enable_validation()
 
 
@@ -20,7 +22,7 @@ class Encoder(nn.Module):
         x = x.reshape(-1, self.sequence_dims)
         hidden = self.softplus(self.fc1(x))
         z_loc = self.fc21(hidden)
-        z_scale = torch.exp(self.fc22(hidden))
+        z_scale = torch.exp(self.fc22(hidden)) # TODO multiply with 0.5?
         return z_loc, z_scale
 
 
@@ -67,29 +69,31 @@ class VAE(nn.Module):
             z_loc, z_scale = self.encoder.forward(x)
             pyro.sample("latent", dist.Normal(z_loc, z_scale, constraints.positive).to_event(1))
 
-    def reconstruct_seq(self, x):
-        z_loc, z_scale = self.encoder(x)
-        z = dist.Normal(z_loc, z_scale).sample()
-        seq = self.decoder(z)
-        return seq
+    def representation(self, z):
+        z_repr = self.decoder(z)
+        #sample = z_repr.exp().argmax(dim=-1)
+        #return sample
+        return z_repr
 
-    def likelihood(self, x): 
+    def reconstruct(self, x):
         z_loc, z_scale = self.encoder(x)
         z_dist = dist.Normal(z_loc, z_scale)
-        # TODO check if sampling is correct here - there is no y given
-        samples = pyro.sample("y", z_dist)
-        p = z_dist.log_prob(samples).exp()
-        return p
+        return self.representation(z_dist)
 
-    def log_odd_ratio(self, x):
-        wt_loc, wt_scale = self.encoder(self.wt)
-        wt_dist = dist.Normal(wt_loc, wt_scale)
-        wt_log_odds = wt_dist.log_prob(pyro.sample("y_wt", wt_dist)).exp()
-        x_loc, x_scale = self.encoder(x)
-        x_dist = dist.Normal(x_loc, x_scale)
-        x_log_odds = x_dist.log_prob(pyro.sample("y_x", x_dist)).exp()
-        ratio = x_log_odds/wt_log_odds
-        return ratio
+    def log_p(self, x): 
+        z_dist = self.encoder(x)
+        kld = self.kld_loss(z_dist)
+        z = dist.Normal(z_dist[0], z_dist[1]).rsample()
+        # TODO check if sampling is correct here - there is no y given
+        reconstruction = self.decoder(z).permute(0, 2, 1)
+        log_p = nll_loss(reconstruction, x, reductin="none").mul(-1).sum(1)
+        elbo = log_p + kld
+        return elbo, log_p, kld
+
+    def kld_loss(self, z_dist):
+        prior = dist.Normal(torch.zeros_like(z_dist[0]), torch.ones_like(z_dist[1]))
+        kld = kl_divergence(z_dist, prior).sum(dim=1) # TODO check dimensionality here
+        return kld
 
 
 def train(svi, train_loader, use_cuda=False):
