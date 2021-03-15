@@ -28,9 +28,9 @@ if __name__ == "__main__":
     parser.add_argument("-v", "--verbose", action='store_true', help="Verbosity boolean.")
     parser.add_argument("--seed", type=int, default=42, help="Random Seed for reproducability.")
     parser.add_argument("-e", "--epochs", type=int, default=1000, help="Training epochs.")
-    parser.add_argument("--latent_dim", type=int, help="Dimensionality of hidden latent random variable.")
+    parser.add_argument("--latent_dim", type=int, default=20, help="Dimensionality of hidden latent random variable.")
     parser.add_argument("-s", "--save", type=str, help="Destination for model output.")
-    parser.add_argument("--hidden_dim", type=int, help="Hidden dimension for VAE internals.")
+    parser.add_argument("--hidden_dim", type=int, default=400, help="Hidden dimension for VAE internals.")
     parser.add_argument("--test_split", type=float, default=0.1, choices=np.arange(0, 1, 0.001), help="Fraction of test data from total data-set.")
     parser.add_argument("--validate", type=int, default=10, help="Frequency of validation step.")
     parser.add_argument("-b", "--batch_size", type=int, default=128, help="Int size of batches.")
@@ -82,16 +82,16 @@ if __name__ == "__main__":
     print(f"Tracking URI: {mlflow.get_tracking_uri()}")
 
     model_FILENAME = f"./models/VAE_{args.latent_dim}_{args.hidden_dim}_{args.epochs}.pt"
-    optimizer_FILENAME = f"./model/Adam_{args.latent_dim}_{args.hidden_dim}_{args.epochs}.pt"
+    optimizer_FILENAME = f"./models/Adam_{args.latent_dim}_{args.hidden_dim}_{args.epochs}.pt"
     vae = VAE(z_dim=param_dict["LATENT_DIM"], hidden_dim=param_dict["HIDDEN_DIM"], 
                     input_dims=param_dict["INPUT_DIM"], use_cuda=args.cuda, wt=wt)
     optimizer = Adam({"lr": param_dict["LEARNING_RATE"]})
     #optimizer = ClippedAdam({"lr": LEARNING_RATE})
     svi = SVI(vae.model, vae.guide, optimizer, loss=JitTrace_ELBO())
     
-    if os.path.exists(model_FILENAME):
+    if os.path.exists(model_FILENAME) and os.path.exists(optimizer_FILENAME):
         vae.load_state_dict(torch.load(model_FILENAME))
-        svi.load(optimizer_FILENAME)
+        optimizer.load(optimizer_FILENAME)
     else:
         mlflow.start_run()
         mlflow.log_params(param_dict)
@@ -113,7 +113,8 @@ if __name__ == "__main__":
         mlflow.log_artifact(model_FILENAME)
         mlflow.log_artifact(optimizer_FILENAME)
         mlflow.end_run()
-        
+
     print(vae.log_p(wt))
     print(vae.log_p(seq_1))
+    print(vae.reconstruct(wt))
         
