@@ -32,7 +32,7 @@ class Decoder(nn.Module):
         self.fc1 = nn.Linear(z_dim, hidden_dim)
         self.fc21 = nn.Linear(hidden_dim, input_dims)
         self.softplus = nn.Softplus()
-        self.sigmoid = nn.Sigmoid()
+        self.sigmoid = nn.Softmax() # required for NLL computation
 
     def forward(self, z):
         hidden = self.softplus(self.fc1(z))
@@ -69,8 +69,8 @@ class VAE(nn.Module):
             z_loc, z_scale = self.encoder.forward(x)
             pyro.sample("latent", dist.Normal(z_loc, z_scale, constraints.positive).to_event(1))
 
-    def representation(self, z):
-        z_repr = self.decoder(z)
+    def representation(self, z: dist) -> torch.Tensor:
+        z_repr = self.decoder(z.loc)
         #sample = z_repr.exp().argmax(dim=-1)
         #return sample
         return z_repr
@@ -82,17 +82,17 @@ class VAE(nn.Module):
 
     def log_p(self, x): 
         z_dist = self.encoder(x)
+        z_dist = dist.Normal(z_dist[0], z_dist[1])
         kld = self.kld_loss(z_dist)
-        z = dist.Normal(z_dist[0], z_dist[1]).rsample()
-        # TODO check if sampling is correct here - there is no y given
-        reconstruction = self.decoder(z).permute(0, 2, 1)
-        log_p = nll_loss(reconstruction, x, reductin="none").mul(-1).sum(1)
+        reconstruction = self.decoder(z_dist.loc)
+        log_p = nll_loss(reconstruction, x, reduction="none").mul(-1).sum(1) # TODO requires softmax or Cross-entr
+        # log_p = dist.Bernoulli(self.decoder(z_dist.loc)).log_prob(x.flatten()).sum(1) # TODO CORRECT THAT
         elbo = log_p + kld
         return elbo, log_p, kld
 
-    def kld_loss(self, z_dist):
-        prior = dist.Normal(torch.zeros_like(z_dist[0]), torch.ones_like(z_dist[1]))
-        kld = kl_divergence(z_dist, prior).sum(dim=1) # TODO check dimensionality here
+    def kld_loss(self, z_dist: dist):
+        prior = dist.Normal(torch.zeros_like(z_dist.loc), torch.ones_like(z_dist.scale))
+        kld = kl_divergence(z_dist, prior).sum(dim=1)
         return kld
 
 
