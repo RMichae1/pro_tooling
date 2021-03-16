@@ -225,7 +225,8 @@ def prepare_tll(in_file: str="./data/tll/TLL_data.csv"):
     return tll_df, mutation_dict
 
 
-def run_pos_lvl_CV_no_fusion(pdb:str, idx: int, mutation_dict: dict,  run_id: int, ref: bool=False, optim: bool=True, write: bool=True) -> dict:
+def run_pos_lvl_CV_no_fusion(pdb:str, idx: int, mutation_dict: dict,  run_id: int,
+                             ref: bool=False, optim: bool=True, write: bool=True) -> dict:
     pdb_file = f"./pdb/{pdb.lower()}.pdb"
     contact_map = ContactMapper(pdb_file=pdb_file, tri_dist=True)
 
@@ -238,7 +239,6 @@ def run_pos_lvl_CV_no_fusion(pdb:str, idx: int, mutation_dict: dict,  run_id: in
     X_wt = convert_aa_sequence([pcol.sequence])
     ΔΔg_exp = np.array(ΔΔg_exp)[:, np.newaxis]
     ΔΔg_is = np.array([])[:, np.newaxis]
-
      # Scale y-values as done in the implementation by normalizing with mean and max
     mean_y, max_y, y_wt, ΔΔg_exp, ΔΔg_is_scaled = preprocess_observations(y_wt, ΔΔg_exp,  ΔΔg_is)
 
@@ -280,10 +280,6 @@ def run_pos_lvl_CV_no_fusion(pdb:str, idx: int, mutation_dict: dict,  run_id: in
                             'cov': cov.squeeze().detach().numpy(),
                             'y_exp': (gpr.y_test.detach().numpy() * gpr.y_max) + gpr.y_mean
                             }
-    # predictions = np.concatenate([np.atleast_1d(x) for x in [elem.get('mu') for elem in fit_parameters]])
-    # experimental = np.concatenate([x for sub in [elem.get('y_exp') for elem in fit_parameters] for x in sub])
-    # rho = compute_ρ(y_vec=experimental, y_pred_μ=predictions)
-    # rmse = compute_rmse(y=experimental, y_pred_μ=predictions)
     client = MlflowClient()
     run = client.get_run(run_id)
     print(run.info.run_id)
@@ -292,8 +288,8 @@ def run_pos_lvl_CV_no_fusion(pdb:str, idx: int, mutation_dict: dict,  run_id: in
     client.log_metric(run_id=run.info.run_id, key="spearman r", value=spearman_r, step=idx)
     client.log_metric(run_id=run.info.run_id, key="spearman p", value=spearman_p, step=idx)
     client.log_metric(run_id=run.info.run_id, key="mse", value=mse, step=idx)
-    results = {"optimization": optimization_parameters, 
-                "regression": fit_parameters, 
+    results = {"optimization": optimization_params,
+                "regression": fit_params,
                 "mutations": mutations,
                 "spearman corr": (spearman_r, spearman_p),
                 "mse": mse}
@@ -302,14 +298,7 @@ def run_pos_lvl_CV_no_fusion(pdb:str, idx: int, mutation_dict: dict,  run_id: in
         with open(filename, "wb") as outfile:
             pickle.dump(results, outfile)
         client.log_artifact(run.info.run_id, filename)
-    return 
-
-
-def run_BLAT_experiment():    
-    gpr_results_pos_lvl = cached_BLAT_pos_lvl_CV(reference=False, optim=False)
-    write_results(gpr_results_pos_lvl, dir="mGPfusion/blat/pos_cv", cv="pos_lvl_no_optim", pdb="1FQG")
-    gpr_results_pos_lvl = cached_BLAT_pos_lvl_CV(reference=False, optim=True)
-    write_results(gpr_results_pos_lvl, dir="mGPfusion/blat/pos_cv", suffix="pos_lvl", pdb="1FQG")
+    return
 
 
 def run_BLAT_experiment_PALZKILL_1BTL():
