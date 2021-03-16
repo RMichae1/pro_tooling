@@ -200,12 +200,20 @@ def prepare_tll(in_file: str="./data/tll/TLL_data.csv"):
 
 
 def run_pos_lvl_CV_no_fusion(pdb:str, idx: int, mutation_dict: dict,  run_id: int,
-                             ref: bool=False, optim: bool=True, write: bool=True) -> dict:
+                             ref: bool=False, optim: bool=True, write: bool=True, use_reference_map: bool=False) -> dict:
     pdb_file = f"./pdb/{pdb.lower()}.pdb"
     contact_map = ContactMapper(pdb_file=pdb_file, tri_dist=True)
 
     pcol = ProteinCollection(contact_map, pdb_ID=pdb, mutations_exp=mutation_dict, mutations_sim={})
     adjacencies = contact_map.adjacency
+
+    # use reference matlab file if required
+    ref_mat_file = os.path.join(os.path.dirname(__file__), os.path.join("data/mgp/", f"{pdb.upper()}.mat"))
+    if os.path.isfile(ref_mat_file) and use_reference_map:
+        pga_file = loadmat(ref_mat_file)
+        adjacencies = convert_graph_from_matlab_file(pga_file["contact_map"])  # in case precalculated contacts exist
+        contact_map.adjacency = adjacencies  # propagate contactmap to all dependencies
+
     mut_S_exp, mut_adj_exp, ΔΔg_exp, mut_ids_exp = parse_mutations(mutation_dict=mutation_dict.get(pcol.pdb_ID),
                                                                    sequence=pcol.sequence, adjacency=adjacencies)
     X_exp = convert_aa_sequence(mut_S_exp)
@@ -267,7 +275,7 @@ def run_pos_lvl_CV_no_fusion(pdb:str, idx: int, mutation_dict: dict,  run_id: in
                 "mutations": mutations,
                 "spearman corr": (spearman_r, spearman_p),
                 "mse": mse}
-    filename = f"/home/rimichael/pro_tooling/output/{pdb}_pos_lvl_opt_{optim}_ref_{ref}_{idx}.pkl"
+    filename = f"/home/rimichael/pro_tooling/output/{pdb}_NO_FUSION_pos_lvl_opt_{optim}_ref_{ref}_{idx}.pkl"
     if write:
         with open(filename, "wb") as outfile:
             pickle.dump(results, outfile)
@@ -331,6 +339,7 @@ if __name__ == "__main__":
     parser.add_argument("--run_id", type=str, help="Run ID of mlflow run.")
     parser.add_argument("--no_fusion", action="store_true", help="Run mGP instead of mGPfusion")
     parser.add_argument("--data", type=str, choices=data_options, help="Type of run")
+    parser.add_argument("--ref_contact", action="store_true", help="Use reference contactmap from matlab.")
     args = parser.parse_args()
 
     np.random.seed(args.seed)
@@ -348,6 +357,10 @@ if __name__ == "__main__":
     elif args.run == "mut_lvl" and not args.no_fusion:
         run_mgpfusion_experiment_mut_lvl(pdb=args.pdb, idx=args.idx, optim=args.optim,
                                         ref=args.mode, verbose=args.verbose, experiment=args.experiment)
+    elif args.run == "pos_lvl" and args.no_fusion:
+        mutations_dict_exp = parse_matlab_mutation_file("./data/mgp/ddg_protherm.mat", query="ddg_protherm")
+        run_pos_lvl_CV_no_fusion(pdb=args.pdb, idx=args.idx, mutation_dict=mutations_dict_exp, optim=args.optim,
+                                 use_reference_map=args.ref_contact, run_id=args.run_id)
     elif args.run == "pos_lvl" and args.no_fusion and args.data=="tll":
         _, mutation_dict = prepare_tll() # TODO cleanup this mess, function parameters and unused dataframes
         run_pos_lvl_CV_no_fusion(pdb=args.pdb, idx=args.idx, mutation_dict=mutation_dict, optim=args.optim,
