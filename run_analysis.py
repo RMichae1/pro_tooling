@@ -9,7 +9,7 @@ from scipy.stats import norm, spearmanr
 from sklearn.metrics import mean_squared_error
 from visualization import parse_hyperparameter_parameters, plot_weights, plot_pos_lvl_gpr_individual, plot_sigmas
 from visualization import plot_results_table
-from visualization import generate_results_table, generate_total_results_table 
+from visualization import generate_results_table 
 from visualization import plot_mut_lvl_gpr_total, plot_mut_lvl_gpr_individual
 from visualization import plot_pos_lvl_gpr_total, plot_pos_lvl_gpr_individual
 from visualization import plot_covariance_matrices, plot_mWDK
@@ -69,6 +69,7 @@ def create_prediction_df(parsed_results: list, pdb: str, ref: bool, opt: bool, c
     n_mut = np.concatenate([e[3] for e in parsed_results])
     data = {"mu": μ, "cov": cov, "y": y_exp, "mutations": n_mut}
     pred_df = pd.DataFrame(data, columns=["mu", "cov", "y", "mutations"])
+    pred_df = annotate_df(pred_df, cv, opt, ref, pdb)
     return pred_df
 
 
@@ -104,6 +105,9 @@ def plot_regression_results(df):
     # plot position level reference
     plot_pos_lvl_gpr_individual(df, opt=False, ref=True)
     plot_pos_lvl_gpr_individual(df, opt=True, ref=True)
+
+
+def results_table(df):
     result_df = generate_results_table(df)
     plot_results_table(result_df)
     #print(result_df)
@@ -158,13 +162,11 @@ if __name__ == "__main__":
     refs = [False, True]
     
     regression_df = load_regression_results(pdbs, optim, refs)
-    #plot_regression_results(regression_df)
-    weight_df, hyperparameters_df = load_hyperparameter_results(pdbs, optim, refs)
-    plot_hyperparameters(hyperparameters_df, weight_df)
+    plot_regression_results(regression_df)
+    results_table(regression_df)
+    #weight_df, hyperparameters_df = load_hyperparameter_results(pdbs, optim, refs)
+    #plot_hyperparameters(hyperparameters_df, weight_df)
 
-    # total_results_df = generate_total_results_table(proteins=pdbs, dir="./results/")
-    # print(total_results_df)
-    # print(total_results_df.to_latex(index=True, bold_rows=True))
     # plot_mut_lvl_gpr_total(proteins=pdbs, results_dir="./results/mGPfusion/mut_cv/")
     # plot_mut_lvl_gpr_individual(proteins=pdbs, results_dir="./results/mGPfusion/mut_cv/")
     # plot_mut_lvl_gpr_individual(proteins=pdbs, results_dir="./results/mGPfusion/mut_cv/", suffix="uncertainties",
