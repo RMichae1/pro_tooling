@@ -15,6 +15,8 @@ import logging
 import warnings
 import argparse
 import mlflow
+import seaborn as sns
+import matplotlib.pyplot as plt
 
 logging.basicConfig(level=logging.WARN)
 logger = logging.getLogger(__name__)
@@ -114,7 +116,20 @@ if __name__ == "__main__":
         mlflow.log_artifact(optimizer_FILENAME)
         mlflow.end_run()
 
+    print(vae.latent_sample(wt, n=3))
+    print(vae.mse_loss(wt))
+    # samples = []
+    # mse_diff = []
+    # for s in seq_dataset:
+    #     samples.append(vae.latent_sample(s[0], n=1).reshape(-1).detach().numpy())
+    #     mse_diff.append(vae.mse_diff(s[0]).detach().numpy())
+    # samples = np.array(samples)
+    # print(samples)
+    # plt.scatter(samples[:, 0], samples[:, 1], c=mse_diff, alpha=0.125, s=1.5)
+    # plt.title("VAE z=2 latent representation")
+    # plt.show()
     print(vae.log_p(wt))
     print(vae.log_p(seq_1))
     print(vae.reconstruct(wt))
+    # TODO plot w/ hidden dim 2
         

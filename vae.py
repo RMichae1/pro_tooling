@@ -32,7 +32,7 @@ class Decoder(nn.Module):
         self.fc1 = nn.Linear(z_dim, hidden_dim)
         self.fc21 = nn.Linear(hidden_dim, input_dims)
         self.softplus = nn.Softplus()
-        self.sigmoid = nn.Softmax() # required for NLL computation
+        self.sigmoid = nn.Sigmoid()
 
     def forward(self, z):
         hidden = self.softplus(self.fc1(z))
@@ -46,6 +46,9 @@ class VAE(nn.Module):
         self.input_dims = input_dims
         self.encoder = Encoder(z_dim, hidden_dim, input_dims)
         self.decoder = Decoder(z_dim, hidden_dim, input_dims)
+        self.ce_loss = nn.CrossEntropyLoss(reduction="none")
+        self.mse = nn.MSELoss()
+        self.sequence_length = wt.shape[0]
 
         if use_cuda:
             self.cuda()
@@ -71,29 +74,47 @@ class VAE(nn.Module):
 
     def representation(self, z: dist) -> torch.Tensor:
         z_repr = self.decoder(z.loc)
-        #sample = z_repr.exp().argmax(dim=-1)
-        #return sample
-        return z_repr
+        sample = dist.Bernoulli(z_repr).sample()
+        return sample
 
     def reconstruct(self, x):
         z_loc, z_scale = self.encoder(x)
         z_dist = dist.Normal(z_loc, z_scale)
-        return self.representation(z_dist)
+        reconstruction = self.representation(z_dist)
+        return reconstruction
 
     def log_p(self, x): 
         z_dist = self.encoder(x)
         z_dist = dist.Normal(z_dist[0], z_dist[1])
         kld = self.kld_loss(z_dist)
-        reconstruction = self.decoder(z_dist.loc)
-        log_p = nll_loss(reconstruction, x, reduction="none").mul(-1).sum(1) # TODO requires softmax or Cross-entr
+        reconstruction = self.representation(z_dist).view(self.sequence_length, 23)
+        # TODO ensure input: (N, C)
+        log_p = self.ce_loss(reconstruction, x)
+        # log_p = nll_loss(reconstruction, x, reduction="none").mul(-1).sum(1) # TODO requires log_softmax in Encoder
         # log_p = dist.Bernoulli(self.decoder(z_dist.loc)).log_prob(x.flatten()).sum(1) # TODO CORRECT THAT
         elbo = log_p + kld
         return elbo, log_p, kld
 
-    def kld_loss(self, z_dist: dist):
+    @staticmethod
+    def kld_loss(z_dist: dist):
         prior = dist.Normal(torch.zeros_like(z_dist.loc), torch.ones_like(z_dist.scale))
         kld = kl_divergence(z_dist, prior).sum(dim=1)
         return kld
+
+    def mse_loss(self, x):
+        x_construct = self.reconstruct(x).argmax(-1).to(torch.float)
+        return self.mse(x_construct, x)
+
+    def mse_diff(self, x, y=None):
+        if y is None:
+            y = self.wt
+        x_construct = self.reconstruct(x).argmax(-1).to(torch.float)
+        y_construct = self.reconstruct(y).argmax(-1).to(torch.float)
+        return self.mse(x_construct, y_construct)
+
+    def latent_sample(self, x, n=10):
+        z_loc, z_scale = self.encoder(x)
+        return dist.Normal(z_loc, z_scale).rsample([n])
 
 
 def train(svi, train_loader, use_cuda=False):
