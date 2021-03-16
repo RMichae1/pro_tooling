@@ -4,18 +4,6 @@ import warnings
 import subprocess
 import mlflow
 from contact_mapper import ContactMapper
-from protein_representation import ProteinCollection
-from data_scaler import BayesScaler
-from gp_regression import GPRegression
-import torch
-from tqdm import tqdm
-from utility import compute_rmse, compute_ρ
-from scipy.stats import norm, spearmanr
-from sklearn.metrics import mean_squared_error
-
-import numpy as np
-import pandas as pd
-import pickle
 
 todos = []
 done = []
@@ -69,17 +57,6 @@ def main() -> None:
         create_mlflow_run(pdb=pdb, cv="pos_lvl", optim=True, ref=True)
         done.append(pdb)
     print(f"Done: {done}")
-    # TODO handle results
-    # POS LVL
-    # predictions = np.concatenate([np.atleast_1d(x) for x in [elem.get('mu') for elem in fit_parameters]])
-    # experimental = np.concatenate([x for sub in [elem.get('y_exp') for elem in fit_parameters] for x in sub])
-    # rho = compute_ρ(y_vec=experimental, y_pred_μ=predictions)
-    # rmse = compute_rmse(y=experimental, y_pred_μ=predictions)
-    #
-    #
-    # MUT LVL
-    # predictions = np.concatenate([np.atleast_1d(x) for x in [elem.get('mu') for elem in fit_parameters]])
-    # experimental = np.concatenate([x for sub in [elem.get('y_exp') for elem in fit_parameters] for x in sub])
 
 
 def run_TLL() -> None:

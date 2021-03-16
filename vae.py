@@ -4,6 +4,8 @@ from pyro.distributions import constraints
 import pandas as pd
 import torch
 from torch import nn
+from torch.distributions import kl_divergence
+from torch.nn.functional import nll_loss
 pyro.enable_validation()
 
 
@@ -20,7 +22,7 @@ class Encoder(nn.Module):
         x = x.reshape(-1, self.sequence_dims)
         hidden = self.softplus(self.fc1(x))
         z_loc = self.fc21(hidden)
-        z_scale = torch.exp(self.fc22(hidden))
+        z_scale = torch.exp(self.fc22(hidden)) # TODO multiply with 0.5?
         return z_loc, z_scale
 
 
@@ -30,7 +32,7 @@ class Decoder(nn.Module):
         self.fc1 = nn.Linear(z_dim, hidden_dim)
         self.fc21 = nn.Linear(hidden_dim, input_dims)
         self.softplus = nn.Softplus()
-        self.sigmoid = nn.Sigmoid()
+        self.sigmoid = nn.Softmax() # required for NLL computation
 
     def forward(self, z):
         hidden = self.softplus(self.fc1(z))
@@ -39,7 +41,7 @@ class Decoder(nn.Module):
 
 
 class VAE(nn.Module):
-    def __init__(self, z_dim, hidden_dim, input_dims, use_cuda=False):
+    def __init__(self, z_dim, hidden_dim, input_dims, wt, use_cuda=False):
         super().__init__()
         self.input_dims = input_dims
         self.encoder = Encoder(z_dim, hidden_dim, input_dims)
@@ -49,6 +51,7 @@ class VAE(nn.Module):
             self.cuda()
         self.use_cuda = use_cuda
         self.z_dim = z_dim
+        self.wt = wt
 
     def model(self, x):
         pyro.module("decoder", self.decoder)
@@ -66,11 +69,31 @@ class VAE(nn.Module):
             z_loc, z_scale = self.encoder.forward(x)
             pyro.sample("latent", dist.Normal(z_loc, z_scale, constraints.positive).to_event(1))
 
-    def reconstruct_seq(self, x):
+    def representation(self, z: dist) -> torch.Tensor:
+        z_repr = self.decoder(z.loc)
+        #sample = z_repr.exp().argmax(dim=-1)
+        #return sample
+        return z_repr
+
+    def reconstruct(self, x):
         z_loc, z_scale = self.encoder(x)
-        z = dist.Normal(z_loc, z_scale).sample()
-        loc_seq = self.decoder(z)
-        return loc_seq
+        z_dist = dist.Normal(z_loc, z_scale)
+        return self.representation(z_dist)
+
+    def log_p(self, x): 
+        z_dist = self.encoder(x)
+        z_dist = dist.Normal(z_dist[0], z_dist[1])
+        kld = self.kld_loss(z_dist)
+        reconstruction = self.decoder(z_dist.loc)
+        log_p = nll_loss(reconstruction, x, reduction="none").mul(-1).sum(1) # TODO requires softmax or Cross-entr
+        # log_p = dist.Bernoulli(self.decoder(z_dist.loc)).log_prob(x.flatten()).sum(1) # TODO CORRECT THAT
+        elbo = log_p + kld
+        return elbo, log_p, kld
+
+    def kld_loss(self, z_dist: dist):
+        prior = dist.Normal(torch.zeros_like(z_dist.loc), torch.ones_like(z_dist.scale))
+        kld = kl_divergence(z_dist, prior).sum(dim=1)
+        return kld
 
 
 def train(svi, train_loader, use_cuda=False):

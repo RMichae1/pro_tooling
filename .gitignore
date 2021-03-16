@@ -6,6 +6,9 @@ cache/
 .idea/
 .vscode/
 .ipynb_checkpoints/
+
+reference_vae/datasets/
+
 mlruns/
 models/
 
