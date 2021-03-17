@@ -1,7 +1,7 @@
 import pyro
 import pyro.distributions as dist
 from pyro.distributions import constraints
-import pandas as pd
+import numpy as np
 import torch
 from torch import nn
 from torch.distributions import kl_divergence
@@ -35,7 +35,7 @@ class Decoder(nn.Module):
         self.fc1 = nn.Linear(z_dim, hidden_dim)
         self.fc21 = nn.Linear(hidden_dim, self.seq_length*self.categories)
         self.softplus = nn.Softplus()
-        self.log_softmax = nn.LogSoftmax()
+        self.log_softmax = nn.LogSoftmax(dim=-1)
 
     def forward(self, z):
         batch_size = z.shape[0]
@@ -97,10 +97,10 @@ class VAE(nn.Module):
         z_loc, z_scale = self.encoder(x)
         z_dist = dist.Normal(z_loc, z_scale)
         kld = self.kld_loss(z_dist)
-        reconstruction = self.decoder(z_dist.loc).permute(0, 2, 1)
+        reconstruction = self.decoder(z_dist.loc)
         # nll loss input requires: (batch, categories, data)
-        log_p = nll_loss(reconstruction, x, reduction="none").mul(-1).sum(1)
-        # log_p = dist.Categorical(self.decoder(z_dist.loc)).log_prob(x).sum(1) # TODO requires log_softmax in Encoder
+        log_p = nll_loss(reconstruction.permute(0, 2, 1), x.argmax(-1)[np.newaxis, :], reduction="none").mul(-1).sum(1)
+        # log_p = dist.Categorical(self.decoder(z_dist.loc).exp()).log_prob(x.argmax(-1)).sum(1) 
         elbo = log_p + kld
         return elbo, log_p, kld
 

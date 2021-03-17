@@ -29,7 +29,7 @@ if __name__ == "__main__":
     parser.add_argument("--cuda", action="store_true", help="Boolean flag to use cuda.")
     parser.add_argument("-v", "--verbose", action='store_true', help="Verbosity boolean.")
     parser.add_argument("--seed", type=int, default=42, help="Random Seed for reproducability.")
-    parser.add_argument("-e", "--epochs", type=int, default=1000, help="Training epochs.")
+    parser.add_argument("-e", "--epochs", type=int, default=500, help="Training epochs.")
     parser.add_argument("--latent_dim", type=int, default=20, help="Dimensionality of hidden latent random variable.")
     parser.add_argument("-s", "--save", type=str, help="Destination for model output.")
     parser.add_argument("--hidden_dim", type=int, default=500, help="Hidden dimension for VAE internals.")
@@ -121,7 +121,7 @@ if __name__ == "__main__":
         mlflow.log_artifact(model_FILENAME)
         mlflow.log_artifact(optimizer_FILENAME)
         mlflow.end_run()
-
+    
     print(vae.latent_sample(wt, n=3))
     print(vae.mse_loss(wt))
     # samples = []
