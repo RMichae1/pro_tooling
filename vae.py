@@ -27,28 +27,38 @@ class Encoder(nn.Module):
 
 
 class Decoder(nn.Module):
-    def __init__(self, z_dim, hidden_dim, input_dims):
+    def __init__(self, z_dim, hidden_dim, input_dims, dropout):
         super().__init__()
+        self.seq_length = input_dims[0]
+        self.categories = input_dims[1]
+        self.dropout = nn.Dropout(dropout) if dropout else None
         self.fc1 = nn.Linear(z_dim, hidden_dim)
-        self.fc21 = nn.Linear(hidden_dim, input_dims)
+        self.fc21 = nn.Linear(hidden_dim, self.seq_length*self.categories)
         self.softplus = nn.Softplus()
-        self.sigmoid = nn.Sigmoid()
+        self.log_softmax = nn.LogSoftmax()
 
     def forward(self, z):
+        batch_size = z.shape[0]
         hidden = self.softplus(self.fc1(z))
-        loc_img = self.sigmoid(self.fc21(hidden))
+        if self.dropout:
+            seq_space = self.dropout(self.fc21(hidden)).view(batch_size, self.seq_length, -1)
+        else:
+            seq_space = self.fc21(hidden).view(batch_size, self.seq_length, -1)
+        assert seq_space.shape[2] == self.categories
+        loc_img = self.log_softmax(seq_space)
         return loc_img
 
 
 class VAE(nn.Module):
-    def __init__(self, z_dim, hidden_dim, input_dims, wt, use_cuda=False):
+    def __init__(self, z_dim, hidden_dim, input_dims, wt, use_cuda=False, dropout=None):
         super().__init__()
         self.input_dims = input_dims
+        self.seq_length = wt.shape[0]
+        self.categories = wt.shape[1]
         self.encoder = Encoder(z_dim, hidden_dim, input_dims)
-        self.decoder = Decoder(z_dim, hidden_dim, input_dims)
-        self.ce_loss = nn.CrossEntropyLoss(reduction="none")
+        self.decoder = Decoder(z_dim, hidden_dim, 
+                                input_dims=(self.seq_length, self.categories), dropout=dropout)
         self.mse = nn.MSELoss()
-        self.sequence_length = wt.shape[0]
 
         if use_cuda:
             self.cuda()
@@ -62,9 +72,9 @@ class VAE(nn.Module):
             z_loc = x.new_zeros(torch.Size((x.shape[0], self.z_dim)))
             z_scale = x.new_ones(torch.Size((x.shape[0], self.z_dim)))
             z = pyro.sample("latent", dist.Normal(z_loc, z_scale, constraints.positive).to_event(1))
-            loc_seq = self.decoder.forward(z)
-            pyro.sample("obs", dist.Bernoulli(loc_seq, validate_args=True).to_event(1), obs=x.reshape(-1,
-                                                                                                       self.input_dims))
+            loc_seq = self.decoder.forward(z).exp()
+            categorical_x = x.argmax(-1)
+            pyro.sample("obs", dist.Categorical(loc_seq, validate_args=True).to_event(1), obs=categorical_x)
 
     def guide(self, x):
         pyro.module("encoder", self.encoder)
@@ -73,8 +83,8 @@ class VAE(nn.Module):
             pyro.sample("latent", dist.Normal(z_loc, z_scale, constraints.positive).to_event(1))
 
     def representation(self, z: dist) -> torch.Tensor:
-        z_repr = self.decoder(z.loc)
-        sample = dist.Bernoulli(z_repr).sample()
+        z_repr = self.decoder(z.loc).exp()
+        sample = dist.Categorical(z_repr).sample()
         return sample
 
     def reconstruct(self, x):
@@ -84,14 +94,13 @@ class VAE(nn.Module):
         return reconstruction
 
     def log_p(self, x): 
-        z_dist = self.encoder(x)
-        z_dist = dist.Normal(z_dist[0], z_dist[1])
+        z_loc, z_scale = self.encoder(x)
+        z_dist = dist.Normal(z_loc, z_scale)
         kld = self.kld_loss(z_dist)
-        reconstruction = self.representation(z_dist).view(self.sequence_length, 23)
-        # TODO ensure input: (N, C)
-        log_p = self.ce_loss(reconstruction, x)
-        # log_p = nll_loss(reconstruction, x, reduction="none").mul(-1).sum(1) # TODO requires log_softmax in Encoder
-        # log_p = dist.Bernoulli(self.decoder(z_dist.loc)).log_prob(x.flatten()).sum(1) # TODO CORRECT THAT
+        reconstruction = self.decoder(z_dist.loc).permute(0, 2, 1)
+        # nll loss input requires: (batch, categories, data)
+        log_p = nll_loss(reconstruction, x, reduction="none").mul(-1).sum(1)
+        # log_p = dist.Categorical(self.decoder(z_dist.loc)).log_prob(x).sum(1) # TODO requires log_softmax in Encoder
         elbo = log_p + kld
         return elbo, log_p, kld
 

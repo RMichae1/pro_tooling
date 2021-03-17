@@ -32,11 +32,13 @@ if __name__ == "__main__":
     parser.add_argument("-e", "--epochs", type=int, default=1000, help="Training epochs.")
     parser.add_argument("--latent_dim", type=int, default=20, help="Dimensionality of hidden latent random variable.")
     parser.add_argument("-s", "--save", type=str, help="Destination for model output.")
-    parser.add_argument("--hidden_dim", type=int, default=400, help="Hidden dimension for VAE internals.")
+    parser.add_argument("--hidden_dim", type=int, default=500, help="Hidden dimension for VAE internals.")
     parser.add_argument("--test_split", type=float, default=0.1, choices=np.arange(0, 1, 0.001), help="Fraction of test data from total data-set.")
     parser.add_argument("--validate", type=int, default=10, help="Frequency of validation step.")
     parser.add_argument("-b", "--batch_size", type=int, default=128, help="Int size of batches.")
     parser.add_argument("--experiment", type=str, help="experiment str as ID for tracking.")
+    parser.add_argument("-wd", "--weight_decay", type=float, default=0., help="Adam Optimizer weight decay.")
+    parser.add_argument("-d", "--dropout", type=float, default=None, help="Add Dropout layer with dropout probability.")
     args = parser.parse_args()
 
     np.random.seed(args.seed)
@@ -52,8 +54,9 @@ if __name__ == "__main__":
         all_seqs.append([int(elem) for elem in seq])
     all_seqs = np.array(all_seqs)
     x, y = all_seqs.shape
+    categories = np.unique(all_seqs).shape[0]
     one_seq = all_seqs.reshape(x*y, )
-    one_hot_sequence = one_hot_encoding(one_seq).reshape(x, y, 23)
+    one_hot_sequence = one_hot_encoding(one_seq).reshape(x, y, categories)
 
     # load and encode data set
     seq_dataset = torch.utils.data.TensorDataset(torch.tensor(one_hot_sequence,
@@ -76,18 +79,20 @@ if __name__ == "__main__":
             "HIDDEN_DIM": args.hidden_dim,
             "INPUT_DIM": int(one_hot_sequence.shape[1] * one_hot_sequence.shape[2]),
             "test_split": args.test_split, 
-            "batch_size": args.batch_size}
+            "batch_size": args.batch_size,
+            "weight_decay": args.weight_decay,
+            "dropout": args.dropout}
 
     # TODO VAE of different flavors - sparse, dropout, etc.
     experiment_name = args.experiment if args.experiment else f"VAE_Adam_z{args.latent_dim}"
     mlflow.set_experiment(experiment_name)
     print(f"Tracking URI: {mlflow.get_tracking_uri()}")
 
-    model_FILENAME = f"./models/VAE_{args.latent_dim}_{args.hidden_dim}_{args.epochs}.pt"
-    optimizer_FILENAME = f"./models/Adam_{args.latent_dim}_{args.hidden_dim}_{args.epochs}.pt"
+    model_FILENAME = f"./models/VAE_z{args.latent_dim}_h{args.hidden_dim}_e{args.epochs}_d{args.dropout}.pt"
+    optimizer_FILENAME = f"./models/Adam_z{args.latent_dim}_h{args.hidden_dim}_e{args.epochs}_d{args.dropout}.pt"
     vae = VAE(z_dim=param_dict["LATENT_DIM"], hidden_dim=param_dict["HIDDEN_DIM"], 
                     input_dims=param_dict["INPUT_DIM"], use_cuda=args.cuda, wt=wt)
-    optimizer = Adam({"lr": param_dict["LEARNING_RATE"]})
+    optimizer = Adam({"lr": param_dict["LEARNING_RATE"], "weight_decay": param_dict["weight_decay"]})
     #optimizer = ClippedAdam({"lr": LEARNING_RATE})
     svi = SVI(vae.model, vae.guide, optimizer, loss=JitTrace_ELBO())
     
@@ -97,6 +102,7 @@ if __name__ == "__main__":
     else:
         mlflow.start_run()
         mlflow.log_params(param_dict)
+        mlflow.set_tag("out", "Categorical")
         for epoch in tqdm(range(args.epochs)):
             total_epoch_loss_train = train(svi, train_loader, args.cuda)
             mlflow.log_metric(key="neg loss train", value=-total_epoch_loss_train, 
