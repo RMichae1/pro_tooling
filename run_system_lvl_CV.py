@@ -4,10 +4,11 @@ import warnings
 import subprocess
 import mlflow
 from contact_mapper import ContactMapper
+from utility import parse_matlab_mutation_file
 
 todos = []
 done = []
-pdbs = ["1BVC", "2LZM", "1PGA", "1CSP", "1BPI", "1RGG", "1RTB", "2RN2", "4LYZ"]
+pdbs = ["1BVC", "1PGA", "1CSP", "1BPI", "1RGG", "1RTB", "2RN2", "4LYZ", "2LZM"]
 
 
 def get_positions(pdb: str) -> str:
@@ -35,7 +36,8 @@ def run_sys_CV(pdb, idx, cv, experiment, run_id, data=None, ref=False, optim=Tru
     subprocess.run(command_lst)
 
 
-def create_mlflow_run(pdb: str, cv: str, optim: bool, ref: str, no_fusion: bool, data: str = None, ref_contact_map: bool=False) -> None:
+def create_mlflow_run_pos_lvl(pdb: str, cv: str, optim: bool, ref: bool, no_fusion: bool=False, data: str = None,
+                              ref_contact_map: bool=False) -> None:
     sequence = get_positions(pdb)
     experiment_name = f"{pdb}: {cv}"
     experiment = mlflow.set_experiment(experiment_name)
@@ -50,35 +52,56 @@ def create_mlflow_run(pdb: str, cv: str, optim: bool, ref: str, no_fusion: bool,
     return None
 
 
+def create_mlflow_run_mut_lvl(pdb: str, cv: str, optim: bool, ref: str, no_fusion: bool=False, data: str = None,
+                              ref_contact_map: bool=False) -> None:
+    exp_mutations = parse_matlab_mutation_file(f"./data/mgp/ddg_protherm.mat",
+                                               query="ddg_protherm").get(pdb)
+    experiment_name = f"{pdb}: {cv}"
+    experiment = mlflow.set_experiment(experiment_name)
+    with mlflow.start_run(experiment_id=experiment) as run:
+        exp_params = {"pdb": pdb, "cv": cv, "optimization": optim, "2σ": ref, "reference_contacts": ref_contact_map}
+        mlflow.log_params(exp_params)
+        for idx in range(1, len(exp_mutations)+1): # exclude WT zero round
+            # run position lvl no optimization
+            run_sys_CV(pdb, idx, cv=cv, ref=ref, optim=optim, experiment=experiment_name, run_id=run.info.run_id,
+                       no_fusion=no_fusion, data=data, verbose=True, ref_contact_map=ref_contact_map)
+    mlflow.end_run()
+    return None
+
+
 def main() -> None:
     print(f"Tracking URI: {mlflow.get_tracking_uri()}")
     for pdb in pdbs:
-        create_mlflow_run(pdb=pdb, cv="pos_lvl", optim=False, ref=False, no_fusion=True)
-        create_mlflow_run(pdb=pdb, cv="pos_lvl", optim=True, ref=False, no_fusion=True)
-        create_mlflow_run(pdb=pdb, cv="pos_lvl", optim=False, ref=False, no_fusion=True, ref_contact_map=True)
-        create_mlflow_run(pdb=pdb, cv="pos_lvl", optim=True, ref=False, no_fusion=True, ref_contact_map=True)
+        # create_mlflow_run(pdb=pdb, cv="pos_lvl", optim=False, ref=False, no_fusion=True)
+        # create_mlflow_run(pdb=pdb, cv="pos_lvl", optim=True, ref=False, no_fusion=True)
+        # create_mlflow_run(pdb=pdb, cv="pos_lvl", optim=False, ref=False, no_fusion=True, ref_contact_map=True)
+        # create_mlflow_run(pdb=pdb, cv="pos_lvl", optim=True, ref=False, no_fusion=True, ref_contact_map=True)
         # create_mlflow_run(pdb=pdb, cv="pos_lvl", optim=False, ref=False, ref_contact_map=True)
         # create_mlflow_run(pdb=pdb, cv="pos_lvl", optim=True, ref=False, ref_contact_map=True)
         # create_mlflow_run(pdb=pdb, cv="pos_lvl", optim=False, ref=True, ref_contact_map=True)
         # create_mlflow_run(pdb=pdb, cv="pos_lvl", optim=True, ref=True, ref_contact_map=True)
+        create_mlflow_run_mut_lvl(pdb=pdb, cv="mut_lvl", optim=False, ref=False, ref_contact_map=True)
+        create_mlflow_run_mut_lvl(pdb=pdb, cv="mut_lvl", optim=True, ref=False, ref_contact_map=True)
+        # create_mlflow_run(pdb=pdb, cv="mut_lvl", optim=False, ref=True, ref_contact_map=True)
+        # create_mlflow_run(pdb=pdb, cv="mut_lvl", optim=True, ref=True, ref_contact_map=True)
         done.append(pdb)
     print(f"Done: {done}")
 
 
 def run_TLL() -> None:
     print(f"Tracking URI: {mlflow.get_tracking_uri()}")
-    create_mlflow_run(pdb="1TIB", cv="pos_lvl", optim=False, ref=False, no_fusion=True, data="tll")
-    create_mlflow_run(pdb="1TIB", cv="pos_lvl", optim=True, ref=False, no_fusion=True, data="tll")
-    create_mlflow_run(pdb="1TIB", cv="pos_lvl", optim=False, ref=True, no_fusion=True, data="tll")
-    create_mlflow_run(pdb="1TIB", cv="pos_lvl", optim=True, ref=True, no_fusion=True, data="tll")
+    create_mlflow_run_pos_lvl(pdb="1TIB", cv="pos_lvl", optim=False, ref=False, no_fusion=True, data="tll")
+    create_mlflow_run_pos_lvl(pdb="1TIB", cv="pos_lvl", optim=True, ref=False, no_fusion=True, data="tll")
+    create_mlflow_run_pos_lvl(pdb="1TIB", cv="pos_lvl", optim=False, ref=True, no_fusion=True, data="tll")
+    create_mlflow_run_pos_lvl(pdb="1TIB", cv="pos_lvl", optim=True, ref=True, no_fusion=True, data="tll")
 
 
 def run_BLAT() -> None:
     print(f"Tracking URI: {mlflow.get_tracking_uri()}")
-    create_mlflow_run(pdb="1FQG", cv="pos_lvl", optim=False, ref=False, no_fusion=True, data="blat")
-    create_mlflow_run(pdb="1FQG", cv="pos_lvl", optim=True, ref=False, no_fusion=True, data="blat")
-    create_mlflow_run(pdb="1FQG", cv="pos_lvl", optim=False, ref=True, no_fusion=True, data="blat")
-    create_mlflow_run(pdb="1FQG", cv="pos_lvl", optim=True, ref=True, no_fusion=True, data="blat")
+    create_mlflow_run_pos_lvl(pdb="1FQG", cv="pos_lvl", optim=False, ref=False, no_fusion=True, data="blat")
+    create_mlflow_run_pos_lvl(pdb="1FQG", cv="pos_lvl", optim=True, ref=False, no_fusion=True, data="blat")
+    create_mlflow_run_pos_lvl(pdb="1FQG", cv="pos_lvl", optim=False, ref=True, no_fusion=True, data="blat")
+    create_mlflow_run_pos_lvl(pdb="1FQG", cv="pos_lvl", optim=True, ref=True, no_fusion=True, data="blat")
 
 
 if __name__ == "__main__":
