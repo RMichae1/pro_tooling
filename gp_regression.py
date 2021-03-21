@@ -335,7 +335,7 @@ class GPRegression:
             matrices.append(k)
         return matrices
 
-    def _fit(self, ref=False) -> Tuple[torch.Tensor, torch.Tensor, float, np.array]:
+    def _fit(self, ref=False) -> Tuple[torch.Tensor, torch.Tensor]:
         """Alg. 2.1 Rasmussen *GPs in ML* """
         n = self.X_train.shape[0]
         m = self.x_test.shape[0]
