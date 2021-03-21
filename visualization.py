@@ -230,65 +230,24 @@ def generate_results_table(df, cvs=["pos.lvl.", "mut.lvl."],
         # TODO
     return results_df
 
-def get_all_predictions_and_ys(pdbs, dir):
-    all_predictions = []
-    all_exp_y = []
-    for p in pdbs:
-        mu, ys, _, _ = parse_regression_results(p, directory=dir)
-        if mu is None:
-            continue
-        all_predictions.append(mu)
-        all_exp_y.append(ys)
-    all_predictions = np.concatenate([np.atleast_1d(elem) for elem in all_predictions])
-    all_predictions = np.concatenate([np.atleast_1d(e) for e in all_predictions])
-    all_exp_y = np.concatenate([np.atleast_1d(elem) for elem in all_exp_y])
-    all_exp_y = np.concatenate(all_exp_y)
-    return all_predictions, all_exp_y
+# def get_all_predictions_and_ys(pdbs, dir):
+#     all_predictions = []
+#     all_exp_y = []
+#     for p in pdbs:
+#         mu, ys, _, _ = parse_regression_results(p, directory=dir)
+#         if mu is None:
+#             continue
+#         all_predictions.append(mu)
+#         all_exp_y.append(ys)
+#     all_predictions = np.concatenate([np.atleast_1d(elem) for elem in all_predictions])
+#     all_predictions = np.concatenate([np.atleast_1d(e) for e in all_predictions])
+#     all_exp_y = np.concatenate([np.atleast_1d(elem) for elem in all_exp_y])
+#     all_exp_y = np.concatenate(all_exp_y)
+#     return all_predictions, all_exp_y
 
 def root_mean_squared_error(y, pred):
     return np.sqrt(mean_squared_error(y, pred))
 
-def generate_total_results_table(proteins, dir="./results/", measures=["ρ", "rmse"], 
-        cvs=["all-pos.lvl.", "pos.lvl.", "mut.lvl."], methods=["mGPfusion", "2σ mGPfusion"]):
-    cols = pd.MultiIndex.from_product([measures, cvs], names=["measure", "CV"])
-    results_df = pd.DataFrame(data=np.zeros([len(methods), len(cols)]), index=methods, columns=cols)
-    all_predictions, all_exp_y = get_all_predictions_and_ys(pdbs=proteins, 
-        dir="./results/mGPfusion/all_pos_cv/")
-    rho = spearmanr(all_predictions, all_exp_y)[0]
-    rmse = root_mean_squared_error(all_exp_y, all_predictions)
-    results_df.loc["mGPfusion", ("ρ", "all-pos.lvl.")] = rho
-    results_df.loc["mGPfusion", ("rmse", "all-pos.lvl.")] = rmse
-    all_predictions, all_exp_y = get_all_predictions_and_ys(pdbs=proteins, 
-        dir="./results/mGPfusion/all_pos_cv_error/")
-    rho = spearmanr(all_predictions, all_exp_y)[0]
-    rmse = root_mean_squared_error(all_exp_y, all_predictions)
-    results_df.loc["2σ mGPfusion", ("ρ", "all-pos.lvl.")] = rho
-    results_df.loc["2σ mGPfusion", ("rmse", "all-pos.lvl.")] = rmse
-    all_predictions, all_exp_y = get_all_predictions_and_ys(pdbs=proteins, 
-        dir="./results/mGPfusion/pos_cv/")
-    rho = spearmanr(all_predictions, all_exp_y)[0]
-    rmse = root_mean_squared_error(all_exp_y, all_predictions)
-    results_df.loc["mGPfusion", ("ρ", "pos.lvl.")] = rho
-    results_df.loc["mGPfusion", ("rmse", "pos.lvl.")] = rmse
-    all_predictions, all_exp_y = get_all_predictions_and_ys(pdbs=proteins, 
-        dir="./results/mGPfusion/pos_cv_ref_error/")
-    rho = spearmanr(all_predictions, all_exp_y)[0]
-    rmse = root_mean_squared_error(all_exp_y, all_predictions)
-    results_df.loc["2σ mGPfusion", ("ρ", "pos.lvl.")] = rho
-    results_df.loc["2σ mGPfusion", ("rmse", "pos.lvl.")] = rmse
-    all_predictions, all_exp_y = get_all_predictions_and_ys(pdbs=proteins, 
-        dir="./results/mGPfusion/mut_cv/")
-    rho = spearmanr(all_predictions, all_exp_y)[0]
-    rmse = root_mean_squared_error(all_exp_y, all_predictions)
-    results_df.loc["mGPfusion", ("ρ", "mut.lvl.")] = rho
-    results_df.loc["mGPfusion", ("rmse", "mut.lvl.")] = rmse
-    all_predictions, all_exp_y = get_all_predictions_and_ys(pdbs=proteins, 
-        dir="./results/mGPfusion/mut_cv_ref_error/")
-    rho = spearmanr(all_predictions, all_exp_y)[0]
-    rmse = root_mean_squared_error(all_exp_y, all_predictions)
-    results_df.loc["2σ mGPfusion", ("ρ", "mut.lvl.")] = rho
-    results_df.loc["2σ mGPfusion", ("rmse", "mut.lvl.")] = rmse
-    return results_df
 
 def plot_results_table(df, save_fig="./fig/"):
     df.reset_index(inplace=True)
@@ -323,7 +282,6 @@ def plot_pos_lvl_gpr_individual(df, opt: bool, ref: bool, save_fig="./fig/", suf
     # TODO delete axes from a range of diff values between proteins and provided last axis length
     fig.delaxes(ax[2][3])
     fig.delaxes(ax[2][2])
-    fig.delaxes(ax[2][1])
     fig.legend(handles=mutation_legend_handle, loc="lower right", title="Number of mutations")
     for i in range(y_n):
         ax[i,0].set_ylabel("predicted ΔΔG", fontsize=12)
@@ -475,6 +433,7 @@ def plot_log_prob(lml, mutations, x_test, y) -> None:
     plt.savefig(f"./fig/gpr_logmarginal_{self.id}.png")
     plt.show()
 
+
 def plot_covariance_matrices(pcol, mats) -> None:
     
     labels = ["".join([m for m in mut]) for mut in pcol.mutation_ids[:10]]
@@ -486,6 +445,7 @@ def plot_covariance_matrices(pcol, mats) -> None:
         ax.set_yticks(np.arange(0, 10))
         ax.set_yticklabels(labels, rotation=0, rotation_mode="anchor", fontsize=10)
     plt.show()
+
 
 def plot_mWDK(pcol, mWDK) -> None:
     labels = ["".join([m for m in mut]) for mut in pcol.mutation_ids[:10]]
