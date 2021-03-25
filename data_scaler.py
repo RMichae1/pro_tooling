@@ -33,7 +33,6 @@ class BayesScaler:
         self.ΔΔg_is = ΔΔg
         self.experimentally_observed_ΔΔg = experimentally_observed_ΔΔg
 
-        # TODO check for same mutations (simulations to experimental)
         ΔΔg_exp, ΔΔg_is = self._check_observed()
 
         self.ΔΔg_exp = torch.Tensor(ΔΔg_exp)

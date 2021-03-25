@@ -180,7 +180,7 @@ class GPRegression:
 
     def neg_ll(self):
         n = self.X_train.shape[0]
-        zero_μ = torch.zeros(n, dtype=torch.float64) # TODO compute mean over all training data
+        zero_μ = torch.zeros(n, dtype=torch.float64)
         cov_mats = [cov[self.idx_train, :][:, self.idx_train] for cov in self.covariance_matrices]
         K_XX = self.mWDK(X=self.X_train, covariance_matrices=cov_mats)
         # get noise on relevant data by index
