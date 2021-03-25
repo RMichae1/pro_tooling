@@ -8,7 +8,7 @@ from utility import parse_matlab_mutation_file
 
 todos = []
 done = []
-pdbs = ["1BVC", "1PGA", "1CSP", "1BPI", "1RGG", "1RTB", "2RN2", "4LYZ", "2LZM"]
+pdbs = ["1RTB", "2RN2", "4LYZ", "2LZM"] #,"1BVC", "1PGA", "1CSP", "1BPI", "1RGG"]
 
 
 def get_positions(pdb: str) -> str:
@@ -18,7 +18,7 @@ def get_positions(pdb: str) -> str:
 
 def run_sys_CV(pdb, idx, cv, experiment, run_id, data=None, ref=False, optim=True, no_fusion=False, verbose=False,
                ref_contact_map: bool=False):
-    command_lst = ["python", "/home/rimichael/pro_tooling/run_experiments.py", "-p", f"{pdb}", "-i", f"{idx}",
+    command_lst = ["C:/Users/rmich/miniconda3/envs/mgpfusion/python.exe", "C:/pro_tooling/run_experiments.py", "-p", f"{pdb}", "-i", f"{idx}",
                    "-r", f"{cv}", "--seed", "3032021", "--experiment", f"{experiment}", "--run_id", f"{run_id}"]
     if optim:
         command_lst += ["-o"]
@@ -81,8 +81,8 @@ def main() -> None:
         # create_mlflow_run(pdb=pdb, cv="pos_lvl", optim=False, ref=True, ref_contact_map=True)
         # create_mlflow_run(pdb=pdb, cv="pos_lvl", optim=True, ref=True, ref_contact_map=True)
         create_mlflow_run_mut_lvl(pdb=pdb, cv="mut_lvl", optim=False, ref=False, ref_contact_map=True)
-        create_mlflow_run_mut_lvl(pdb=pdb, cv="mut_lvl", optim=True, ref=False, ref_contact_map=True)
-        # create_mlflow_run(pdb=pdb, cv="mut_lvl", optim=False, ref=True, ref_contact_map=True)
+        # create_mlflow_run_mut_lvl(pdb=pdb, cv="mut_lvl", optim=True, ref=False, ref_contact_map=True)
+        create_mlflow_run_mut_lvl(pdb=pdb, cv="mut_lvl", optim=False, ref=True, ref_contact_map=True)
         # create_mlflow_run(pdb=pdb, cv="mut_lvl", optim=True, ref=True, ref_contact_map=True)
         done.append(pdb)
     print(f"Done: {done}")
