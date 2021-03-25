@@ -100,11 +100,16 @@ def compute_metrics(parsed_results: list):
 
 
 def plot_regression_results(df):
+    # plot individual position lvl
     plot_pos_lvl_gpr_individual(df, opt=False, ref=False)
     plot_pos_lvl_gpr_individual(df, opt=True, ref=False)
-    # plot position level reference
     plot_pos_lvl_gpr_individual(df, opt=False, ref=True)
     plot_pos_lvl_gpr_individual(df, opt=True, ref=True)
+    # plot total pos lvl
+    plot_pos_lvl_gpr_total(df, opt=False, ref=False)
+    plot_pos_lvl_gpr_total(df, opt=True, ref=False, suffix="optimized")
+    plot_pos_lvl_gpr_total(df, opt=False, ref=True, suffix="2σ")
+    plot_pos_lvl_gpr_total(df, opt=True, ref=True, suffix="optimized 2σ")
 
 
 def results_table(df):
@@ -157,14 +162,14 @@ def load_hyperparameter_results(pdbs, optim, refs):
 
 
 if __name__ == "__main__":
-    pdbs = ["1BVC", "2LZM", "1PGA", "1CSP", "1BPI", "1RGG", "1RTB", "2RN2", "4LYZ", "1FQG"]
+    pdbs = ["1BVC", "2LZM", "1PGA", "1CSP", "1BPI", "1RGG", "1RTB", "2RN2", "4LYZ"]# "1FQG"]
     optim = [False, True]
     refs = [False, True]
     
     regression_df = load_regression_results(pdbs, optim, refs)
-    plot_regression_results(regression_df)
+    #plot_regression_results(regression_df)
     results_table(regression_df)
-    #weight_df, hyperparameters_df = load_hyperparameter_results(pdbs, optim, refs)
+    weight_df, hyperparameters_df = load_hyperparameter_results(pdbs, optim, refs)
     #plot_hyperparameters(hyperparameters_df, weight_df)
 
     # plot_mut_lvl_gpr_total(proteins=pdbs, results_dir="./results/mGPfusion/mut_cv/")

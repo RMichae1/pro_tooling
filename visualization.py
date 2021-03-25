@@ -127,17 +127,18 @@ def plot_weights(weight_df, save_fig="./fig/", opt=False, ref=False):
     proteins = weight_df.pdb.unique()
     #df["matrices"] = kernel_names * len(proteins)
     df["matrices"] = matrix_legend * len(proteins)
-    df = df.pivot("matrices", "pdb", "weights")
-    assert df.shape[0] == len(kernels.sub_matrices_ids)
-    assert df.shape[1] == len(proteins)
+    df = df.pivot("matrices", "pdb", "weights").T
+    assert df.shape[1] == len(kernels.sub_matrices_ids)
+    assert df.shape[0] == len(proteins)
     plt.rcParams.update({'figure.autolayout': True})
-    fig, (ax, cbar_ax) = plt.subplots(2, figsize=(5, 20), gridspec_kw={"height_ratios": (.9, .05), "hspace": .3})
+    fig, (ax, cbar_ax) = plt.subplots(2, figsize=(20, 5), gridspec_kw={"height_ratios": (.9, .05), "hspace": 2.5})
     im = sns.heatmap(df, ax=ax, linewidths=0.5, cmap=sns.cm.rocket_r,# vmax=0.025, 
             cbar_ax=cbar_ax, cbar_kws={"orientation":"horizontal"})
-    ax.set_xticklabels(proteins)
-    ax.set_yticklabels(matrix_legend)
-    plt.setp(ax.get_xticklabels(), rotation=0, ha="right",
-         rotation_mode="anchor")
+    ax.set_yticklabels(proteins)
+    ax.set_xticklabels(matrix_legend)
+    ax.set_xlabel("")
+    plt.setp(ax.get_xticklabels(), rotation=45, ha="right",
+         rotation_mode="anchor", fontsize=10)
     plt.setp(ax.get_yticklabels(), rotation=45, rotation_mode="anchor", fontsize=10)
     plt.title("Kernel Weights Table")
     plt.savefig(filename, bbox_inches = "tight")
@@ -257,7 +258,7 @@ def plot_results_table(df, save_fig="./fig/"):
     f1.set_xticklabels(f1.get_xticklabels(), rotation=30, ha='right')
     f2.set_xticklabels(f2.get_xticklabels(), rotation=30, ha='right')
     plt.tight_layout()
-    plt.suptitle(f"GP Methods\n (pos-lvl CV)")
+    #plt.suptitle(f"GP Methods\n (pos-lvl CV)")
     plt.savefig(f"{save_fig}/method_results_boxen.png")
     plt.show()
 
@@ -291,29 +292,17 @@ def plot_pos_lvl_gpr_individual(df, opt: bool, ref: bool, save_fig="./fig/", suf
     plt.savefig(filename)
     plt.show()
 
-def plot_pos_lvl_gpr_total(proteins:list, results_dir="./results/mGPfusion", 
+def plot_pos_lvl_gpr_total(df, opt: bool, ref: bool, results_dir="./results/mGPfusion", 
     save_fig="./fig/", suffix="", title="") -> None:
-    filename = os.path.join(save_fig, f"gpr_pos_lvl_total_{suffix}.png")
+    df = df[(df.optimization == opt) & (df.reference == ref)]
+    proteins = df.pdb.unique()
+    filename = os.path.join(save_fig, f"gpr_pos_lvl_total_opt{opt}_ref{ref}_{suffix}.png")
     fig, ax = plt.subplots(1,1, figsize=(10,10))
-    ax.axline((-4, -4), (4,4), color="grey", linestyle="--")
+    ax.axline((-4, -4), (4, 4), color="grey", linestyle="--")
     ax.grid(True)
-    predictions = []
-    ys = []
-    mutations_all = []
-    for p in proteins:
-        mu, y_test, _, _ = parse_regression_results(p, directory=results_dir)
-        mutations = parse_mutations(p, results_dir)
-        if mu is None:
-            print(f"{p} cannot be found in {results_dir}")
-            continue
-        f_μ = np.concatenate([np.atleast_1d(elem) for elem in mu])
-        y_test = np.concatenate([elem for sub in y_test for elem in sub])
-        predictions.append(f_μ)
-        ys.append(y_test)
-        mutations_all.append(mutations)
-    predictions = np.concatenate(predictions)
-    ys = np.concatenate(ys)
-    mutations = np.concatenate(mutations_all)
+    predictions = np.array(df.mu)
+    ys =np.array(df.y)
+    mutations = np.array(df.mutations)
     # add vertical bars connecting mutations
     stacked_measures = np.vstack([predictions, ys, mutations])
     stacked_measures = stacked_measures[:, mutations!=1] # deselect single mutations
@@ -331,7 +320,7 @@ def plot_pos_lvl_gpr_total(proteins:list, results_dir="./results/mGPfusion",
     ax.set_xlabel("experimental ΔΔG", fontsize=18)
     ax.set_ylabel("predicted ΔΔG", fontsize=18)
     ax.legend()
-    plt.title(f"GP Regression Results (position lvl CV) {suffix}")
+    plt.title(f"GP Regression Results \n (position lvl CV) {suffix}")
     if title:
         plt.title(title)
     plt.savefig(filename)
