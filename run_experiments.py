@@ -44,12 +44,12 @@ def init_experiment_run(pdb: str) -> tuple:
     # scale using Bayesian Scaling
     bs_rosetta = BayesScaler(is_mutations=mut_ids_is, ΔΔg=pcol.ΔΔg_is, exp_mutations=mut_ids_exp, 
                         experimentally_observed_ΔΔg=pcol.ΔΔg_exp, TESTING=False, pdb_ID=pdb, cached=True)
-    σ_T = bs_rosetta.σ_T
 
     ΔΔg_exp = ΔΔg_exp[:, np.newaxis]
     ΔΔg_is_scaled = bs_rosetta.transform(ΔΔg_is)[:, np.newaxis]
     # Scale y-values as done in the implementation by normalizing with mean and max
     mean_y, max_y, y_wt, ΔΔg_exp, ΔΔg_is_scaled = preprocess_observations(y_wt, ΔΔg_exp, ΔΔg_is_scaled)
+    # TODO replace bs_rosetta.σ_T with σ_T_samples
     return pcol, X_wt, X_exp, X_is, y_wt, ΔΔg_exp, ΔΔg_is_scaled, ref_adj, bs_rosetta.σ_T, max_y, mean_y
 
 
@@ -165,7 +165,7 @@ def run_mgpfusion_experiment_mut_lvl(pdb: str, idx: int, optim: bool, ref: bool,
     client.log_metric(run_id=run.info.run_id, key="spearman r", value=spearman_r, step=idx)
     client.log_metric(run_id=run.info.run_id, key="spearman p", value=spearman_p, step=idx)
     client.log_metric(run_id=run.info.run_id, key="mse", value=mse, step=idx)
-    filename = f"/home/rimichael/pro_tooling/output/{pdb}_mut_lvl_opt_{optim}_ref_{ref}_{idx}.pkl"
+    filename = f"./output/{pdb}_mut_lvl_opt_{optim}_ref_{ref}_{idx}.pkl"
     if write and bool(opt_params):
         data_dict = {**opt_params, **fit_params, "idx": idx, "n_mut": n_mutations}
         with open(filename, "wb") as outfile:

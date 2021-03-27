@@ -5,61 +5,68 @@ import numpy as np
 import torch
 from torch import nn
 from torch.distributions import kl_divergence
-from torch.nn.functional import nll_loss
+from torch.nn.functional import nll_loss, relu
 pyro.enable_validation()
 
 
 class Encoder(nn.Module):
-    def __init__(self, z_dim, hidden_dim, input_dims):
+    def __init__(self, z_dim, hidden_dims, input_dims, dropout=0.5):
         super().__init__()
         self.sequence_dims = input_dims
-        self.fc1 = nn.Linear(input_dims, hidden_dim)
-        self.fc21 = nn.Linear(hidden_dim, z_dim)
-        self.fc22 = nn.Linear(hidden_dim, z_dim)
-        self.softplus = nn.Softplus()
+        encoding_layers = []
+        current_dim = input_dims
+        for hidden_dim in hidden_dims:
+            encoding_layers.append(nn.Linear(current_dim, hidden_dim))
+            encoding_layers.append(nn.ReLU(inplace=True))
+            encoding_layers.append(nn.Dropout(dropout))
+            current_dim = hidden_dim
+        self.encoding_nn = nn.Sequential(*encoding_layers)
+        self.mean = nn.Linear(current_dim, z_dim)
+        self.log_var = nn.Linear(current_dim, z_dim)
 
     def forward(self, x):
         x = x.reshape(-1, self.sequence_dims)
-        hidden = self.softplus(self.fc1(x))
-        z_loc = self.fc21(hidden)
-        z_scale = torch.exp(self.fc22(hidden)) # TODO multiply with 0.5?
+        z_loc = self.mean(self.encoding_nn(x))
+        z_scale = torch.exp(self.log_var(self.encoding_nn(x))) # TODO multiply with 0.5?
         return z_loc, z_scale
 
 
 class Decoder(nn.Module):
-    def __init__(self, z_dim, hidden_dim, input_dims, dropout):
+    def __init__(self, z_dim, hidden_dims, input_dims, num_categories, dropout=0.5):
         super().__init__()
-        self.seq_length = input_dims[0]
-        self.categories = input_dims[1]
-        self.dropout = nn.Dropout(dropout) if dropout else None
-        self.fc1 = nn.Linear(z_dim, hidden_dim)
-        self.fc21 = nn.Linear(hidden_dim, self.seq_length*self.categories)
-        self.softplus = nn.Softplus()
+        # TODO replace dropout with sparse layer
+        decoding_layers = []
+        self.categories = num_categories
+        self.sequence_length = int(input_dims / num_categories)
+        current_dim = z_dim
+        for hidden_dim in hidden_dims:
+            decoding_layers.append(nn.Linear(current_dim, hidden_dim))
+            decoding_layers.append(nn.ReLU(inplace=True))
+            decoding_layers.append(nn.Dropout(dropout))
+            current_dim = hidden_dim
+        decoding_layers.append(nn.Linear(current_dim, input_dims))
+        self.decoding_nn = nn.Sequential(*decoding_layers)
         self.log_softmax = nn.LogSoftmax(dim=-1)
 
-    def forward(self, z):
-        batch_size = z.shape[0]
-        hidden = self.softplus(self.fc1(z))
-        if self.dropout:
-            seq_space = self.dropout(self.fc21(hidden)).view(batch_size, self.seq_length, -1)
-        else:
-            seq_space = self.fc21(hidden).view(batch_size, self.seq_length, -1)
+    def forward(self, x):
+        batch_size = x.shape[0]
+        z = self.decoding_nn(x)
+        seq_space = z.view(batch_size, self.sequence_length, -1)
         assert seq_space.shape[2] == self.categories
         loc_img = self.log_softmax(seq_space)
         return loc_img
 
 
 class VAE(nn.Module):
-    def __init__(self, z_dim, hidden_dim, input_dims, wt, use_cuda=False, dropout=None):
+    def __init__(self, z_dim, encoder_dim, decoder_dim, input_dims, wt, num_categories, use_cuda=False, dropout=0.0):
         super().__init__()
         self.input_dims = input_dims
-        self.seq_length = wt.shape[0]
-        self.categories = wt.shape[1]
-        self.encoder = Encoder(z_dim, hidden_dim, input_dims)
-        self.decoder = Decoder(z_dim, hidden_dim, 
-                                input_dims=(self.seq_length, self.categories), dropout=dropout)
+        self.num_categories = num_categories
+        self.sequence_length = int(input_dims / num_categories)
+        self.encoder = Encoder(z_dim, encoder_dim, input_dims, dropout)
+        self.decoder = Decoder(z_dim, decoder_dim, input_dims=input_dims, 
+                                num_categories=num_categories, dropout=dropout)
         self.mse = nn.MSELoss()
-
         if use_cuda:
             self.cuda()
         self.use_cuda = use_cuda
@@ -99,7 +106,8 @@ class VAE(nn.Module):
         kld = self.kld_loss(z_dist)
         reconstruction = self.decoder(z_dist.loc)
         # nll loss input requires: (batch, categories, data)
-        log_p = nll_loss(reconstruction.permute(0, 2, 1), x.argmax(-1)[np.newaxis, :], reduction="none").mul(-1).sum(1)
+        log_p = nll_loss(reconstruction.permute(0, 2, 1), 
+                            x.view(self.sequence_length, self.num_categories).argmax(-1)[np.newaxis, :], reduction="none").mul(-1).sum(1)
         # log_p = dist.Categorical(self.decoder(z_dist.loc).exp()).log_prob(x.argmax(-1)).sum(1) 
         elbo = log_p + kld
         return elbo, log_p, kld
@@ -115,6 +123,7 @@ class VAE(nn.Module):
         return self.mse(x_construct, x)
 
     def mse_diff(self, x, y=None):
+        """ MSE loss is unintuitive/uninformative in a classification task"""
         if y is None:
             y = self.wt
         x_construct = self.reconstruct(x).argmax(-1).to(torch.float)
@@ -128,24 +137,20 @@ class VAE(nn.Module):
 
 def train(svi, train_loader, use_cuda=False):
     epoch_loss = 0
-    for tensor_list in train_loader:
-        for x in tensor_list:
-            if use_cuda:
-                x = x.cuda()
-            epoch_loss += svi.step(x)
-    normalizer_train = len(train_loader.dataset)
-    total_epoch_loss_train = epoch_loss / normalizer_train
+    for x, _, _ in train_loader:
+        if use_cuda:
+            x = x.cuda()
+        epoch_loss += svi.step(x)
+    total_epoch_loss_train = epoch_loss / len(train_loader.dataset)
     return total_epoch_loss_train
 
 
 def evaluate(svi, test_loader, use_cuda=False):
     test_loss = 0
-    for tensor_list in test_loader:
-        for x in tensor_list:
-            if use_cuda:
-                x = x.cuda()
-            test_loss += svi.evaluate_loss(x)
-    normalizer_test = len(test_loader.dataset)
-    total_epoch_loss_train = test_loss / normalizer_test
+    for x, _, _ in test_loader:
+        if use_cuda:
+            x = x.cuda()
+        test_loss += svi.evaluate_loss(x)
+    total_epoch_loss_train = test_loss / len(test_loader.dataset)
     return total_epoch_loss_train
 

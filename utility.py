@@ -6,11 +6,13 @@ from copy import deepcopy
 from tqdm import tqdm
 import numpy as np
 import torch
-from torch.distributions import Gamma
+import torch.nn.functional as F
+from torch.utils.data import Dataset, DataLoader
 import scipy
 from scipy import io
 from typing import List, Tuple
 from Bio.Seq import Seq
+from reference_alphabet import seq2idx
 
 #######
 ### EXTERNAL UTILS
@@ -335,3 +337,41 @@ class Variable:
         constrained.type(torch.float64)
         constrained.requires_grad_(True)
         return constrained
+
+
+def seq_collate(tensor):
+    one_hot_sequence, weights, neff = zip(*tensor)
+    return torch.stack(one_hot_sequence), torch.stack(weights), neff[0]
+
+
+class WeightedMSADataset(Dataset):
+    """Weighted MSA"""
+    
+    def __init__(self, encoded_sequence, num_classes, weight_batch_size=1000, dtype=torch.float):
+        self.encoded_sequence = torch.Tensor(encoded_sequence).to(torch.int64)
+        self.one_hot_sequence = F.one_hot(self.encoded_sequence, 
+                                            num_classes=num_classes).to(dtype)
+        # Calculate weights
+        weights = []
+        flat_one_hot = self.one_hot_sequence.flatten(1)
+        gap_code = seq2idx("-").numpy()[0]
+        for i in range(self.one_hot_sequence.size(0) // weight_batch_size + 1):
+            x = flat_one_hot[i * weight_batch_size : (i + 1) * weight_batch_size]
+            similarities = torch.mm(x, flat_one_hot.T)
+            lengths = (self.encoded_sequence[i * weight_batch_size : (i + 1) * weight_batch_size] != gap_code).sum(1).unsqueeze(-1)
+            w = 1.0 / (similarities / lengths).gt(0.8).sum(1).float()
+            weights.append(w)
+        self.weights = torch.cat(weights)
+        self.neff = self.weights.sum()
+    
+    def __len__(self):
+        return self.encoded_sequence.shape[0]
+
+    def __getitem__(self, index):
+        if torch.is_tensor(index):
+            index = index.tolist()
+        return self.one_hot_sequence[index], self.weights[index], self.neff
+    
+
+    
+   

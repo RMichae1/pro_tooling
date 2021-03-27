@@ -1,3 +1,6 @@
+from collections import OrderedDict
+import torch
+
 IUPAC_IDX_AMINO_PAIRS_decoding = list(enumerate([
     "A",
     "C",
@@ -24,6 +27,7 @@ IUPAC_IDX_AMINO_PAIRS_decoding = list(enumerate([
     "-",
     'B'
 ]))
+
 IUPAC_IDX_AMINO_PAIRS = list(enumerate([
     "A",
     "C",
@@ -64,4 +68,4 @@ IUPAC_SEQ2IDX["."] = IUPAC_SEQ2IDX["<mask>"]
 IUPAC_IDX2SEQ_decoding = OrderedDict(IUPAC_IDX_AMINO_PAIRS_decoding)
 
 def seq2idx(seq, device = None):
-    return torch.tensor([IUPAC_SEQ2IDX[s.u
+    return torch.tensor([IUPAC_SEQ2IDX[s.upper() if len(s) < 2 else s] for s in seq], device = device)
