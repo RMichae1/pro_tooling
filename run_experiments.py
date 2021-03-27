@@ -165,7 +165,7 @@ def run_mgpfusion_experiment_mut_lvl(pdb: str, idx: int, optim: bool, ref: bool,
     client.log_metric(run_id=run.info.run_id, key="spearman r", value=spearman_r, step=idx)
     client.log_metric(run_id=run.info.run_id, key="spearman p", value=spearman_p, step=idx)
     client.log_metric(run_id=run.info.run_id, key="mse", value=mse, step=idx)
-    filename = f"/home/rimichael/pro_tooling/output/{pdb}_pos_lvl_opt_{optim}_ref_{ref}_{idx}.pkl"
+    filename = f"/home/rimichael/pro_tooling/output/{pdb}_mut_lvl_opt_{optim}_ref_{ref}_{idx}.pkl"
     if write and bool(opt_params):
         data_dict = {**opt_params, **fit_params, "idx": idx, "n_mut": n_mutations}
         with open(filename, "wb") as outfile:

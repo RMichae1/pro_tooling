@@ -72,6 +72,7 @@ def create_mlflow_run_mut_lvl(pdb: str, cv: str, optim: bool, ref: str, no_fusio
 def main() -> None:
     print(f"Tracking URI: {mlflow.get_tracking_uri()}")
     for pdb in pdbs:
+        # TODO rerun 1BVC position level - its overwritten with mutation level
         # create_mlflow_run(pdb=pdb, cv="pos_lvl", optim=False, ref=False, no_fusion=True)
         # create_mlflow_run(pdb=pdb, cv="pos_lvl", optim=True, ref=False, no_fusion=True)
         # create_mlflow_run(pdb=pdb, cv="pos_lvl", optim=False, ref=False, no_fusion=True, ref_contact_map=True)
@@ -81,8 +82,8 @@ def main() -> None:
         # create_mlflow_run(pdb=pdb, cv="pos_lvl", optim=False, ref=True, ref_contact_map=True)
         # create_mlflow_run(pdb=pdb, cv="pos_lvl", optim=True, ref=True, ref_contact_map=True)
         create_mlflow_run_mut_lvl(pdb=pdb, cv="mut_lvl", optim=False, ref=False, ref_contact_map=True)
-        create_mlflow_run_mut_lvl(pdb=pdb, cv="mut_lvl", optim=True, ref=False, ref_contact_map=True)
-        # create_mlflow_run(pdb=pdb, cv="mut_lvl", optim=False, ref=True, ref_contact_map=True)
+        # create_mlflow_run_mut_lvl(pdb=pdb, cv="mut_lvl", optim=True, ref=False, ref_contact_map=True)
+        create_mlflow_run_mut_lvl(pdb=pdb, cv="mut_lvl", optim=False, ref=True, ref_contact_map=True)
         # create_mlflow_run(pdb=pdb, cv="mut_lvl", optim=True, ref=True, ref_contact_map=True)
         done.append(pdb)
     print(f"Done: {done}")
