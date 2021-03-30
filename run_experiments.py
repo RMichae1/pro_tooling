@@ -22,7 +22,7 @@ import mlflow
 from mlflow.tracking import MlflowClient
 
 
-def init_experiment_run(pdb: str) -> tuple:
+def init_experiment_run(pdb: str, mutations_dict_exp: dict=None, mutations_dict_is: dict=None) -> tuple:
     cm_tri = ContactMapper(pdb_file=f"./pdb/{pdb.lower()}.pdb", tri_dist=True)
     ref_adj = cm_tri.adjacency
     ref_mat_file = os.path.join(os.path.dirname(__file__), os.path.join("data/mgp/", f"{pdb.upper()}.mat"))
@@ -30,8 +30,10 @@ def init_experiment_run(pdb: str) -> tuple:
         pga_file = loadmat(ref_mat_file)
         ref_adj = convert_graph_from_matlab_file(pga_file["contact_map"]) # in case precalculated contacts exist
         cm_tri.adjacency = ref_adj # propagate contactmap to all dependencies
-    mutations_dict_exp = parse_matlab_mutation_file("./data/mgp/ddg_protherm.mat", query="ddg_protherm")
-    mutations_dict_is = parse_matlab_mutation_file("./data/mgp/ddg_rosetta_single.mat", query="ddg_rosetta_single")
+    if not mutations_dict_exp:
+        mutations_dict_exp = parse_matlab_mutation_file("./data/mgp/ddg_protherm.mat", query="ddg_protherm")
+    if not mutations_dict_is:
+        mutations_dict_is = parse_matlab_mutation_file("./data/mgp/ddg_rosetta_single.mat", query="ddg_rosetta_single")
     pcol = ProteinCollection(cm_tri, pdb_ID=pdb, mutations_exp=mutations_dict_exp, mutations_sim=mutations_dict_is,
                     TESTING=False)
     mut_S_exp, mut_adj_exp, ΔΔg_exp, mut_ids_exp = parse_mutations(mutation_dict=mutations_dict_exp.get(pcol.pdb_ID), 
@@ -62,10 +64,11 @@ def init_mgp_regression(pcol, X_wt, X_exp, X_is, y_wt, ΔΔg_exp, ΔΔg_is_scale
 
 
 def run_mgpfusion_experiment_pos_lvl(pdb: str, idx: int, optim: bool, ref: bool, run_id: str, verbose=False,
-                                     write=True) -> None:
+                                     write=True, exp_mutation_dict: dict=None, is_mutation_dict: dict=None) -> None:
     if verbose:
         print(f"{pdb} - pos: {idx},  optim: {optim}, reference: {ref}")
-    pcol, X_wt, X_exp, X_is, y_wt, ΔΔg_exp, ΔΔg_is_scaled, ref_adj, bs_rosetta, max_y, mean_y = init_experiment_run(pdb)
+    pcol, X_wt, X_exp, X_is, y_wt, ΔΔg_exp, ΔΔg_is_scaled, ref_adj, bs_rosetta, max_y, mean_y = init_experiment_run(pdb, 
+                                                            mutations_dict_exp=exp_mutation_dict, mutations_dict_is=is_mutation_dict)
     experimental_mutation_index = get_mutation_idx(pcol.mut_ids_exp)
     # gather all mutations at that position and assign train and test indices
     mutation_bool_mask = np.array([bool(idx in mut) for mut in experimental_mutation_index])
@@ -175,30 +178,45 @@ def run_mgpfusion_experiment_mut_lvl(pdb: str, idx: int, optim: bool, ref: bool,
     return
 
 
-def prepare_blat(in_file: str="./data/blat/BLAT_ECOLX_Ranganathan2015.csv"):
+def prepare_blat(in_file: str="./data/blat/BLAT_ECOLX_Ranganathan2015.csv", in_silico: str=None):
     blat_df = pd.read_csv(in_file)
     blat_df["growth"] = blat_df["2500"]
+    is_mutation_dict = None
+    if in_silico:
+        pass # TODO implement is_mutation from BLAT simulations
     clipped_mutations = [(mut, growth) for (mut, growth) in zip(blat_df.mutant, blat_df.growth) if int(mut[1:-1])<=263]
     # WARNING: we clip mutations at position 263 - mutations go until 286, however pdb is only 263 (main chain) long
     mutation_dict = {"1FQG": clipped_mutations}
-    return blat_df, mutation_dict
+    return blat_df, mutation_dict, is_mutation_dict
 
 
-def prepare_tll(in_file: str="./data/tll/TLL_data.csv"):
-    tll_df = pd.read_csv(in_file, sep=";")
-    tll_df = tll_df[["mutations", "stabIF"]].dropna()
-    tll_df["mutations"] = tll_df.mutations.str.replace(" ", "")
-    tll_df["stabIF"] = tll_df.stabIF.str.replace(",", ".").astype(float)
-    mutations = [(mut, y) for (mut, y) in zip(tll_df.mutations, tll_df.stabIF)]
-    mutation_dict = {"1TIB": mutations}
-    return tll_df, mutation_dict
+def prepare_tll(in_file: str="./data/tll/lipase_variants_tll_tm_tapo_20nov2020.xlsx", in_silico: str=None):
+    tll_df = pd.read_excel(in_file)
+    # filter out more than 10 mutations
+    tll_df = tll_df[tll_df.mut2wt_1ein_join.str.count(" ")<=9].dropna()
+    is_mutations = None
+    if in_silico and os.path.exists(in_silico):
+        is_df = pd.read_excel(in_silico)
+        is_df = is_df.merge(tll_df, how="left", left_on="var_name", right_on="TSA.sample")[["mut2wt_1ein_join", "ddG"]].dropna()
+        is_df["mutations"] = is_df.mut2wt_1ein_join.str.replace(" ", "")
+        is_df["ddG"] = is_df.ddG.astype(float)
+        is_mutations = [(mut, y) for (mut, y) in zip(is_df.mutations, is_df.ddG)]
+    tll_df = tll_df[["mut2wt_1ein_join", "TSA.Tm"]]
+    # mean over experimental measurements
+    tll_df = tll_df.groupby("mut2wt_1ein_join").mean().reset_index()
+    tll_df["mutations"] = tll_df.mut2wt_1ein_join.str.replace(" ", "")
+    tll_df["TSA"] = tll_df["TSA.Tm"].astype(float)
+    exp_mutations = [(mut, y) for (mut, y) in zip(tll_df.mutations, tll_df.TSA)]
+
+    exp_mutation_dict = {"1TIB": exp_mutations}
+    is_mutation_dict = {"1TIB": is_mutations}
+    return tll_df, exp_mutation_dict, is_mutation_dict
 
 
 def run_pos_lvl_CV_no_fusion(pdb:str, idx: int, mutation_dict: dict,  run_id: int,
                              ref: bool=False, optim: bool=True, write: bool=True, use_reference_map: bool=False) -> dict:
     pdb_file = f"./pdb/{pdb.lower()}.pdb"
     contact_map = ContactMapper(pdb_file=pdb_file, tri_dist=True)
-
     pcol = ProteinCollection(contact_map, pdb_ID=pdb, mutations_exp=mutation_dict, mutations_sim={})
     adjacencies = contact_map.adjacency
 
@@ -316,16 +334,16 @@ if __name__ == "__main__":
     cv_options = ["pos_lvl", "mut_lvl"]
     data_options = ["tll", "blat"]
     parser = argparse.ArgumentParser(description="Experiment Module - run specific Regression calls.")
-    parser.add_argument("-p", "--pdb", type=str, help="str identifier of pdb file")
-    parser.add_argument("-i", "--idx", type=int, help="index of CV run")
+    parser.add_argument("-p", "--pdb", type=str, help="Identifier string of pdb file")
+    parser.add_argument("-i", "--idx", type=int, help="Index of CV run")
     parser.add_argument("-r", "--run", type=str, choices=cv_options, help="type of CV routine to run")
     parser.add_argument("-v", "--verbose", action='store_true', help="Verbosity boolean.")
     parser.add_argument("-o", "--optim", action='store_true', help="Run optimization boolean flag.")
-    parser.add_argument("-m", "--mode", action='store_true', help="Run reference modus (2 sigma) boolean flag.")
+    parser.add_argument("-m", "--mode", action='store_true', help="Run reference modus (2 σ) boolean flag.")
     parser.add_argument("--seed", type=int, default=42, help="Randomness seed for replicability.")
-    parser.add_argument("-e", "--experiment", type=str, help="experiment ID for mlflow")
+    parser.add_argument("-e", "--experiment", type=str, help="Experiment ID for mlflow")
     parser.add_argument("--run_id", type=str, help="Run ID of mlflow run.")
-    parser.add_argument("--no_fusion", action="store_true", help="Run mGP instead of mGPfusion")
+    parser.add_argument("--no_fusion", action="store_true", help="Run mGP instead of mGPfusion, disregard Rosetta simulations.")
     parser.add_argument("--data", type=str, choices=data_options, help="Type of run")
     parser.add_argument("--ref_contact", action="store_true", help="Use reference contactmap from matlab.")
     args = parser.parse_args()
@@ -334,23 +352,26 @@ if __name__ == "__main__":
     torch.manual_seed(args.seed)
 
     if args.run == "pos_lvl" and not args.no_fusion:
+        mutation_dict, is_mutation_dict = None, None
+        if args.data=="tll":
+            _, mutation_dict, is_mutation_dict = prepare_tll(in_silico="./data/tll/TLL_IS_closed_results.xlsx")
+        if args.data=="blat":
+            _, mutation_dict, is_mutation_dict = prepare_blat()
         run_mgpfusion_experiment_pos_lvl(pdb=args.pdb, idx=args.idx, optim=args.optim, ref=args.mode,
-                                         verbose=args.verbose, run_id=args.run_id)
-    elif args.run == "mut_lvl" and not args.no_fusion:
+                                         verbose=args.verbose, run_id=args.run_id, exp_mutation_dict=mutation_dict, 
+                                         is_mutation_dict=is_mutation_dict)
+    elif args.run == "mut_lvl" and not args.no_fusion and not args.data:
         run_mgpfusion_experiment_mut_lvl(pdb=args.pdb, idx=args.idx, optim=args.optim, ref=args.mode,
                                          verbose=args.verbose, run_id=args.run_id)
     elif args.run == "pos_lvl" and args.no_fusion:
-        mutations_dict_exp = parse_matlab_mutation_file("./data/mgp/ddg_protherm.mat", query="ddg_protherm")
+        if args.data=="blat":
+            _, mutations_dict_exp, _ = prepare_blat()
+        if args.data=="tll":
+            _, mutations_dict_exp, _ = prepare_tll()
+        else:
+            mutations_dict_exp = parse_matlab_mutation_file("./data/mgp/ddg_protherm.mat", query="ddg_protherm")
         run_pos_lvl_CV_no_fusion(pdb=args.pdb, idx=args.idx, mutation_dict=mutations_dict_exp, optim=args.optim,
                                  use_reference_map=args.ref_contact, run_id=args.run_id)
-    elif args.run == "pos_lvl" and args.no_fusion and args.data=="tll":
-        _, mutation_dict = prepare_tll() # TODO cleanup this mess, function parameters and unused dataframes
-        run_pos_lvl_CV_no_fusion(pdb=args.pdb, idx=args.idx, mutation_dict=mutation_dict, optim=args.optim,
-                                 ref=args.mode, run_id=args.run_id)
-    elif args.run == "pos_lvl" and args.no_fusion and args.data=="blat":
-        _, mutation_dict = prepare_blat()
-        run_pos_lvl_CV_no_fusion(pdb=args.pdb, idx=args.idx, mutation_dict=mutation_dict, optim=args.optim,
-                                 ref=args.mode, run_id=args.run_id)
     else:
         parser.print_help()
         raise RuntimeError("Wrong CV option provided. See help.")
