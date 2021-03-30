@@ -18,7 +18,7 @@ def get_positions(pdb: str) -> str:
 
 def run_sys_CV(pdb, idx, cv, experiment, run_id, data=None, ref=False, optim=True, no_fusion=False, verbose=False,
                ref_contact_map: bool=False):
-    command_lst = ["C:/Users/rmich/miniconda3/envs/mgpfusion/python.exe", "C:/pro_tooling/run_experiments.py", "-p", f"{pdb}", "-i", f"{idx}",
+    command_lst = ["C:/Users/RCML/Anaconda3/envs/mgpfusion/python.exe", "//wsl$/Ubuntu/home/rcml/pro_tooling/run_experiments.py", "-p", f"{pdb}", "-i", f"{idx}",
                    "-r", f"{cv}", "--seed", "3032021", "--experiment", f"{experiment}", "--run_id", f"{run_id}"]
     if optim:
         command_lst += ["-o"]
@@ -42,7 +42,8 @@ def create_mlflow_run_pos_lvl(pdb: str, cv: str, optim: bool, ref: bool, no_fusi
     experiment_name = f"{pdb}: {cv}"
     experiment = mlflow.set_experiment(experiment_name)
     with mlflow.start_run(experiment_id=experiment) as run:
-        exp_params = {"pdb": pdb, "cv": cv, "optimization": optim, "2σ": ref, "reference_contacts": ref_contact_map}
+        exp_params = {"pdb": pdb, "cv": cv, "optimization": optim, "2σ": ref, "reference_contacts": ref_contact_map, 
+                    "NO fusion": no_fusion}
         mlflow.log_params(exp_params)
         for idx, _ in enumerate(sequence):
             # run position lvl no optimization
@@ -91,10 +92,14 @@ def main() -> None:
 
 def run_TLL() -> None:
     print(f"Tracking URI: {mlflow.get_tracking_uri()}")
-    create_mlflow_run_pos_lvl(pdb="1TIB", cv="pos_lvl", optim=False, ref=False, no_fusion=True, data="tll")
-    create_mlflow_run_pos_lvl(pdb="1TIB", cv="pos_lvl", optim=True, ref=False, no_fusion=True, data="tll")
-    create_mlflow_run_pos_lvl(pdb="1TIB", cv="pos_lvl", optim=False, ref=True, no_fusion=True, data="tll")
-    create_mlflow_run_pos_lvl(pdb="1TIB", cv="pos_lvl", optim=True, ref=True, no_fusion=True, data="tll")
+    create_mlflow_run_pos_lvl(pdb="1TIB", cv="pos_lvl", optim=False, ref=False, data="tll")
+    create_mlflow_run_pos_lvl(pdb="1TIB", cv="pos_lvl", optim=True, ref=False, data="tll")
+    create_mlflow_run_pos_lvl(pdb="1TIB", cv="pos_lvl", optim=False, ref=True, data="tll")
+    create_mlflow_run_pos_lvl(pdb="1TIB", cv="pos_lvl", optim=True, ref=True, data="tll")
+    # create_mlflow_run_pos_lvl(pdb="1TIB", cv="pos_lvl", optim=False, ref=False, no_fusion=True, data="tll")
+    # create_mlflow_run_pos_lvl(pdb="1TIB", cv="pos_lvl", optim=True, ref=False, no_fusion=True, data="tll")
+    # create_mlflow_run_pos_lvl(pdb="1TIB", cv="pos_lvl", optim=False, ref=True, no_fusion=True, data="tll")
+    # create_mlflow_run_pos_lvl(pdb="1TIB", cv="pos_lvl", optim=True, ref=True, no_fusion=True, data="tll")
 
 
 def run_BLAT() -> None:
@@ -107,7 +112,7 @@ def run_BLAT() -> None:
 
 if __name__ == "__main__":
     warnings.filterwarnings("ignore")
-    #run_TLL()
+    run_TLL()
     #run_BLAT()
-    main()
+    #main()
     
