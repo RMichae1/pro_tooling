@@ -29,6 +29,7 @@ os.environ['KMP_DUPLICATE_LIB_OK']='True' #TODO figure out what caused OMP Error
 logging.basicConfig(level=logging.WARN)
 logger = logging.getLogger(__name__)
 
+VAE_TYPES = ["blat", "sp400", "pga"]
 
 if __name__ == "__main__":
     pyro.clear_param_store()
@@ -50,23 +51,32 @@ if __name__ == "__main__":
     parser.add_argument("-wd", "--weight_decay", type=float, default=0., help="Adam Optimizer weight decay.")
     parser.add_argument("-d", "--dropout", type=float, default=0., help="Add Dropout layer with dropout probability.")
     parser.add_argument("-sw", "--sequence_weighting", action="store_true", help="Weighing input sequences in the training procedure.")
+    parser.add_argument("-t", "--type", choices=VAE_TYPES, default="blat", help="Type ID of MSA used to create VAE.")
     args = parser.parse_args() # TODO change weighting to store_true
 
     np.random.seed(args.seed)
     torch.manual_seed(args.seed)
 
-    with open("./data/blat/BLAT_data_df.pkl", "rb") as infile:
-        blat_df = pickle.load(infile)
-    # stored values without assay entries are BLAT TEM1 ECOLX family data
-    family_df = blat_df[blat_df.assay.isna()]
-    test_blat_df = blat_df[~blat_df.assay.isna()]
-    # cast sequence labels to int
-    family_seqs = np.array([[int(elem) for elem in seq] for seq in family_df.seqs])
-    test_blat_seqs = np.array([[int(elem) for elem in seq] for seq in test_blat_df.seqs])
-    test_y = np.array(test_blat_df.assay, dtype=float)
+    if args.type == "blat":
+        with open("./data/blat/BLAT_data_df.pkl", "rb") as infile:
+            blat_df = pickle.load(infile)
+        # stored values without assay entries are BLAT TEM1 ECOLX family data
+        family_df = blat_df[blat_df.assay.isna()]
+        test_blat_df = blat_df[~blat_df.assay.isna()]
+        # cast sequence labels to int
+        family_seqs = np.array([[int(elem) for elem in seq] for seq in family_df.seqs])
+        test_seqs = np.array([[int(elem) for elem in seq] for seq in test_blat_df.seqs])
+        test_y = np.array(test_blat_df.assay, dtype=float)
+    elif args.type == "sp400":
+        with open("./data/tll/seqs_in_int_nogaps_sp400_Mar14_data_all_jaks_Apr3_trimmed.pkl", "rb") as infile:
+            family_seqs = np.array(pickle.load(infile))
+        # TODO get sequences from TLL_data
+        # 
+        test_seqs = family_seqs # get sequences
+        test_y = np.zeros(len(family_seqs)) # get y values
 
     n, length = family_seqs.shape
-    test_n = test_blat_seqs.shape[0]
+    test_n = test_seqs.shape[0]
     num_classes = np.unique(family_seqs).shape[0]
     indices = list(range(n))
     random.shuffle(indices)
@@ -78,7 +88,7 @@ if __name__ == "__main__":
     seq_train = WeightedMSADataset(family_seqs[train_idx], num_classes=num_classes)
     seq_test = WeightedMSADataset(family_seqs[test_idx], num_classes=num_classes)
     sampler = torch.utils.data.WeightedRandomSampler(seq_train.weights, num_samples=len(seq_train), replacement=True) if args.sequence_weighting else None
-    test_seq_dataset = WeightedMSADataset(test_blat_seqs, num_classes=num_classes)
+    test_seq_dataset = WeightedMSADataset(test_seqs, num_classes=num_classes)
 
     train_loader = torch.utils.data.DataLoader(seq_train, batch_size=args.batch_size, sampler=sampler, collate_fn=seq_collate)
     test_loader = torch.utils.data.DataLoader(seq_test, batch_size=args.batch_size, shuffle=True, collate_fn=seq_collate)
@@ -99,15 +109,16 @@ if __name__ == "__main__":
             "batch_size": args.batch_size,
             "weight_decay": args.weight_decay,
             "dropout": args.dropout,
-            "sequence_weighting": args.sequence_weighting}
+            "sequence_weighting": args.sequence_weighting,
+            "seed": args.seed}
 
     # TODO VAE of different flavors - sparse, dropout, etc.
-    experiment_name = args.experiment if args.experiment else f"VAE_Adam_z{args.latent_dim}"
+    experiment_name = args.experiment if args.experiment else f"VAE_Adam_z{args.latent_dim}_t{args.type}"
     mlflow.set_experiment(experiment_name)
     print(f"Tracking URI: {mlflow.get_tracking_uri()}")
 
-    model_FILENAME = f"./models/VAE_z{args.latent_dim}_h{args.encoder_dim+args.decoder_dim}_e{args.epochs}_d{args.dropout}_w{args.sequence_weighting}.pt"
-    optimizer_FILENAME = f"./models/Adam_z{args.latent_dim}_h{args.encoder_dim+args.decoder_dim}_e{args.epochs}_d{args.dropout}_w{args.sequence_weighting}.pt"
+    model_FILENAME = f"./models/VAE_t{args.type}_z{args.latent_dim}_h{args.encoder_dim+args.decoder_dim}_e{args.epochs}_d{args.dropout}_w{args.sequence_weighting}.pt"
+    optimizer_FILENAME = f"./models/Adam_t{args.type}_z{args.latent_dim}_h{args.encoder_dim+args.decoder_dim}_e{args.epochs}_d{args.dropout}_w{args.sequence_weighting}.pt"
     vae = VAE(z_dim=param_dict["LATENT_DIM"], encoder_dim=param_dict["ENCODER_DIM"], decoder_dim=param_dict["DECODER_DIM"],
                     input_dims=param_dict["INPUT_DIM"], use_cuda=args.cuda, wt=WT, dropout=param_dict["dropout"], num_categories=num_classes)
     optimizer = Adam({"lr": param_dict["LEARNING_RATE"], "weight_decay": param_dict["weight_decay"]})
