@@ -18,7 +18,6 @@ class Encoder(nn.Module):
         for hidden_dim in hidden_dims:
             encoding_layers.append(nn.Linear(current_dim, hidden_dim))
             encoding_layers.append(nn.ReLU(inplace=True))
-            encoding_layers.append(nn.Dropout(dropout))
             current_dim = hidden_dim
         self.encoding_nn = nn.Sequential(*encoding_layers)
         self.mean = nn.Linear(current_dim, z_dim)
