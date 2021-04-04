@@ -63,7 +63,7 @@ class DataHelper:
         # Alignment processing parameters
         self.theta = theta
 
-        # If I am running tests with the model, I don't need all the
+        # If I am running tests with the models, I don't need all the
         #    sequences loaded
         self.load_all_sequences = load_all_sequences
 
@@ -542,13 +542,13 @@ class DataHelper:
 
 def gen_job_string(data_params, model_params):
     """
-        Generates a unique job string given data and model parameters.
+        Generates a unique job string given data and models parameters.
         This is used later as an identifier for the
-                saved model weights and figures
+                saved models weights and figures
         Parameters
         ------------
         data_params: dictionary of parameters for the data class
-        model_params: dictionary of parameters for the model class
+        model_params: dictionary of parameters for the models class
 
         Returns
         ------------

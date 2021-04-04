@@ -21,7 +21,7 @@ def train(data,
     --------------
     data: Instance of DataHelper class from helper.py
     model: Instance of VariationalAutoencoder or VariationalAutoencoderMLE
-            from model.py
+            from models.py
     save_progress: save log files of losses during training
     save_parameters: save parameters every k iterations
     num_updates: Number of training iterations (int)
@@ -31,7 +31,7 @@ def train(data,
                 or "log": save latent variables during training on log scale iterations
                 or False (bool)
     update_offset: Offset use for Adam in training
-                        Change this to keep training parameters from an old model
+                        Change this to keep training parameters from an old models
     print_neff: Print the Neff of the alignment
     print_iter: print/write out losses every k iterations
 
@@ -47,7 +47,7 @@ def train(data,
 
     update_num = 0
 
-    # If I am starting a model from a later timestep, fix it here
+    # If I am starting a models from a later timestep, fix it here
     if update_offset != 0:
         model.t = update_offset
 

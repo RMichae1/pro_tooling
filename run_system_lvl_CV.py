@@ -17,8 +17,8 @@ def get_positions(pdb: str) -> str:
 
 
 def run_sys_CV(pdb, idx, cv, experiment, run_id, data=None, ref=False, optim=True, no_fusion=False, verbose=False,
-               ref_contact_map: bool=False):
-    command_lst = ["C:/Users/RCML/Anaconda3/envs/mgpfusion/python.exe", "//wsl$/Ubuntu/home/rcml/pro_tooling/run_experiments.py", "-p", f"{pdb}", "-i", f"{idx}",
+               ref_contact_map=False, vae_input=False):
+    command_lst = ["/home/rimichael/.pyenv/shims/python", "/home/rimichael/pro_tooling/run_experiments.py", "-p", f"{pdb}", "-i", f"{idx}",
                    "-r", f"{cv}", "--seed", "3032021", "--experiment", f"{experiment}", "--run_id", f"{run_id}"]
     if optim:
         command_lst += ["-o"]
@@ -33,22 +33,25 @@ def run_sys_CV(pdb, idx, cv, experiment, run_id, data=None, ref=False, optim=Tru
         command_lst += [data]
     if ref_contact_map:
         command_lst += ["--ref_contact"]
+    if vae_input:
+        command_lst += ["--vae_input"]
     subprocess.run(command_lst)
 
 
-def create_mlflow_run_pos_lvl(pdb: str, cv: str, optim: bool, ref: bool, no_fusion: bool=False, data: str = None,
-                              ref_contact_map: bool=False) -> None:
+def create_mlflow_run_pos_lvl(pdb: str, cv: str, optim: bool, ref: bool, no_fusion: bool = False, data: str = None,
+                              ref_contact_map: bool = False, vae_input: bool = False) -> None:
     sequence = get_positions(pdb)
     experiment_name = f"{pdb}: {cv}"
     experiment = mlflow.set_experiment(experiment_name)
     with mlflow.start_run(experiment_id=experiment) as run:
         exp_params = {"pdb": pdb, "cv": cv, "optimization": optim, "2σ": ref, "reference_contacts": ref_contact_map, 
-                    "NO fusion": no_fusion}
+                    "NO fusion": no_fusion, "vae": vae_input}
         mlflow.log_params(exp_params)
         for idx, _ in enumerate(sequence):
             # run position lvl no optimization
             run_sys_CV(pdb, idx, cv=cv, ref=ref, optim=optim, experiment=experiment_name, run_id=run.info.run_id,
-                       no_fusion=no_fusion, data=data, verbose=True, ref_contact_map=ref_contact_map)
+                       no_fusion=no_fusion, data=data, verbose=True, ref_contact_map=ref_contact_map,
+                       vae_input=vae_input)
     mlflow.end_run()
     return None
 
@@ -104,15 +107,19 @@ def run_TLL() -> None:
 
 def run_BLAT() -> None:
     print(f"Tracking URI: {mlflow.get_tracking_uri()}")
-    create_mlflow_run_pos_lvl(pdb="1FQG", cv="pos_lvl", optim=False, ref=False, no_fusion=True, data="blat")
-    create_mlflow_run_pos_lvl(pdb="1FQG", cv="pos_lvl", optim=True, ref=False, no_fusion=True, data="blat")
-    create_mlflow_run_pos_lvl(pdb="1FQG", cv="pos_lvl", optim=False, ref=True, no_fusion=True, data="blat")
-    create_mlflow_run_pos_lvl(pdb="1FQG", cv="pos_lvl", optim=True, ref=True, no_fusion=True, data="blat")
+    # create_mlflow_run_pos_lvl(pdb="1FQG", cv="pos_lvl", optim=False, ref=False, no_fusion=True, data="blat")
+    # create_mlflow_run_pos_lvl(pdb="1FQG", cv="pos_lvl", optim=True, ref=False, no_fusion=True, data="blat")
+    # create_mlflow_run_pos_lvl(pdb="1FQG", cv="pos_lvl", optim=False, ref=True, no_fusion=True, data="blat")
+    # create_mlflow_run_pos_lvl(pdb="1FQG", cv="pos_lvl", optim=True, ref=True, no_fusion=True, data="blat")
+    create_mlflow_run_pos_lvl(pdb="1FQG", cv="pos_lvl", optim=False, ref=False, vae_input=True, data="blat")
+    create_mlflow_run_pos_lvl(pdb="1FQG", cv="pos_lvl", optim=True, ref=False, vae_input=True, data="blat")
+    create_mlflow_run_pos_lvl(pdb="1FQG", cv="pos_lvl", optim=False, ref=True, vae_input=True, data="blat")
+    create_mlflow_run_pos_lvl(pdb="1FQG", cv="pos_lvl", optim=True, ref=True, vae_input=True, data="blat")
 
 
 if __name__ == "__main__":
     warnings.filterwarnings("ignore")
-    run_TLL()
-    #run_BLAT()
+    #run_TLL()
+    run_BLAT()
     #main()
     

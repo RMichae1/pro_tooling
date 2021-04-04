@@ -18,12 +18,12 @@ class BayesScaler:
     """
     def __init__(self, is_mutations: list, ΔΔg: np, exp_mutations, experimentally_observed_ΔΔg,
                     α_a=2., β_a=1.5, α_b=1.3, β_b=2., α_c=2, β_c=5., σ_d=0.15, σ_n=0.5,
-                    samples_N=10000, warmup_N=500, TESTING=False, pdb_ID=None, cached=False):
+                    samples_N=10000, warmup_N=500, TESTING=False, pdb_ID=None, cached=False, vae=False):
         pyro.set_rng_seed(42)
         pyro.clear_param_store()
         self.pdb_ID = pdb_ID
         self.cached = cached
-        self.cached_filename = path.join("./cache/", f"{self.pdb_ID}_scaler_.pkl")
+        self.cached_filename = path.join("./cache/", f"{self.pdb_ID}_scaler_{vae}.pkl")
         self.samples_N = samples_N if not TESTING else 500
         self.warmup_N = warmup_N
         self.chains_N = 1
@@ -70,7 +70,7 @@ class BayesScaler:
     def get_mcmc_results(self):
         """
         Checks if cached MCMC samples exist and loads them.
-        If not MCMC sampling is conducted on specified model.
+        If not MCMC sampling is conducted on specified models.
         """
         if self.cached and path.isfile(self.cached_filename):
             print(f"Loading saved MCMC run from {self.cached_filename}")
