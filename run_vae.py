@@ -57,6 +57,8 @@ if __name__ == "__main__":
     parser.add_argument("-sw", "--sequence_weighting", action="store_true",
                         help="Weighing input sequences in the training procedure.")
     parser.add_argument("-t", "--type", choices=VAE_TYPES, default="blat", help="Type ID of MSA used to create VAE.")
+    parser.add_argument("-p", "--plot", action="store_true", help="Plot low-latent-representation outputs and feature correlation.")
+    parser.add_argument("--sample_vae", action="store_true", help="Prepare in-silico sample.")
     args = parser.parse_args()  # TODO change weighting to store_true
 
     np.random.seed(args.seed)
@@ -76,7 +78,6 @@ if __name__ == "__main__":
         with open("./data/tll/seqs_in_int_nogaps_sp400_Mar14_data_all_jaks_Apr3_trimmed.pkl", "rb") as infile:
             family_seqs = np.array(pickle.load(infile))
         # TODO get sequences from TLL_data
-        # 
         test_seqs = family_seqs  # TODO get test sequences
         test_y = np.zeros(len(test_seqs))  # get y values
     elif args.type == "pga":
@@ -91,7 +92,7 @@ if __name__ == "__main__":
 
     n, length = family_seqs.shape
     test_n = test_seqs.shape[0]
-    num_classes = np.unique(family_seqs).shape[0] + 1  # TODO double check this.. PGA has 20 classes Error
+    num_classes = np.unique(family_seqs).shape[0]  # TODO double check this.. PGA has 20 classes Error
     indices = list(range(n))
     random.shuffle(indices)
     test_size = int(args.test_split * n)
@@ -183,18 +184,35 @@ if __name__ == "__main__":
         elbo_values.append(loss[0].detach().numpy())
         log_likelihoods.append(loss[1].detach().numpy())
         kld_values.append(loss[2].detach().numpy())
-    # PLOT first two dimensions
-    # samples = np.array(samples)
-    # plt.scatter(samples[:, 0], samples[:, 1], c=log_likelihoods, alpha=0.25, s=1.5)
-    # plt.title("VAE z=20 latent representation on 2D")
-    # plt.show()
-    # WT is first element
-    delta_log_p = np.array([(l - wt_log_prob) for l in log_likelihoods], dtype=float)
 
-    # fig, ax = plt.subplots(1, 1)
-    # sns.regplot(delta_log_p, test_y, ax=ax, color="grey", scatter_kws={"alpha": 0.125}, line_kws={"color": "darkred"})
-    # ax.set_ylabel("measured growth (2500 ampicillin dose)")
-    # ax.set_xlabel("delta log likelihood")
-    # plt.suptitle("VAE loss to measured values \n (2500 ampicillin dose)")
-    # plt.show()
-    print(spearmanr(delta_log_p, test_y))
+    delta_log_p = np.array([(l - wt_log_prob) for l in log_likelihoods], dtype=float)
+    print(f"Corr. (Spearman) Δ ELBO and data: {spearmanr(delta_log_p, test_y)}")
+
+    if args.plot:
+        samples = np.array(samples)
+        plt.scatter(samples[:, 0], samples[:, 1], c=log_likelihoods, alpha=0.25, s=1.5)
+        plt.title(f"VAE z={args.latent_dim} latent representation in 2D")
+        plt.savefig(f"./fig/vae_z{args.latent_dim}_2d.png")
+        plt.show()
+        
+        fig, ax = plt.subplots(1, 1)
+        sns.regplot(delta_log_p, test_y, ax=ax, color="grey", 
+                    scatter_kws={"alpha": 0.125}, line_kws={"color": "darkred"})
+        ax.set_ylabel("measured effect")
+        ax.set_xlabel("delta log likelihood")
+        plt.suptitle("VAE loss to measured values")
+        plt.savefig(f"./fig/vae_z{args.latent_dim}_correlation.png")
+        plt.show()
+    
+    if args.sample_vae:
+        data_filename = "./data/blat/BLAT_ECOLX_Ranganathan2015.csv"
+        data_df = pd.read_csv(data_filename)
+        #assert len(data_df) == len(test_blat_df)
+        mutations = list(filter(lambda x: int(x[1:-1]) <= 263, data_df.mutant))
+        mutations_tuples = list(zip([m for m in mutations], delta_log_p))
+        is_mutations_dict = {"1FQG": mutations_tuples}
+        with open("./data/blat/vae_blat_mutations.pkl", "wb") as outfile:
+            pickle.dump(is_mutations_dict, outfile)
+    
+
+    
