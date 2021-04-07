@@ -125,13 +125,15 @@ def run_mgpfusion_experiment_pos_lvl(pdb: str, idx: int, optim: bool, ref: bool,
 
 
 def run_mgpfusion_experiment_mut_lvl(pdb: str, idx: int, optim: bool, ref: bool, run_id: str,
-                                     verbose=False, write=True) -> None:
+                                    verbose=False, write=True, exp_mutation_dict: dict=None,
+                                    is_mutation_dict: dict=None) -> None:
     """
     Runs Loo CV routine on experiment
     """
     if verbose:
         print(f"{pdb} - pos: {idx},  optim: {optim}, reference: {ref}")
-    pcol, X_wt, X_exp, X_is, y_wt, ΔΔg_exp, ΔΔg_is_scaled, ref_adj, bs_rosetta, max_y, mean_y = init_experiment_run(pdb)
+    pcol, X_wt, X_exp, X_is, y_wt, ΔΔg_exp, ΔΔg_is_scaled, ref_adj, bs_rosetta, max_y, mean_y = init_experiment_run(pdb, 
+                                                                    mutations_dict_exp=exp_mutation_dict, mutations_dict_is=is_mutation_dict)
     # get all experimental mutations incl WT
     if idx == 0:  # exclude WT from CV
         print("WT excluded from LOO")
@@ -195,7 +197,9 @@ def prepare_tll(in_file: str="./data/tll/lipase_variants_tll_tm_tapo_20nov2020.x
     # filter out more than 10 mutations
     tll_df = tll_df[tll_df.mut2wt_1ein_join.str.count(" ")<=9].dropna()
     is_mutations = None
-    if in_silico and os.path.exists(in_silico):
+    if in_silico:
+        if not os.path.exists(in_silico):
+            raise FileNotFoundError("Provided in Silico data does not exist!")
         is_df = pd.read_excel(in_silico)
         is_df = is_df.merge(tll_df, how="left", left_on="var_name", right_on="TSA.sample")[["mut2wt_1ein_join", "ddG"]].dropna()
         is_df["mutations"] = is_df.mut2wt_1ein_join.str.replace(" ", "")
@@ -360,9 +364,13 @@ if __name__ == "__main__":
         run_mgpfusion_experiment_pos_lvl(pdb=args.pdb, idx=args.idx, optim=args.optim, ref=args.mode,
                                          verbose=args.verbose, run_id=args.run_id, exp_mutation_dict=mutation_dict, 
                                          is_mutation_dict=is_mutation_dict)
-    elif args.run == "mut_lvl" and not args.no_fusion and not args.data:
+    elif args.run == "mut_lvl" and not args.no_fusion:
+        mutation_dict, is_mutation_dict = None, None
+        if args.data == "tll":
+            _, mutation_dict, is_mutation_dict = prepare_tll(in_silico="./data/tll/TLL_IS_closed_results.xlsx")
         run_mgpfusion_experiment_mut_lvl(pdb=args.pdb, idx=args.idx, optim=args.optim, ref=args.mode,
-                                         verbose=args.verbose, run_id=args.run_id)
+                                         verbose=args.verbose, run_id=args.run_id, exp_mutation_dict=mutation_dict,
+                                         is_mutation_dict=is_mutation_dict)
     elif args.run == "pos_lvl" and args.no_fusion:
         if args.data=="blat":
             _, mutations_dict_exp, _ = prepare_blat()

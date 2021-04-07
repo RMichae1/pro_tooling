@@ -371,7 +371,4 @@ class WeightedMSADataset(Dataset):
         if torch.is_tensor(index):
             index = index.tolist()
         return self.one_hot_sequence[index], self.weights[index], self.neff
-    
-
-    
    

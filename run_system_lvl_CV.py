@@ -91,14 +91,18 @@ def main() -> None:
 
 def run_TLL() -> None:
     print(f"Tracking URI: {mlflow.get_tracking_uri()}")
-    create_mlflow_run_pos_lvl(pdb="1TIB", cv="pos_lvl", optim=False, ref=False, data="tll")
-    create_mlflow_run_pos_lvl(pdb="1TIB", cv="pos_lvl", optim=True, ref=False, data="tll")
-    create_mlflow_run_pos_lvl(pdb="1TIB", cv="pos_lvl", optim=False, ref=True, data="tll")
-    create_mlflow_run_pos_lvl(pdb="1TIB", cv="pos_lvl", optim=True, ref=True, data="tll")
+    # create_mlflow_run_pos_lvl(pdb="1TIB", cv="pos_lvl", optim=False, ref=False, data="tll")
+    # create_mlflow_run_pos_lvl(pdb="1TIB", cv="pos_lvl", optim=True, ref=False, data="tll")
+    # create_mlflow_run_pos_lvl(pdb="1TIB", cv="pos_lvl", optim=False, ref=True, data="tll")
+    # create_mlflow_run_pos_lvl(pdb="1TIB", cv="pos_lvl", optim=True, ref=True, data="tll")
     # create_mlflow_run_pos_lvl(pdb="1TIB", cv="pos_lvl", optim=False, ref=False, no_fusion=True, data="tll")
     # create_mlflow_run_pos_lvl(pdb="1TIB", cv="pos_lvl", optim=True, ref=False, no_fusion=True, data="tll")
     # create_mlflow_run_pos_lvl(pdb="1TIB", cv="pos_lvl", optim=False, ref=True, no_fusion=True, data="tll")
     # create_mlflow_run_pos_lvl(pdb="1TIB", cv="pos_lvl", optim=True, ref=True, no_fusion=True, data="tll")
+    create_mlflow_run_pos_lvl(pdb="1TIB", cv="mut_lvl", optim=False, ref=False, data="tll")
+    create_mlflow_run_pos_lvl(pdb="1TIB", cv="mut_lvl", optim=True, ref=False, data="tll")
+    create_mlflow_run_pos_lvl(pdb="1TIB", cv="mut_lvl", optim=False, ref=True, data="tll")
+    create_mlflow_run_pos_lvl(pdb="1TIB", cv="mut_lvl", optim=True, ref=True, data="tll")
 
 
 def run_BLAT() -> None:

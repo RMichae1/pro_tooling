@@ -162,7 +162,8 @@ def load_hyperparameter_results(pdbs, optim, refs):
 
 
 if __name__ == "__main__":
-    pdbs = ["1BVC", "2LZM", "1PGA", "1CSP", "1BPI", "1RGG", "1RTB", "2RN2", "4LYZ"]# "1FQG"]
+    #pdbs = ["1BVC", "2LZM", "1PGA", "1CSP", "1BPI", "1RGG", "1RTB", "2RN2", "4LYZ"]# "1FQG"]
+    pdbs = ["1TIB"]
     optim = [False, True]
     refs = [False, True]
     
