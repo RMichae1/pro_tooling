@@ -45,18 +45,6 @@ VALIDATE=50
 LR = 0.0015
 
 
-def fit_model(svi, vae, train_loader=train_loader, test_loader=test_loader, epochs=EPOCHS):
-  vae.train()
-  for epoch in tqdm(range(epochs)):
-      total_epoch_loss_train = train(svi, train_loader, USE_CUDA)
-      print(f"[epoch {epoch}] avrg. train loss: {total_epoch_loss_train}")
-
-      if epoch % VALIDATE == 0:
-          total_epoch_loss_test = evaluate(svi, test_loader, USE_CUDA)
-          print(f"[epoch {epoch}] avrg. test loss: {total_epoch_loss_test}")
-  return svi, vae
-
-
 def correlation(vae, test_y=test_y):
   vae.eval()
   wt_log_prob = vae.log_p(WT.cuda())[1].cpu().detach().numpy()
@@ -76,19 +64,6 @@ search_space  = [Integer(900, 2000, name='encoder_dim'),
                  Real(10**-5, 10**-1, "log-uniform", name='learning_rate'),
                  Real(10**-5, 10**-1, "log-uniform", name='weight_decay')]
 
-@use_named_args(search_space)
-def objective(encoder_dim, decoder_dim, extra_layer, 
-              latent_dim, dropout, learning_rate, weight_decay):
-    pyro.clear_param_store()
-    vae = VAE(z_dim=latent_dim, encoder_dim=[encoder_dim], decoder_dim=[decoder_dim],
-                input_dims=WT.shape[0], use_cuda=True, wt=WT, dropout=dropout, num_categories=num_classes)
-    optimizer = Adam({"lr": learning_rate, "weight_decay": weight_decay})
-    svi = SVI(vae.model, vae.guide, optimizer, loss=JitTrace_ELBO())
-    try:
-      svi, vae = fit_model(svi=svi, vae=vae)
-    except:
-      return 9000
-    return -correlation(vae)
 
 if __name__ == "__main__":
     family_seqs, test_seqs, test_y = parse_TLL()
@@ -121,8 +96,33 @@ if __name__ == "__main__":
     svi = SVI(vae.model, vae.guide, optimizer, loss=JitTrace_ELBO())
     torch.autograd.set_detect_anomaly(True)
 
+    def fit_model(svi, vae, train_loader=train_loader, test_loader=test_loader, epochs=EPOCHS):
+        vae.train()
+        for epoch in tqdm(range(epochs)):
+            total_epoch_loss_train = train(svi, train_loader, USE_CUDA)
+            print(f"[epoch {epoch}] avrg. train loss: {total_epoch_loss_train}")
+
+            if epoch % VALIDATE == 0:
+                total_epoch_loss_test = evaluate(svi, test_loader, USE_CUDA)
+                print(f"[epoch {epoch}] avrg. test loss: {total_epoch_loss_test}")
+        return svi, vae
+
+    @use_named_args(search_space)
+    def objective(encoder_dim, decoder_dim, extra_layer, 
+                latent_dim, dropout, learning_rate, weight_decay):
+        pyro.clear_param_store()
+        vae = VAE(z_dim=latent_dim, encoder_dim=[encoder_dim], decoder_dim=[decoder_dim],
+                    input_dims=WT.shape[0], use_cuda=True, wt=WT, dropout=dropout, num_categories=num_classes)
+        optimizer = Adam({"lr": learning_rate, "weight_decay": weight_decay})
+        svi = SVI(vae.model, vae.guide, optimizer, loss=JitTrace_ELBO())
+        try:
+        svi, vae = fit_model(svi=svi, vae=vae)
+        except:
+        return 9000
+        return -correlation(vae)
+
     # call optimization
-    res_gp = gp_minimize(objective, search_space, n_calls=12, random_state=0)
+    res_gp = gp_minimize(objective, search_space, n_calls=20, random_state=0)
 
     print(f"Best score={res_gp.fun}")
     print(f"""Best parameters:
