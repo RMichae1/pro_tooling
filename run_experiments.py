@@ -18,7 +18,7 @@ from mlflow.tracking import MlflowClient
 
 def run_mgpfusion_experiment_pos_lvl(experiment: Experiment, verbose=True, write=True) -> None:
     if verbose:
-        print(f"{experiment.pdb} - pos: {experiment.idx},  optim: {experiment.optimization}, reference: {experiment.ref}")
+        print(f"{experiment.pdb} - pos: {experiment.idx},  optim: {experiment.optimization}, reference: {experiment.two_sigma}")
     # TODO make mutation index an experiment property
     experimental_mutation_index = get_mutation_idx(experiment.protein.mut_ids_exp)
     # gather all mutations at that position and assign train and test indices

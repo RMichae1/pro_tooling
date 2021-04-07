@@ -28,20 +28,20 @@ class Experiment:
         self.optimization = optimization
         self.vae_input = vae_input
         self.vae_kernel = vae_kernel
-        if vae_input or vae_kernel:
-            self.vae_model_FILENAME = f"./models/VAE_t{experiment_type}_z55_h[1700, 1200]_e200_d0.065_wTrue.pt"
-            self.vae = self.prepare_vae()
         self.exp_data_filename = exp_data_filename
         self.is_data_filename = is_data_filename
         self.run_id = run_id
         self.two_sigma = reference
-        self.in_silico_data = self.prepare_in_silico_data() if self.fusion else {}
         self.experimental_data = self.prepare_experimental_data()
         self.contact_map = ContactMapper(pdb_file=f"./pdb/{pdb.lower()}.pdb", tri_dist=True)
         self.ref_adj = self.contact_map.adjacency
         # TODO add VAE kernel to proteincollection
         self.protein = ProteinCollection(self.contact_map, pdb_ID=pdb, 
                             mutations_exp=self.experimental_data, TESTING=False)
+        if vae_input or vae_kernel:
+            self.vae_model_FILENAME = f"./models/VAE_t{experiment_type}_z55_h[1700, 1200]_e200_d0.065_wTrue.pt"
+            self.vae = self.prepare_vae()
+        self.in_silico_data = self.prepare_in_silico_data() if self.fusion else {}
         self.X_wt, self.X_exp, self.X_is, self.y_wt, self.ΔΔg_exp, self.ΔΔg_is_scaled, self.scaler_σ, self.max_y, self.mean_y = self.init_experiment_run()
         if not self.fusion:
             self.X_is = np.array([])
@@ -79,10 +79,7 @@ class Experiment:
             return self.generate_blat_in_silico_mutations_from_vae()
 
     def generate_blat_in_silico_mutations_from_vae(self, write_data=True):
-        blat_df = pd.read_csv(self.exp_data_filename)
-        # clip at length of pdb-sequence
-        mutations = list(filter(lambda x: int(x[1:-1]) <= 263, blat_df.mutant))
-        mutations_tuples = self.derive_vae_mutations(mutations=mutations)
+        mutations_tuples = self.derive_vae_mutations()
         is_mutation_dict = {"1FQG": mutations_tuples}
         if write_data:
             with open(self.is_data_filename, "wb") as filehandle:
@@ -108,9 +105,9 @@ class Experiment:
             raise FileNotFoundError(f"Specified model does not exist!\n {self.vae_model_FILENAME}")
         return vae
 
-    def derive_vae_mutations(self, mutations: list, sample_n=1):
+    def derive_vae_mutations(self, sample_n=1):
         assert isinstance(self.vae, VAE)
-        mut_S_exp, mut_adj_exp, ΔΔg_exp, mut_ids_exp = parse_mutations(mutation_dict=mutations,
+        mut_S_exp, mut_adj_exp, ΔΔg_exp, mut_ids_exp = parse_mutations(mutation_dict=self.experimental_data.get(self.pdb),
                                                                     sequence=self.protein.sequence, 
                                                                     adjacency=self.ref_adj)
         X_exp = convert_aa_sequence(mut_S_exp) # TODO also run seq2idx and test for identity
@@ -124,7 +121,7 @@ class Experiment:
             loss = self.vae.log_p(seq.flatten())
             log_likelihoods.append(loss[1].detach().numpy())
         delta_log_p = np.array([(l - wt_log_prob) for l in log_likelihoods], dtype=float)
-        mutation_values = list(zip([m for m, _ in mutations], delta_log_p))
+        mutation_values = list(zip([m for m, _ in self.experimental_data.get(self.pdb)], delta_log_p))
         return mutation_values
 
     def load_blat_experimental_mutations_from_csv(self, save_file="./data/blat/blat_mutations.pkl"):
@@ -208,3 +205,12 @@ class Experiment:
         mean_y, max_y, y_wt, ΔΔg_exp, ΔΔg_is_scaled = preprocess_observations(y_wt, ΔΔg_exp, ΔΔg_is_scaled)
         # TODO replace bs_rosetta.σ_T with σ_T_samples
         return X_wt, X_exp, X_is, y_wt, ΔΔg_exp, ΔΔg_is_scaled, sigma_T , max_y, mean_y
+
+    def __str__(self):
+        experiment_str = f"Experiment: {self.pdb}, {self.experiment_type} ({self.idx}) "
+        experiment_str += "optimized " if self.optimization else ""
+        experiment_str += "vae " if self.vae_input else ""
+        experiment_str += "fusion " if self.fusion else ""
+        experiment_str += "VAE-S " if self.vae_kernel else "S-matrices "
+        experiment_str += f"\n Data: {self.exp_data_filename} \n {self.is_data_filename}"
+        return experiment_str

@@ -11,7 +11,8 @@ import pandas as pd
 import numpy as np
 from scipy.stats import spearmanr, pearsonr
 from utility import compute_ρ
-from utility import WeightedMSADataset, seq_collate
+from utility import WeightedMSADataset, seq_collate 
+from utility import parse_mutations, parse_alignment
 import torch
 import torch.nn.functional as F
 from tqdm import tqdm
@@ -31,7 +32,58 @@ os.environ['KMP_DUPLICATE_LIB_OK'] = 'True'  # TODO figure out what caused OMP E
 logging.basicConfig(level=logging.WARN)
 logger = logging.getLogger(__name__)
 
-VAE_TYPES = ["blat", "sp400", "pga"]
+VAE_TYPES = ["blat", "sp400", "pga", "ubq"]
+
+def parse_BLAT():
+    with open("./data/blat/BLAT_data_df.pkl", "rb") as infile:
+            blat_df = pickle.load(infile)
+    # stored values without assay entries are BLAT TEM1 ECOLX family data
+    family_df = blat_df[blat_df.assay.isna()]
+    test_blat_df = blat_df[~blat_df.assay.isna()]
+    # cast sequence labels to int
+    family_seqs = np.array([[int(elem) for elem in seq] for seq in family_df.seqs])
+    test_seqs = np.array([[int(elem) for elem in seq] for seq in test_blat_df.seqs])
+    test_y = np.array(test_blat_df.assay, dtype=float)
+    return family_seqs, test_seqs, test_y
+
+
+def parse_TLL():
+    with open("./data/tll/seqs_in_int_nogaps_sp400_Mar14_data_all_jaks_Apr3_trimmed.pkl", "rb") as infile:
+                family_seqs = np.array(pickle.load(infile))
+    # TODO get sequences from TLL_data
+    test_seqs = family_seqs  # TODO get test sequences
+    test_y = np.zeros(len(test_seqs))  # get y values
+    return family_seqs, test_seqs, test_y
+
+
+def parse_PGA():
+    test_df = pd.read_csv("./data/pga/Nisthal_Mayo_2019_updated_3xESLyS9.csv", delimiter=",")
+    #family_seqs = np.array([seq2idx(seq) for seq in pga_df.Sequence.unique()])
+    family_seqs = np.array([seq2idx(seq) for seq in pga_df.Sequence])
+    # build sequences from test_df
+    test_seqs = family_seqs  # TODO get test sequences
+    test_y = np.zeros(len(test_seqs))
+    return family_seqs, test_seqs, test_y
+
+
+def parse_UBQ():
+    ubq_df = parse_alignment("./data/ubq/P0CG48_ALL.a2m")
+    family_seqs = np.array([[int(elem) for elem in seq] for seq in ubq_df.seq])
+    # for testing combine protabank sequences with DeepSequence Bolon 2013 data
+    protabank_df = pd.read_csv("./data/ubq/RL401_Bolon2013_YHUnpqbw.csv", delimiter=",")
+    # drop SD values
+    protabank_df = protabank_df[~protabank_df["Assay/Protocol"].str.contains("SD ")]
+    deep_seq_df = pd.read_csv("./data/ubq/RL401_Bolon2013.csv", delimiter=";")
+    deep_seq_df = deep_seq_df[["mutant", "selection_coefficient"]].dropna()
+    test_df = deep_seq_df.merge(protabank_df[["Description", "Data", "Sequence"]], 
+                                "inner", left_on="mutant", right_on="Description")
+    test_df["Data"] = test_df.Data.astype(float)
+    test_df["selection_coefficient"] = test_df.selection_coefficient.str.replace(",", ".").astype(float)
+    #np.testing.assert_array_equal(test_df.selection_coefficient.values, test_df.Data.values)
+    test_seqs = np.array([seq2idx(seq) for seq in test_df.Sequence])
+    test_y = test_df.selection_coefficient  # use DeepSequence reported values
+    return family_seqs, test_seqs, test_y
+
 
 if __name__ == "__main__":
     pyro.clear_param_store()
@@ -65,34 +117,20 @@ if __name__ == "__main__":
     torch.manual_seed(args.seed)
 
     if args.type == "blat":
-        with open("./data/blat/BLAT_data_df.pkl", "rb") as infile:
-            blat_df = pickle.load(infile)
-        # stored values without assay entries are BLAT TEM1 ECOLX family data
-        family_df = blat_df[blat_df.assay.isna()]
-        test_blat_df = blat_df[~blat_df.assay.isna()]
-        # cast sequence labels to int
-        family_seqs = np.array([[int(elem) for elem in seq] for seq in family_df.seqs])
-        test_seqs = np.array([[int(elem) for elem in seq] for seq in test_blat_df.seqs])
-        test_y = np.array(test_blat_df.assay, dtype=float)
+        family_seqs, test_seqs, test_y = parse_BLAT()
     elif args.type == "sp400":
-        with open("./data/tll/seqs_in_int_nogaps_sp400_Mar14_data_all_jaks_Apr3_trimmed.pkl", "rb") as infile:
-            family_seqs = np.array(pickle.load(infile))
-        # TODO get sequences from TLL_data
-        test_seqs = family_seqs  # TODO get test sequences
-        test_y = np.zeros(len(test_seqs))  # get y values
+        family_seqs, test_seqs, test_y = parse_TLL() # TODO
     elif args.type == "pga":
-        pga_df = pd.read_csv("./data/pga/Nisthal_Mayo_2019_updated_3xESLyS9.csv", delimiter=",")
-        #family_seqs = np.array([seq2idx(seq) for seq in pga_df.Sequence.unique()])
-        family_seqs = np.array([seq2idx(seq) for seq in pga_df.Sequence])
-        test_seqs = family_seqs  # TODO get test sequences
-        test_y = np.zeros(len(test_seqs))
+        family_seqs, test_seqs, test_y = parse_PGA() # TODO
+    elif args.type == "ubq":
+        family_seqs, test_seqs, test_y = parse_UBQ()
     else:
         raise NotImplementedError(
             "Specified type not implemented. Please pick a VAE from the list of options. See help -h.")
 
     n, length = family_seqs.shape
     test_n = test_seqs.shape[0]
-    num_classes = np.unique(family_seqs).shape[0]  # TODO double check this.. PGA has 20 classes Error
+    num_classes = np.unique(family_seqs).shape[0] +2  # TODO double check this.. PGA has 20 classes Error
     indices = list(range(n))
     random.shuffle(indices)
     test_size = int(args.test_split * n)
@@ -100,6 +138,8 @@ if __name__ == "__main__":
     test_idx = indices[(n - test_size):]
 
     # load and encode data set
+    print(np.unique(family_seqs).shape[0])
+    print(num_classes)
     seq_train = WeightedMSADataset(family_seqs[train_idx], num_classes=num_classes)
     seq_test = WeightedMSADataset(family_seqs[test_idx], num_classes=num_classes)
     sampler = torch.utils.data.WeightedRandomSampler(seq_train.weights, num_samples=len(seq_train),
@@ -113,6 +153,7 @@ if __name__ == "__main__":
 
     WT = F.one_hot(torch.tensor(family_seqs[0], dtype=torch.int64),
                    num_classes=num_classes).flatten().float()
+    print(WT.shape)
 
     # parameters
     param_dict = {"LEARNING_RATE": args.learn_rate,
@@ -179,6 +220,7 @@ if __name__ == "__main__":
     log_likelihoods = []
     samples = []
     for s, _, _ in test_seq_dataset:
+        print(s.shape)
         samples.append(vae.latent_sample(s.flatten(), n=1).reshape(-1).detach().numpy())
         loss = vae.log_p(s.flatten())
         elbo_values.append(loss[0].detach().numpy())
@@ -191,8 +233,8 @@ if __name__ == "__main__":
     if args.plot:
         samples = np.array(samples)
         plt.scatter(samples[:, 0], samples[:, 1], c=log_likelihoods, alpha=0.25, s=1.5)
-        plt.title(f"VAE z={args.latent_dim} latent representation in 2D")
-        plt.savefig(f"./fig/vae_z{args.latent_dim}_2d.png")
+        plt.title(f"VAE z={args.latent_dim} latent representation in 2D \n {args.type}")
+        plt.savefig(f"./fig/vae_z{args.latent_dim}_2d_{args.type}.png")
         plt.show()
         
         fig, ax = plt.subplots(1, 1)
@@ -201,18 +243,19 @@ if __name__ == "__main__":
         ax.set_ylabel("measured effect")
         ax.set_xlabel("delta log likelihood")
         plt.suptitle("VAE loss to measured values")
-        plt.savefig(f"./fig/vae_z{args.latent_dim}_correlation.png")
+        plt.savefig(f"./fig/vae_z{args.latent_dim}_correlation_{args.type}.png")
         plt.show()
     
-    if args.sample_vae:
-        data_filename = "./data/blat/BLAT_ECOLX_Ranganathan2015.csv"
-        data_df = pd.read_csv(data_filename)
-        #assert len(data_df) == len(test_blat_df)
-        mutations = list(filter(lambda x: int(x[1:-1]) <= 263, data_df.mutant))
-        mutations_tuples = list(zip([m for m in mutations], delta_log_p))
-        is_mutations_dict = {"1FQG": mutations_tuples}
-        with open("./data/blat/vae_blat_mutations.pkl", "wb") as outfile:
-            pickle.dump(is_mutations_dict, outfile)
+    # if args.sample_vae:
+    #     # TODO REDO THIS 
+    #     data_filename = "./data/blat/BLAT_ECOLX_Ranganathan2015.csv"
+    #     data_df = pd.read_csv(data_filename)
+    #     #assert len(data_df) == len(test_blat_df)
+    #     mutations = list(filter(lambda x: int(x[1:-1]) <= 263, data_df.mutant))
+    #     mutations_tuples = list(zip([m for m in mutations], delta_log_p))
+    #     is_mutations_dict = {"1FQG": mutations_tuples}
+    #     with open("./data/blat/vae_blat_mutations.pkl", "wb") as outfile:
+    #         pickle.dump(is_mutations_dict, outfile)
     
 
     

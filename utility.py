@@ -10,6 +10,7 @@ import torch.nn.functional as F
 from torch.utils.data import Dataset, DataLoader
 import scipy
 from scipy import io
+import pandas as pd
 from typing import List, Tuple
 from Bio.Seq import Seq
 from reference_alphabet import seq2idx
@@ -376,3 +377,23 @@ class WeightedMSADataset(Dataset):
         if torch.is_tensor(index):
             index = index.tolist()
         return self.one_hot_sequence[index], self.weights[index], self.neff
+
+
+def parse_alignment(a2m_filename: str) -> pd.DataFrame:
+    with open(a2m_filename, "r") as filehandle:
+        alignment = filehandle.read().splitlines()
+    identifier = []
+    sequence = []
+    seq = []
+    for line in alignment:
+        if line.startswith(">"):
+            sequence.append(seq)
+            identifier.append(line)
+            seq = []
+        else:
+            seq.append(line)
+    sequence.append(seq)  # add last
+    # convert to string and encode
+    encoded_sequence = list(map(seq2idx, map(lambda x: "".join(x).upper(), sequence[1:])))
+    df = pd.DataFrame({"seq": encoded_sequence, "identifier": identifier})
+    return df

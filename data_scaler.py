@@ -23,7 +23,7 @@ class BayesScaler:
         pyro.clear_param_store()
         self.pdb_ID = pdb_ID
         self.cached = cached
-        self.cached_filename = path.join("./cache/", f"{self.pdb_ID}_scaler_{vae}.pkl")
+        self.cached_filename = path.join("./cache/", f"{self.pdb_ID}_scaler_vae{vae}.pkl")
         self.samples_N = samples_N if not TESTING else 500
         self.warmup_N = warmup_N
         self.chains_N = 1

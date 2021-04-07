@@ -93,16 +93,16 @@ def run_MGPF() -> None:
         #                          ref_contact_map=True, data="mgpf")
         # create_mlflow_run_pos_lvl(pdb=pdb, cv="pos_lvl", optim=True, ref=False, no_fusion=True,
         #                        ref_contact_map=True, data="mgpf")
-        create_mlflow_run_pos_lvl(pdb=pdb, cv="pos_lvl", optim=False, ref=False,
-                                 ref_contact_map=True, data="mgpf")
+        # create_mlflow_run_pos_lvl(pdb=pdb, cv="pos_lvl", optim=False, ref=False,
+        #                          ref_contact_map=True, data="mgpf")
         # create_mlflow_run_pos_lvl(pdb=pdb, cv="pos_lvl", optim=True, ref=False,
         #                        ref_contact_map=True, data="mgpf")
         # create_mlflow_run_pos_lvl(pdb=pdb, cv="pos_lvl", optim=False, ref=True,
         #                        ref_contact_map=True, data="mgpf")
         # create_mlflow_run_pos_lvl(pdb=pdb, cv="pos_lvl", optim=True, ref=True,
         #                        ref_contact_map=True, data="mgpf")
-        create_mlflow_run_mut_lvl(pdb=pdb, cv="mut_lvl", optim=False, ref=False,
-                                 ref_contact_map=True, data="mgpf")
+        # create_mlflow_run_mut_lvl(pdb=pdb, cv="mut_lvl", optim=False, ref=False,
+        #                          ref_contact_map=True, data="mgpf")
         # create_mlflow_run_mut_lvl(pdb=pdb, cv="mut_lvl", optim=True, ref=False,
         #                        ref_contact_map=True, data="mgpf")
         # create_mlflow_run_mut_lvl(pdb=pdb, cv="mut_lvl", optim=False, ref=True,
@@ -127,21 +127,31 @@ def run_TLL() -> None:
 
 def run_BLAT() -> None:
     print(f"Tracking URI: {mlflow.get_tracking_uri()}")
-    # create_mlflow_run_pos_lvl(pdb="1FQG", cv="pos_lvl", optim=False, ref=False, no_fusion=True, data="blat")
-    # create_mlflow_run_pos_lvl(pdb="1FQG", cv="pos_lvl", optim=True, ref=False, no_fusion=True, data="blat")
-    # create_mlflow_run_pos_lvl(pdb="1FQG", cv="pos_lvl", optim=False, ref=True, no_fusion=True, data="blat")
-    # create_mlflow_run_pos_lvl(pdb="1FQG", cv="pos_lvl", optim=True, ref=True, no_fusion=True, data="blat")
-    create_mlflow_run_pos_lvl(pdb="1FQG", cv="pos_lvl", optim=False, ref=False, vae_input=True, data="blat")
-    create_mlflow_run_pos_lvl(pdb="1FQG", cv="pos_lvl", optim=True, ref=False, vae_input=True, data="blat")
-    create_mlflow_run_pos_lvl(pdb="1FQG", cv="pos_lvl", optim=False, ref=False, vae_kernel=True, data="blat")
-    create_mlflow_run_pos_lvl(pdb="1FQG", cv="pos_lvl", optim=True, ref=False, vae_kernel=True, data="blat")
-    create_mlflow_run_pos_lvl(pdb="1FQG", cv="pos_lvl", optim=False, ref=False, vae_input=True, vae_kernel=True, data="blat")
-    create_mlflow_run_pos_lvl(pdb="1FQG", cv="pos_lvl", optim=True, ref=False, vae_input=True, vae_kernel=True, data="blat")
+    # create_mlflow_run_pos_lvl(pdb="1FQG", cv="pos_lvl", optim=False, ref=False, 
+    #                           no_fusion=True, data="blat")
+    # create_mlflow_run_pos_lvl(pdb="1FQG", cv="pos_lvl", optim=True, ref=False, 
+    #                           no_fusion=True, data="blat")
+    # create_mlflow_run_pos_lvl(pdb="1FQG", cv="pos_lvl", optim=False, ref=True, 
+    #                           no_fusion=True, data="blat")
+    # create_mlflow_run_pos_lvl(pdb="1FQG", cv="pos_lvl", optim=True, ref=True, 
+    #                           no_fusion=True, data="blat")
+    create_mlflow_run_pos_lvl(pdb="1FQG", cv="pos_lvl", optim=False, ref=False, 
+                                vae_input=True, data="blat")
+    create_mlflow_run_pos_lvl(pdb="1FQG", cv="pos_lvl", optim=True, ref=False, 
+                                vae_input=True, data="blat")
+    create_mlflow_run_pos_lvl(pdb="1FQG", cv="pos_lvl", optim=False, ref=False, 
+                                vae_kernel=True, data="blat")
+    create_mlflow_run_pos_lvl(pdb="1FQG", cv="pos_lvl", optim=True, ref=False, 
+                                vae_kernel=True, data="blat")
+    create_mlflow_run_pos_lvl(pdb="1FQG", cv="pos_lvl", optim=False, ref=False, 
+                                vae_input=True, vae_kernel=True, data="blat")
+    create_mlflow_run_pos_lvl(pdb="1FQG", cv="pos_lvl", optim=True, ref=False, 
+                                vae_input=True, vae_kernel=True, data="blat")
 
 
 if __name__ == "__main__":
     warnings.filterwarnings("ignore")
     #run_TLL()
-    run_MGPF()
+    #run_MGPF()
     run_BLAT()
     
