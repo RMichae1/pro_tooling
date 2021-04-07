@@ -10,23 +10,25 @@ import torch.nn.functional as F
 from torch.utils.data import Dataset, DataLoader
 import scipy
 from scipy import io
+import pandas as pd
 from typing import List, Tuple
 from Bio.Seq import Seq
 from reference_alphabet import seq2idx
+
 
 #######
 ### EXTERNAL UTILS
 
 def get_split_training_and_test_data(pdb_id: str, cutoff_distance: float, p=None):
-    x_wild_type, y_wild_type, X_wetlab, y_wetlab, X_insilico, y_insilico, matching_mutations, contact_graph =\
+    x_wild_type, y_wild_type, X_wetlab, y_wetlab, X_insilico, y_insilico, matching_mutations, contact_graph = \
         load_pdb_id_data(pdb_id, cutoff_distance=cutoff_distance)
 
     if p is None:
         p = np.random.permutation(X_wetlab.shape[0])
-    assert(p.shape[0] == X_wetlab.shape[0])
+    assert (p.shape[0] == X_wetlab.shape[0])
     X_test = X_wetlab[p[:20], :]  # 20 data points from the wetlab experiments are withheld for testing
     y_test = y_wetlab[p[:20], :]
-    #matching_mutations = np.hstack([matching_mutations[p[20:], [0]], matching_mutations[20:, [1]]])  # TODO: does this work? seems so
+    # matching_mutations = np.hstack([matching_mutations[p[20:], [0]], matching_mutations[20:, [1]]])  # TODO: does this work? seems so
     matching_mutations[:, 0] = p[matching_mutations[:, 0]]
     matching_mutations = matching_mutations[20:, :]
     y_train_wetlab_matching = y_wetlab[matching_mutations[:, 0], :]  # observations stem only from the training set
@@ -38,7 +40,8 @@ def get_split_training_and_test_data(pdb_id: str, cutoff_distance: float, p=None
 
 
 def load_pdb_id_data(pdb_id: str, cutoff_distance=5.):
-    wild_type, contact_graph = get_sequence_and_contact_graph(pdb_id=pdb_id, cutoff_distance=cutoff_distance, chain_id=None)
+    wild_type, contact_graph = get_sequence_and_contact_graph(pdb_id=pdb_id, cutoff_distance=cutoff_distance,
+                                                              chain_id=None)
     x_wild_type, X_wetlab, y_wetlab, X_insilico, y_insilico, matching_mutations = load_mutations(pdb_id, wild_type)
     return x_wild_type, 0., X_wetlab, y_wetlab, X_insilico, y_insilico, matching_mutations, contact_graph
 
@@ -56,7 +59,8 @@ def load_mutations(pdb_id: str, wild_type: Seq):
             id = i
             break
     y_wetlab = np.concatenate(wetlab_mat[id, 1][:, 1]).ravel()[:, np.newaxis]
-    X_wetlab, single_wl_mutations, single_mutations_idx = apply_wetlab_mutations(wild_type, x_wild_type, wetlab_mat[id, 1][:, 0])
+    X_wetlab, single_wl_mutations, single_mutations_idx = apply_wetlab_mutations(wild_type, x_wild_type,
+                                                                                 wetlab_mat[id, 1][:, 0])
 
     insilico_results_file = os.path.join("data", "ddg_rosetta_single.mat")
     mat = scipy.io.loadmat(os.path.join(data_dir, insilico_results_file))["ddg_rosetta_single"]
@@ -163,7 +167,7 @@ def preprocess_observations(y_wild_type, y_wetlab, y_scaled):
     y -= mean_y
     max_y = np.max(np.abs(y))
     y /= max_y
-    return mean_y, max_y, y[[0], :], y[1:y_wetlab.shape[0]+1, :], y[1+y_wetlab.shape[0]:, :]
+    return mean_y, max_y, y[[0], :], y[1:y_wetlab.shape[0] + 1, :], y[1 + y_wetlab.shape[0]:, :]
 
 
 def list_of_pairs_2_seq(list):
@@ -177,7 +181,7 @@ def list_of_pairs_2_seq(list):
     return Seq(''.join(seq_str))
 
 
-def get_sequence_and_contact_graph_from_ref_matlab_file(pdb_id: str,  cutoff_distance=5., chain_id=None) -> (Seq, list):
+def get_sequence_and_contact_graph_from_ref_matlab_file(pdb_id: str, cutoff_distance=5., chain_id=None) -> (Seq, list):
     if not cutoff_distance == 5.:
         raise RuntimeError("The matlab reference files have a fixed cutoff distance of 5 angstrom!")
     data_dir = os.path.join(os.path.dirname(__file__), "data")
@@ -210,7 +214,8 @@ def get_mutation_idx(mutation_ids: list) -> list:
     int_idx_lst = [[int(idx) for idx in sublist] for sublist in idx_lst]
     return int_idx_lst
 
-def parse_matlab_mutation_file(mat_file, query: str=None) -> dict:
+
+def parse_matlab_mutation_file(mat_file, query: str = None) -> dict:
     if isinstance(mat_file, str) and mat_file.endswith(".mat"):
         mat_file = io.loadmat(mat_file)
     if not query:
@@ -234,10 +239,10 @@ def parse_and_assert_mutations(mutation: str) -> Tuple[str, int, str]:
     s_mutations = re.split(r'(\d+)([A-Z])', mutation)[:-1]
     for i in range(0, len(s_mutations), 3):
         seq_res = s_mutations[i]
-        seq_idx = int(s_mutations[i+1])-1 # offset - matlab/PDB-format counts from 1
-        seq_mut = s_mutations[i+2]
-        #assert self.sequence[seq_idx] == seq_res
-        #assert self.contactmap.adjacency[seq_idx][0] == seq_res 
+        seq_idx = int(s_mutations[i + 1]) - 1  # offset - matlab/PDB-format counts from 1
+        seq_mut = s_mutations[i + 2]
+        # assert self.sequence[seq_idx] == seq_res
+        # assert self.contactmap.adjacency[seq_idx][0] == seq_res
         mutation_tuples.append((seq_res, seq_idx, seq_mut))
     return mutation_tuples
 
@@ -268,8 +273,8 @@ def parse_mutations(sequence: str, adjacency: List[tuple], mutation_dict: dict) 
 
 
 def aa2index(aa):
-    aa_array = np.array(["A", "R", "N", "D", "C", "Q", "E", "G", 
-                        "H", "I", "L", "K", "M", "F", "P", "S", "T", "W", "Y", "V", "-"])
+    aa_array = np.array(["A", "R", "N", "D", "C", "Q", "E", "G",
+                         "H", "I", "L", "K", "M", "F", "P", "S", "T", "W", "Y", "V", "-"])
     return np.where(aa_array == aa)[0][0]
 
 
@@ -283,9 +288,9 @@ def compute_ρ(y_vec: np.ndarray, y_pred_μ: np.ndarray) -> float:
     """
     pred_μ = np.mean(y_pred_μ)
     exp_μ = np.mean(y_vec)
-    ρ = np.sum((y_vec - exp_μ)*(y_pred_μ - pred_μ))
-    norm = np.sqrt(np.sum((y_vec-exp_μ)**2)*np.sum((y_pred_μ-pred_μ)**2))
-    ρ /= norm 
+    ρ = np.sum((y_vec - exp_μ) * (y_pred_μ - pred_μ))
+    norm = np.sqrt(np.sum((y_vec - exp_μ) ** 2) * np.sum((y_pred_μ - pred_μ) ** 2))
+    ρ /= norm
     return ρ
 
 
@@ -294,12 +299,12 @@ def compute_rmse(y: np.ndarray, y_pred_μ) -> float:
     RMSE computation as defined in (S8)
     """
     n_obs = y.shape[0]
-    rmse = np.sqrt(np.sum((y - y_pred_μ)**2)/n_obs)
+    rmse = np.sqrt(np.sum((y - y_pred_μ) ** 2) / n_obs)
     return rmse
 
 
 def one_hot_encoding(arr: np.ndarray) -> np.ndarray:
-    oh_arr = np.zeros((arr.size, arr.max()+1))
+    oh_arr = np.zeros((arr.size, arr.max() + 1))
     oh_arr[np.arange(arr.size), arr] = 1
     return oh_arr
 
@@ -314,16 +319,16 @@ class Variable:
         # TODO: make sure unconstrained requires grad
         self.lower = lower
         self.upper = upper
-        
+
     def get_unconstrained(self):
         return self.unconstrained
-        
+
     def get_value(self):
         return self.constrain(self.unconstrained, self.lower, self.upper)
 
     @staticmethod
     def inverse(val, lower, upper):
-        inverse = -torch.log( (upper-lower) / (val-lower) -1)
+        inverse = -torch.log((upper - lower) / (val - lower) - 1)
         inverse.type(torch.float64)
         inverse.requires_grad_(True)
         return inverse
@@ -333,7 +338,7 @@ class Variable:
         """
         constrain through σ function
         """
-        constrained = lower + (upper-lower) * (1 / (1 + torch.exp(-val)))
+        constrained = lower + (upper - lower) * (1 / (1 + torch.exp(-val)))
         constrained.type(torch.float64)
         constrained.requires_grad_(True)
         return constrained
@@ -346,24 +351,25 @@ def seq_collate(tensor):
 
 class WeightedMSADataset(Dataset):
     """Weighted MSA"""
-    
+
     def __init__(self, encoded_sequence, num_classes, weight_batch_size=1000, dtype=torch.float):
         self.encoded_sequence = torch.Tensor(encoded_sequence).to(torch.int64)
-        self.one_hot_sequence = F.one_hot(self.encoded_sequence, 
-                                            num_classes=num_classes).to(dtype)
+        self.one_hot_sequence = F.one_hot(self.encoded_sequence,
+                                          num_classes=num_classes).to(dtype)
         # Calculate weights
         weights = []
         flat_one_hot = self.one_hot_sequence.flatten(1)
-        gap_code = seq2idx("-").numpy()[0]
+        gap_code = seq2idx("-")[0]
         for i in range(self.one_hot_sequence.size(0) // weight_batch_size + 1):
-            x = flat_one_hot[i * weight_batch_size : (i + 1) * weight_batch_size]
+            x = flat_one_hot[i * weight_batch_size: (i + 1) * weight_batch_size]
             similarities = torch.mm(x, flat_one_hot.T)
-            lengths = (self.encoded_sequence[i * weight_batch_size : (i + 1) * weight_batch_size] != gap_code).sum(1).unsqueeze(-1)
+            lengths = (self.encoded_sequence[i * weight_batch_size: (i + 1) * weight_batch_size] != gap_code).sum(
+                1).unsqueeze(-1)
             w = 1.0 / (similarities / lengths).gt(0.8).sum(1).float()
             weights.append(w)
         self.weights = torch.cat(weights)
         self.neff = self.weights.sum()
-    
+
     def __len__(self):
         return self.encoded_sequence.shape[0]
 
@@ -371,4 +377,23 @@ class WeightedMSADataset(Dataset):
         if torch.is_tensor(index):
             index = index.tolist()
         return self.one_hot_sequence[index], self.weights[index], self.neff
-   
+
+
+def parse_alignment(a2m_filename: str) -> pd.DataFrame:
+    with open(a2m_filename, "r") as filehandle:
+        alignment = filehandle.read().splitlines()
+    identifier = []
+    sequence = []
+    seq = []
+    for line in alignment:
+        if line.startswith(">"):
+            sequence.append(seq)
+            identifier.append(line)
+            seq = []
+        else:
+            seq.append(line)
+    sequence.append(seq)  # add last
+    # convert to string and encode
+    encoded_sequence = list(map(seq2idx, map(lambda x: "".join(x).upper(), sequence[1:])))
+    df = pd.DataFrame({"seq": encoded_sequence, "identifier": identifier})
+    return df

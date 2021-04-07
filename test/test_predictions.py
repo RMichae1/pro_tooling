@@ -20,8 +20,8 @@ ref_unscaled_pred = ref_file["unscaled_pred"]
 ref_uncertainty = ref_file["stdPred"]
 ref_noise = np.square(ref_file["noise"][:, 0])
 ref_beta = ref_file["beta"]
-sigma_T = ref_file["model"]["stdT"][0, 0]
-a, b, c, d = ref_file["model"]["theta"][0, 0][0, :]
+sigma_T = ref_file["models"]["stdT"][0, 0]
+a, b, c, d = ref_file["models"]["theta"][0, 0][0, :]
 
 # Bayesian scaling
 def f(y):
@@ -47,11 +47,11 @@ y_scaled = f(y_is)
 mean_y, max_y, y_wt, y_exp, y_scaled = preprocess_observations(y_wt, y_exp, y_scaled)
 
 def test_predict_ymax():
-    assert max_y == pytest.approx(ref_file["model"]["ymax"][0, 0][0, 0], rel=0.02)
+    assert max_y == pytest.approx(ref_file["models"]["ymax"][0, 0][0, 0], rel=0.02)
 
 model = GPRegression(prot, X_wt.reshape(1, len(X_wt)), np.vstack([X_test_, X_exp]), X_is, 
             y_wt, np.vstack([y_test, y_exp]), y_scaled, max_y, mean_y, contact_graph, torch.Tensor(sigma_T))
-# set model parameters to account for training/testing specs
+# set models parameters to account for training/testing specs
 model.set_train_index(np.concatenate([np.array([0]), np.arange(21, model.y.shape[0])]))
 model.set_test_index(np.arange(1, 21))
 
@@ -84,7 +84,7 @@ beta = np.linalg.solve(K + np.diag(noise), KZX_ref.T)
 #     np.testing.assert_allclose(beta.T, ref_beta, atol=0.01)
 
 # def test_mean_pred_local():
-#     ref_mean_pred_local = beta.T.dot(model.y_train)
+#     ref_mean_pred_local = beta.T.dot(models.y_train)
 #     np.testing.assert_allclose(ref_mean_pred_local, ref_unscaled_pred, rtol=0.00001)
 
 def test_k_xX():

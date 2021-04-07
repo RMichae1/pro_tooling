@@ -9,6 +9,7 @@ from torch.distributions.gamma import Gamma
 from torch.distributions.normal import Normal
 from tqdm import tqdm
 from scipy.io import loadmat
+from reference_alphabet import IUPAC_SEQ2IDX
 
 
 class KernelLoader:
@@ -86,4 +87,89 @@ class MatrixKernel:
         norm = np.sqrt(np.diag(k))[:, np.newaxis]
         k_hat = k / norm.dot(norm.T)
         return torch.Tensor(k_hat).type(torch.float64)
+
+
+class VaeKernel:
+    def __init__(self, vae, alphabet=IUPAC_SEQ2IDX, n_samples=100, block_size=1024) -> None:
+        self.vae = vae
+        self.latent_dim = vae.z_dim
+        self.alphabet = alphabet
+        self.latent_random = torch.normal(0, 1, size=(n_samples, 
+                                        self.latent_dim)).float()
+        self.importance = Normal(loc=torch.zeros(1), 
+                                scale=torch.ones(1)).log_prob(self.latent_random)
+        self.p_x_z = self.vae.decoder(self.latent_random).detach().numpy()
+        self.block = block_size
+        assert(type(self.p_x_z) == np.ndarray)
+        assert(self.importance.shape == [n_samples, self.latent_dim])
+
+    def p_i(self, x: np.ndarray, i: int) -> torch.Tensor:
+        """
+        Marginalize over latent representationm. Σ over all residues.
+        : input: sequence x, position i
+        : return: likelihood ...
+        """
+        _x = x[:, i].copy()
+        p_z_i = np.zeros([x.shape[0], self.latent_dim])
+        for aa in self.alphabet.keys():
+            x[:, i] = aa
+            z_loc, z_scale = self.vae.encoder(x)
+            z_dist = Normal(z_loc, z_scale)
+            # TODO investigate Importance Sampling
+            p_z_i += torch.exp(torch.sum(z_dist.log_prob(self.latent_random) - self.importance, axis=-1))
+        x[:, i] = _x
+        p_x_i_z = self.p_x_z[:, i, _x].reshape(1, -1)
+        p = torch.sum(p_x_i_z*p_z_i, axis=-1)
+        # TODO assert and test stepwise
+        return p
+
+    def k_vec(self, x, i) -> torch.Tensor:
+        k_x = np.zeros([x.shape[0], 1])
+        for n in range(0, int(np.ceil(x.shape[0] / self.block))):
+            p = n * self.block
+            q = min(p + self.block, x.shape[0])
+            _x = x.numpy()[p:q, :]
+            k_x[p:q] = self.p_i(_x, i)
+        return torch.Tensor(k_x)
+    
+    def k(self, x_p, x_q=None) -> torch.Tensor:
+        N = x_p.shape[0]
+        k = torch.zeros([N, N])
+        assert x_p.shape[1] == x_q.shape[1]
+        for i in range(0, x_p.shape[1]):
+            k_x_p = self.k_vec(x_p, i)
+            if x_q is None:
+                k_x_q = k_x_p
+            else:
+                k_x_q = self.k_vec(x_q, i)
+            k += torch.matmul(k_x_p, k_x_q.T)
+            # TODO test p.s.d.
+        return k
+
+    # def k(self, sequences: np.ndarray, adjacencies: List[tuple]) -> np.ndarray:
+    #     N = sequences.shape[0]
+    #     k = np.zeros([N, N])
+    #     temp_k = np.zeros([N, N])
+    #     neighborhoods = adjacencies
+    #     if isinstance(adjacencies[0], tuple):
+    #         neighborhoods = np.array([contacts for _, contacts in adjacencies])
+
+    #     for idx, neighbors in neighborhoods:
+    #         temp_k.fill(0.)
+    #         for n in neighbors:
+    #             p_x = self.vae.encoder(x)
+    #             p_y = self.vae.encoder(y)
+    #             temp_k += (self.p_i(x, n)*self.p_i(y, n)/(p_x*p_y))
+    #         p_x = self.vae.encoder(x)
+    #         p_y = self.vae.encoder(y)
+    #         temp_k *= (self.p_i(x, idx)*self.p_i(y, idx)/(p_x*p_y))
+    #         k += temp_k
+
+    #     # TODO compute p_x_i
+    #     # TODO compute p(x)
+    #     # TODO compute p(y)
+
+    #     norm = np.sqrt(np.diag(k))[:, np.newaxis]
+    #     k_hat = k / norm.dot(norm.T)
+    #     return torch.Tensor(k_hat).type(torch.float64)
 

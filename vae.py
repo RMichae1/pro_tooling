@@ -10,7 +10,7 @@ pyro.enable_validation()
 
 
 class Encoder(nn.Module):
-    def __init__(self, z_dim, hidden_dims, input_dims, dropout=0.5):
+    def __init__(self, z_dim, hidden_dims, input_dims):
         super().__init__()
         self.sequence_dims = input_dims
         encoding_layers = []
@@ -18,7 +18,6 @@ class Encoder(nn.Module):
         for hidden_dim in hidden_dims:
             encoding_layers.append(nn.Linear(current_dim, hidden_dim))
             encoding_layers.append(nn.ReLU(inplace=True))
-            encoding_layers.append(nn.Dropout(dropout))
             current_dim = hidden_dim
         self.encoding_nn = nn.Sequential(*encoding_layers)
         self.mean = nn.Linear(current_dim, z_dim)
@@ -63,7 +62,7 @@ class VAE(nn.Module):
         self.input_dims = input_dims
         self.num_categories = num_categories
         self.sequence_length = int(input_dims / num_categories)
-        self.encoder = Encoder(z_dim, encoder_dim, input_dims, dropout)
+        self.encoder = Encoder(z_dim, encoder_dim, input_dims)
         self.decoder = Decoder(z_dim, decoder_dim, input_dims=input_dims, 
                                 num_categories=num_categories, dropout=dropout)
         self.mse = nn.MSELoss()

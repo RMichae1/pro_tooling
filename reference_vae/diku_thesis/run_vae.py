@@ -40,7 +40,7 @@ if __name__ == "__main__" or __name__ == "__console__":
     val_loader = get_protein_dataloader(val_data, batch_size = args.batch_size)
     print("Data loaded!")
 
-    # Define model and optimizer
+    # Define models and optimizer
     data_size = all_data[0][0].size(-1) * NUM_TOKENS
     model = VAE(
         [data_size] + args.layer_sizes + [data_size],
@@ -56,9 +56,9 @@ if __name__ == "__main__" or __name__ == "__console__":
     print(model.summary())
     optimizer = optim.Adam(model.parameters(), lr = args.learning_rate, weight_decay = args.L2)
 
-    model_save_name = args.results_dir / Path("model.torch")
+    model_save_name = args.results_dir / Path("models.torch")
     if model_save_name.exists():
-        print(f"Loading saved model from {model_save_name}...")
+        print(f"Loading saved models from {model_save_name}...")
         model.load_state_dict(torch.load(model_save_name, map_location = device)["state_dict"])
         print(f"Model loaded.")
 
@@ -118,9 +118,9 @@ if __name__ == "__main__" or __name__ == "__console__":
 
             rho_str = ""
             if improved:
-                # If model improved, save the model
+                # If models improved, save the models
                 model.save(model_save_name)
-                print(f"{loss_str} loss improved from {best_loss:.5f} to {loss_value_str}. Saved model to: {model_save_name}")
+                print(f"{loss_str} loss improved from {best_loss:.5f} to {loss_value_str}. Saved models to: {model_save_name}")
                 best_loss = val_loss if args.val_ratio > 0 else train_loss
                 patience = args.patience
                 improved_epochs.append(epoch)
@@ -136,7 +136,7 @@ if __name__ == "__main__" or __name__ == "__console__":
                 plot_data(name, args.figure_type, model, all_data, rho, args.batch_size, show = show, only_subset_labels = subset_labels)
 
             elif args.patience:
-                # If save path and patience was specified, and model has not improved, decrease patience and possibly stop
+                # If save path and patience was specified, and models has not improved, decrease patience and possibly stop
                 patience -= 1
                 if patience == 0:
                     print(f"Model has not improved for {args.patience} epochs. Stopping training. Best {loss_str.lower()} loss achieved was: {best_loss:.5f}.")

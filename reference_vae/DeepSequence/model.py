@@ -740,7 +740,7 @@ class VariationalAutoencoder:
             self.v[name].set_value(v_list[name].astype(theano.config.floatX))
 
     def get_adam_updates(self, gradients):
-        """Computes SGD updates for model parameters with Adam"""
+        """Computes SGD updates for models parameters with Adam"""
         updates = OrderedDict()
 
         self.t = self.t + 1.
@@ -1392,7 +1392,7 @@ class VariationalAutoencoderMLE:
             self.v[name].set_value(v_list[name].astype(theano.config.floatX))
 
     def get_adam_updates(self, gradients):
-        """Computes SGD updates for model parameters with Adam"""
+        """Computes SGD updates for models parameters with Adam"""
         updates = OrderedDict()
 
         self.t = self.t + 1.

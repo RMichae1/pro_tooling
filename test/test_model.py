@@ -13,7 +13,7 @@ from scipy.linalg import solve_triangular
 
 def test_model():
     """
-    Tests the mGPfusion model versus the matlab reference implementation.
+    Tests the mGPfusion models versus the matlab reference implementation.
     :return:
         None
     """
@@ -22,15 +22,15 @@ def test_model():
 # Initialization
 # Loading required target values from mat file
 ref_file = loadmat(os.path.join(os.path.dirname(__file__), os.path.join("data", "1PGAsmall.mat")))
-ref_loss = ref_file["model"]["mll"][0, 0]
+ref_loss = ref_file["models"]["mll"][0, 0]
 ref_noise = np.squeeze(ref_file["noise"])  # [0, 0]
 ref_K = ref_file["kernel_matrix"]#[0, 0]
 ref_det = ref_file["mll_components_struct"]["logdet"][0, 0]
 ref_yKy = ref_file["mll_components_struct"]["square_form"][0, 0]
 ref_prior_E = ref_file["mll_components_struct"]["prior_E"][0, 0]
 ref_prior_R = ref_file["mll_components_struct"]["prior_R"][0, 0]
-sigma_T = ref_file["model"]["stdT"][0, 0]
-a, b, c, d = ref_file["model"]["theta"][0, 0][0, :]  # parameters for the Bayesian scaling
+sigma_T = ref_file["models"]["stdT"][0, 0]
+a, b, c, d = ref_file["models"]["theta"][0, 0][0, :]  # parameters for the Bayesian scaling
 # correct adjacencies
 pga_file = loadmat(os.path.join(os.path.dirname(__file__), os.path.join("data", "1PGA.mat")))
 ref_contact_graph = convert_graph_from_matlab_file(pga_file["al"])
@@ -88,18 +88,18 @@ y_insilico = np.array(ΔΔg_is[:20])[:, np.newaxis]
 y_scaled = f(y_insilico)
 mean_y, max_y, y_wild_type, y_wetlab, y_scaled = preprocess_observations(y_wild_type, y_wetlab, y_scaled)
 
-# build model from loaded data
+# build models from loaded data
 model = GPRegression(protein_representation=prot, X_wt=X_wild_type, X_exp=X_wetlab, X_is=X_insilico,
                     y_wt=y_wild_type, y_exp=y_wetlab, y_is=y_scaled, y_max=max_y, y_mean=mean_y,
                     σ_T=torch.Tensor(sigma_T), adjacencies=ref_contact_graph)
     
 def test_y_scaling_and_normalization():
-    assert max_y == pytest.approx(ref_file["model"]["ymax"][0, 0][0, 0])
+    assert max_y == pytest.approx(ref_file["models"]["ymax"][0, 0][0, 0])
 
 def test_model_parameters():
     assert len(model.trainable_parameters) == (3 + 21)
 
-#cov_mats = [mat[:model.X.shape[0], :model.X.shape[0]] for mat in model.covariance_matrices]
+#cov_mats = [mat[:models.X.shape[0], :models.X.shape[0]] for mat in models.covariance_matrices]
 K = model.mWDK(X=model.X, covariance_matrices=model.covariance_matrices)
 def test_K_computation_agains_ref():
     np.testing.assert_almost_equal(K.detach().numpy(), ref_K, decimal=3)

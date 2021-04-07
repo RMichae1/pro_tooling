@@ -1,7 +1,7 @@
 def test_preprocessing(self):
-        ref_file = loadmat(os.path.join(os.path.dirname(__file__), os.path.join("model", "1PGAsmall.mat")))
+        ref_file = loadmat(os.path.join(os.path.dirname(__file__), os.path.join("models", "1PGAsmall.mat")))
         ref_K = ref_file["kernel_matrix"]#[0, 0]
-        ref_model = ref_file["model"]
+        ref_model = ref_file["models"]
         sigma_T = ref_model["stdT"][0, 0]
         num_wet_lab_obs = ref_K.shape[0] - sigma_T.shape[0] - 1
 
