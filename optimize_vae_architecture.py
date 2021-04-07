@@ -45,18 +45,6 @@ VALIDATE=50
 LR = 0.0015
 
 
-def correlation(vae, test_y=test_y):
-  vae.eval()
-  wt_log_prob = vae.log_p(WT.cuda())[1].cpu().detach().numpy()
-  log_likelihoods = []
-  for s, _, _ in test_seq_dataset:
-      loss = vae.log_p(s.flatten().cuda())
-      log_likelihoods.append(loss[1].cpu().detach().numpy())
-  delta_log_p = np.array([(l-wt_log_prob) for l in log_likelihoods], dtype=float)
-  
-  return spearmanr(delta_log_p, test_y)[0]
-
-
 search_space  = [Integer(900, 2000, name='encoder_dim'),
                  Integer(100, 2000, name="decoder_dim"),
                  Integer(2, 100, name='latent_dim'),
@@ -107,6 +95,16 @@ if __name__ == "__main__":
                 print(f"[epoch {epoch}] avrg. test loss: {total_epoch_loss_test}")
         return svi, vae
 
+    def correlation(vae, test_y=test_y):
+        vae.eval()
+        wt_log_prob = vae.log_p(WT.cuda())[1].cpu().detach().numpy()
+        log_likelihoods = []
+        for s, _, _ in test_seq_dataset:
+            loss = vae.log_p(s.flatten().cuda())
+            log_likelihoods.append(loss[1].cpu().detach().numpy())
+        delta_log_p = np.array([(l-wt_log_prob) for l in log_likelihoods], dtype=float)
+        return spearmanr(delta_log_p, test_y)[0]
+
     @use_named_args(search_space)
     def objective(encoder_dim, decoder_dim, extra_layer, 
                 latent_dim, dropout, learning_rate, weight_decay):
@@ -116,9 +114,9 @@ if __name__ == "__main__":
         optimizer = Adam({"lr": learning_rate, "weight_decay": weight_decay})
         svi = SVI(vae.model, vae.guide, optimizer, loss=JitTrace_ELBO())
         try:
-        svi, vae = fit_model(svi=svi, vae=vae)
+            svi, vae = fit_model(svi=svi, vae=vae)
         except:
-        return 9000
+            return 9000
         return -correlation(vae)
 
     # call optimization
