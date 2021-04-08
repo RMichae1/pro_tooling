@@ -197,6 +197,7 @@ class Experiment:
             bs_rosetta = BayesScaler(is_mutations=mut_ids_is, ΔΔg=ΔΔg_is, exp_mutations=mut_ids_exp,
                                     experimentally_observed_ΔΔg=ΔΔg_exp, TESTING=False, pdb_ID=self.pdb, cached=True, 
                                     vae=self.vae_input)
+            bs_rosetta.plot_scaling()
         ΔΔg_is_scaled = bs_rosetta.transform(ΔΔg_is)[:, np.newaxis] if self.fusion else ΔΔg_is[:, np.newaxis]
         sigma_T = bs_rosetta.σ_T if self.fusion else torch.Tensor([0.])
         ΔΔg_exp = ΔΔg_exp[:, np.newaxis]
