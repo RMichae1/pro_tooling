@@ -30,27 +30,7 @@ from run_vae import parse_TLL
 
 np.random.seed(42)
 torch.manual_seed(42)
-
 cuda = torch.device('cuda')
-TEST_SIZE=0.1
-BATCH_SIZE=128
-USE_CUDA=True
-LATENT_DIM=25
-ENCODER_DIM=[1500, 1500]
-DECODER_DIM=[100, 500]
-DROPOUT=0.0
-EPOCHS=200
-VALIDATE=50
-
-LR = 0.0015
-
-
-search_space  = [Integer(900, 2000, name='encoder_dim'),
-                 Integer(100, 2000, name="decoder_dim"),
-                 Integer(2, 100, name='latent_dim'),
-                 Real(0.0001, 0.5, "log-uniform", name="dropout"),
-                 Real(10**-5, 10**-1, "log-uniform", name='learning_rate'),
-                 Real(10**-5, 10**-1, "log-uniform", name='weight_decay')]
 
 
 if __name__ == "__main__":
@@ -68,20 +48,13 @@ if __name__ == "__main__":
     seq_test = WeightedMSADataset(family_seqs[test_idx], num_classes=num_classes)
     sampler = torch.utils.data.WeightedRandomSampler(seq_train.weights, 
                                                     num_samples=len(seq_train), replacement=True)
-    test_seq_dataset = WeightedMSADataset(test_blat_seqs, num_classes=num_classes)
+    test_seq_dataset = WeightedMSADataset(test_seqs, num_classes=num_classes)
     train_loader = torch.utils.data.DataLoader(seq_train, batch_size=BATCH_SIZE, 
                                             sampler=sampler, collate_fn=seq_collate)
     test_loader = torch.utils.data.DataLoader(seq_test, batch_size=BATCH_SIZE, 
                                             shuffle=True, collate_fn=seq_collate)
-
     WT = F.one_hot(torch.tensor(family_seqs[0], dtype=torch.int64), 
                     num_classes=num_classes).flatten().float()
-
-    vae = VAE(z_dim=LATENT_DIM, encoder_dim=ENCODER_DIM, decoder_dim=DECODER_DIM,
-                input_dims=WT.shape[0], use_cuda=True, wt=WT, dropout=DROPOUT, 
-          num_categories=num_classes)
-    optimizer = Adam({"lr": LR})
-    svi = SVI(vae.model, vae.guide, optimizer, loss=JitTrace_ELBO())
     torch.autograd.set_detect_anomaly(True)
 
     def fit_model(svi, vae, train_loader=train_loader, test_loader=test_loader, epochs=EPOCHS):
@@ -105,8 +78,14 @@ if __name__ == "__main__":
         delta_log_p = np.array([(l-wt_log_prob) for l in log_likelihoods], dtype=float)
         return spearmanr(delta_log_p, test_y)[0]
 
+    search_space  = [Integer(900, 2000, name='encoder_dim'),
+                    Integer(100, 2000, name="decoder_dim"),
+                    Integer(2, 100, name='latent_dim'),
+                    Real(0.00001, 0.5, "log-uniform", name="dropout"),
+                    Real(10**-5, 10**-1, "log-uniform", name='learning_rate'),
+                    Real(10**-5, 10**-1, "log-uniform", name='weight_decay')]
     @use_named_args(search_space)
-    def objective(encoder_dim, decoder_dim, extra_layer, 
+    def objective(encoder_dim, decoder_dim, 
                 latent_dim, dropout, learning_rate, weight_decay):
         pyro.clear_param_store()
         vae = VAE(z_dim=latent_dim, encoder_dim=[encoder_dim], decoder_dim=[decoder_dim],
@@ -120,7 +99,7 @@ if __name__ == "__main__":
         return -correlation(vae)
 
     # call optimization
-    res_gp = gp_minimize(objective, search_space, n_calls=20, random_state=0)
+    res_gp = gp_minimize(objective, search_space, n_calls=20, random_state=101)
 
     print(f"Best score={res_gp.fun}")
     print(f"""Best parameters:
