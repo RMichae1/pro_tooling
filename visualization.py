@@ -205,28 +205,47 @@ def generate_results_table(df, cvs=["pos.lvl.", "mut.lvl."],
     results_df = pd.DataFrame(data=np.zeros([len(idx), len(cols)]), index=idx, columns=cols)
     for p in proteins:
         # pos lvl CV
-        sub_df = df[(df.pdb==p) & (df.reference==False) & (df.optimization==False)]
+        sub_df = df[(df.pdb==p) & (df.reference==False) & (df.optimization==False) & (df.CV == "pos_lvl")]
         rho = compute_ρ(sub_df.y, sub_df.mu)
         rmse = compute_rmse(sub_df.y, sub_df.mu)
         results_df.loc[(p, "NO mGPfusion"), ("ρ", "pos.lvl.")] = rho
         results_df.loc[(p, "NO mGPfusion"), ("rmse", "pos.lvl.")] = rmse
-        sub_df = df[(df.pdb==p) & (df.reference==True) & (df.optimization==False)]
+        sub_df = df[(df.pdb==p) & (df.reference==True) & (df.optimization==False) & (df.CV == "pos_lvl")]
         rho = compute_ρ(sub_df.y, sub_df.mu)
         rmse = compute_rmse(sub_df.y, sub_df.mu)
         results_df.loc[(p, "NO 2σ mGPfusion"), ("ρ", "pos.lvl.")] = rho
         results_df.loc[(p, "NO 2σ mGPfusion"), ("rmse", "pos.lvl.")] = rmse
-        sub_df = df[(df.pdb==p) & (df.reference==False) & (df.optimization==True)]
+        sub_df = df[(df.pdb==p) & (df.reference==False) & (df.optimization==True) & (df.CV == "pos_lvl")]
         rho = compute_ρ(sub_df.y, sub_df.mu)
         rmse = compute_rmse(sub_df.y, sub_df.mu)
         results_df.loc[(p, "mGPfusion"), ("ρ", "pos.lvl.")] = rho
         results_df.loc[(p, "mGPfusion"), ("rmse", "pos.lvl.")] = rmse
-        sub_df = df[(df.pdb==p) & (df.reference==True) & (df.optimization==True)]
+        sub_df = df[(df.pdb==p) & (df.reference==True) & (df.optimization==True) & (df.CV == "pos_lvl")]
         rho = compute_ρ(sub_df.y, sub_df.mu)
         rmse = compute_rmse(sub_df.y, sub_df.mu)
         results_df.loc[(p, "2σ mGPfusion"), ("ρ", "pos.lvl.")] = rho
         results_df.loc[(p, "2σ mGPfusion"), ("rmse", "pos.lvl.")] = rmse
         # mut lvl CV
-        # TODO
+        sub_df = df[(df.pdb==p) & (df.reference==False) & (df.optimization==False) & (df.CV == "mut_lvl")]
+        rho = compute_ρ(sub_df.y, sub_df.mu)
+        rmse = compute_rmse(sub_df.y, sub_df.mu)
+        results_df.loc[(p, "NO mGPfusion"), ("ρ", "mut.lvl.")] = rho
+        results_df.loc[(p, "NO mGPfusion"), ("rmse", "mut.lvl.")] = rmse
+        sub_df = df[(df.pdb==p) & (df.reference==True) & (df.optimization==False) & (df.CV == "mut_lvl")]
+        rho = compute_ρ(sub_df.y, sub_df.mu)
+        rmse = compute_rmse(sub_df.y, sub_df.mu)
+        results_df.loc[(p, "NO 2σ mGPfusion"), ("ρ", "mut.lvl.")] = rho
+        results_df.loc[(p, "NO 2σ mGPfusion"), ("rmse", "mut.lvl.")] = rmse
+        sub_df = df[(df.pdb==p) & (df.reference==False) & (df.optimization==True) & (df.CV == "mut_lvl")]
+        rho = compute_ρ(sub_df.y, sub_df.mu)
+        rmse = compute_rmse(sub_df.y, sub_df.mu)
+        results_df.loc[(p, "mGPfusion"), ("ρ", "mut.lvl.")] = rho
+        results_df.loc[(p, "mGPfusion"), ("rmse", "mut.lvl.")] = rmse
+        sub_df = df[(df.pdb==p) & (df.reference==True) & (df.optimization==True) & (df.CV == "mut_lvl")]
+        rho = compute_ρ(sub_df.y, sub_df.mu)
+        rmse = compute_rmse(sub_df.y, sub_df.mu)
+        results_df.loc[(p, "2σ mGPfusion"), ("ρ", "mut.lvl.")] = rho
+        results_df.loc[(p, "2σ mGPfusion"), ("rmse", "mut.lvl.")] = rmse
         # mGP
         # TODO
     return results_df
@@ -262,8 +281,9 @@ def plot_results_table(df, save_fig="./fig/"):
     plt.savefig(f"{save_fig}/method_results_boxen.png")
     plt.show()
 
-def plot_pos_lvl_gpr_individual(df, opt: bool, ref: bool, save_fig="./fig/", suffix="", y_n=3, x_n=4) -> None:
-    df = df[(df.optimization == opt) & (df.reference == ref)]
+
+def plot_pos_lvl_gpr_individual(df, opt: bool, ref: bool, save_fig="./fig/", suffix="", y_n=3, x_n=4, x_range=(-11, 6), y_range=(-11,6)) -> None:
+    df = df[(df.optimization == opt) & (df.reference == ref) & (df.CV == "pos_lvl")]
     proteins = df.pdb.unique()
     assert x_n*y_n >= len(proteins)
     filename = os.path.join(save_fig, f"gpr_pos_lvl_individual_opt{opt}_ref{ref}_{suffix}.png")
@@ -271,8 +291,8 @@ def plot_pos_lvl_gpr_individual(df, opt: bool, ref: bool, save_fig="./fig/", suf
     index = [(i,j) for i in range(y_n) for j in range(x_n)]
     for (i,j), p in zip(index, proteins):
         ax[i,j].axline((-4, -4), (4, 4), color="grey", linestyle="--")
-        ax[i,j].set_xlim((-11,6))
-        ax[i,j].set_ylim((-11,6))
+        ax[i,j].set_xlim(x_range)
+        ax[i,j].set_ylim(y_range)
         ax[i,j].grid(True)
         mu = df[df.pdb==p].mu
         y = df[df.pdb==p].y
@@ -289,6 +309,34 @@ def plot_pos_lvl_gpr_individual(df, opt: bool, ref: bool, save_fig="./fig/", suf
     for i in range(x_n):
         ax[y_n-1,i].set_xlabel("experimental ΔΔG", fontsize=12)
     plt.suptitle(f"GP Regression\n (pos-lvl CV optimization:{opt} 2σ:{ref})\n{suffix}")
+    plt.savefig(filename)
+    plt.show()
+
+
+def plot_mut_lvl_gpr_individual(df, opt: bool, ref: bool, save_fig="./fig/", suffix="", y_n=3, x_n=4, x_range=(-11,6), y_range=(-11,6)) -> None:
+    df = df[(df.optimization == opt) & (df.reference == ref) & (df.CV == "mut_lvl")]
+    proteins = df.pdb.unique()
+    assert x_n*y_n >= len(proteins)
+    filename = os.path.join(save_fig, f"gpr_mut_lvl_individual_opt{opt}_ref{ref}_{suffix}.png")
+    fig, ax = plt.subplots(y_n, x_n, figsize=(15,15))
+    index = [(i,j) for i in range(y_n) for j in range(x_n)]
+    for (i,j), p in zip(index, proteins):
+        ax[i,j].axline((-4, -4), (4, 4), color="grey", linestyle="--")
+        ax[i,j].set_xlim(x_range)
+        ax[i,j].set_ylim(y_range)
+        ax[i,j].grid(True)
+        mu = df[df.pdb==p].mu
+        y = df[df.pdb==p].y
+        ax[i, j].scatter(y, mu, s=100., edgecolors="darkgrey")
+        ax[i, j].set_title(f"{p}", fontsize=12)
+    # TODO delete axes from a range of diff values between proteins and provided last axis length
+    fig.delaxes(ax[2][3])
+    fig.delaxes(ax[2][2])
+    for i in range(y_n):
+        ax[i,0].set_ylabel("predicted ΔΔG", fontsize=12)
+    for i in range(x_n):
+        ax[y_n-1,i].set_xlabel("experimental ΔΔG", fontsize=12)
+    plt.suptitle(f"GP Regression\n (mutation-lvl CV optimization:{opt} 2σ:{ref})\n{suffix}")
     plt.savefig(filename)
     plt.show()
 
@@ -327,83 +375,42 @@ def plot_pos_lvl_gpr_total(df, opt: bool, ref: bool, results_dir="./results/mGPf
     plt.show()
     
 
-def plot_mut_lvl_gpr_individual(proteins:list, results_dir="./results/mGPfusion", save_fig="./fig/", suffix="", 
-    y_n=3, x_n=4, uncertainties=False) -> None:
-    filename = os.path.join(save_fig, f"gpr_mut_lvl_individual_{suffix}.png")
-    fig, ax = plt.subplots(y_n, x_n, figsize=(15,15))
-    index = [(i,j) for i in range(y_n) for j in range(x_n)]
-    for (i,j), p in zip(index, proteins):
-        ax[i,j].set_xlim((-11,6))
-        ax[i,j].set_ylim((-11,6))
-        ax[i,j].axline((-4, -4), (4,4), color="grey", linestyle="--")
-        mu, y_test, cov, _ = parse_regression_results(pdb_id=p, directory=results_dir)
-        mutations = parse_mutations(p, results_dir)
-        if mu is None:
-            continue
-        f_μ = np.concatenate([np.atleast_1d(elem) for elem in mu])
-        color = "black"
-        y_test = np.concatenate([elem for sub in y_test for elem in sub])
-        if mutations is not None:
-            color = [colormap[mut-1] for mut in mutations]
-        ax[i,j].scatter(y_test, f_μ, s=100., color=color,
-         edgecolors="darkgrey")
-        ax[i,j].set_title(f"{p}", fontsize=12)
-        if not uncertainties:
-            continue # if uncertainties run the loop below
-        for idx, (μ, var, y) in enumerate(zip(f_μ, cov, y_test)):
-            if idx == 2:
-                break
-            xx = np.arange(-5, 5, 0.1)
-            f = norm.pdf(xx, μ, var)
-            x_vals = np.array(y+f)
-            ax[i,j].plot(x_vals, xx, "k--", alpha=0.1)
-    fig.delaxes(ax[2][3])
-    fig.delaxes(ax[2][2])
-    fig.delaxes(ax[2][1])
-    #fig.legend(handles=mutation_legend_handle, loc="lower right", title="Number of mutations")
-    for i in range(y_n):
-        ax[i,0].set_ylabel("predicted ΔΔG", fontsize=12)
-    for i in range(x_n):
-        ax[y_n-1,i].set_xlabel("experimental ΔΔG", fontsize=12)
-    plt.suptitle(f"GP Regression (mutation lvl CV) {suffix}")
-    plt.legend()
-    plt.savefig(filename)
-    plt.show()
-
 def plot_mut_lvl_gpr_total(proteins:list, results_dir="./results/mGPfusion/", save_fig="./fig/", suffix="", uncertainties=False) -> None:
-    filename = os.path.join(save_fig, f"gpr_mut_lvl_total_{suffix}.png")
-    fig, ax = plt.subplots(1,1, figsize=(10,10))
-    ax.axline((-4, -4), (4,4), color="grey", linestyle="--")
-    for p in proteins:
-        mu, y_test, cov, _ = parse_regression_results(pdb_id=p, directory=results_dir)
-        mutations = parse_mutations(p, results_dir)
-        if mu is None:
-            continue
-        f_μ = np.concatenate([np.atleast_1d(elem) for elem in mu])
-        y_test = np.concatenate([elem for sub in y_test for elem in sub])
-        mapped_colors = "black"
-        if mutations is not None:
-            mapped_colors = [colormap[mut-1] for mut in mutations]
-        ax.scatter(y_test, f_μ, s=100., color=mapped_colors,
-            edgecolors="darkgrey")
-        if not uncertainties:
-            continue # if uncertainties run the loop below
-        for idx, (μ, var, y) in enumerate(zip(f_μ, cov, y_test)):
-            if idx == 2:
-                break
-            xx = np.arange(-5, 5, 0.1)
-            f = norm.pdf(xx, μ, np.sqrt(var))
-            x_vals = np.array(y+f)
-            ax.plot(x_vals, xx, "k--", alpha=0.1)
-   # fig.legend(handles=mutation_legend_handle, loc="lower right", title="Number of mutations")
-    ax.set_ylim((-3, 3))
-    ax.set_xlim((-3, 3))
-    ax.set_xlabel("experimental ΔΔG", fontsize=18)
-    ax.set_ylabel("predicted ΔΔG", fontsize=18)
-    plt.suptitle(f"GP Regression (mutation lvl CV) {suffix}")
-    plt.legend()
-    plt.savefig(filename)
-    plt.show()
+    raise NotImplementedError
+    # TODO refactor this from existing DF - see pos lvl total analysis
+#     filename = os.path.join(save_fig, f"gpr_mut_lvl_total_{suffix}.png")
+#     fig, ax = plt.subplots(1,1, figsize=(10,10))
+#     ax.axline((-4, -4), (4,4), color="grey", linestyle="--")
+#     for p in proteins:
+#         mu, y_test, cov, _ = parse_regression_results(pdb_id=p, directory=results_dir)
+#         mutations = parse_mutations(p, results_dir)
+#         if mu is None:
+#             continue
+#         f_μ = np.concatenate([np.atleast_1d(elem) for elem in mu])
+#         y_test = np.concatenate([elem for sub in y_test for elem in sub])
+#         mapped_colors = "black"
+#         if mutations is not None:
+#             mapped_colors = [colormap[mut-1] for mut in mutations]
+#         ax.scatter(y_test, f_μ, s=100., color=mapped_colors,
+#             edgecolors="darkgrey")
+#         if not uncertainties:
+#             continue # if uncertainties run the loop below
+#         for idx, (μ, var, y) in enumerate(zip(f_μ, cov, y_test)):
+#             if idx == 2:
+#                 break
+#             xx = np.arange(-5, 5, 0.1)
+#             f = norm.pdf(xx, μ, np.sqrt(var))
+#             x_vals = np.array(y+f)
+#             ax.plot(x_vals, xx, "k--", alpha=0.1)
+#    # fig.legend(handles=mutation_legend_handle, loc="lower right", title="Number of mutations")
+#     ax.set_ylim((-3, 3))
+#     ax.set_xlim((-3, 3))
+#     ax.set_xlabel("experimental ΔΔG", fontsize=18)
+#     ax.set_ylabel("predicted ΔΔG", fontsize=18)
+#     plt.suptitle(f"GP Regression (mutation lvl CV) {suffix}")
+#     plt.legend()
+#     plt.savefig(filename)
+#     plt.show()
 
 
 def plot_log_prob(lml, mutations, x_test, y) -> None:

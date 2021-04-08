@@ -66,7 +66,7 @@ def create_prediction_df(parsed_results: list, pdb: str, ref: bool, opt: bool, c
     μ = np.concatenate([e[0] for e in parsed_results])
     cov = np.concatenate([e[1] for e in parsed_results])
     y_exp = np.concatenate([e[2] for e in parsed_results])
-    n_mut = np.concatenate([e[3] for e in parsed_results])
+    n_mut = np.concatenate([np.atleast_1d(e[3]) for e in parsed_results])
     data = {"mu": μ, "cov": cov, "y": y_exp, "mutations": n_mut}
     pred_df = pd.DataFrame(data, columns=["mu", "cov", "y", "mutations"])
     pred_df = annotate_df(pred_df, cv, opt, ref, pdb)
@@ -101,14 +101,19 @@ def compute_metrics(parsed_results: list):
 
 def plot_regression_results(df):
     # plot individual position lvl
-    plot_pos_lvl_gpr_individual(df, opt=False, ref=False)
-    plot_pos_lvl_gpr_individual(df, opt=True, ref=False)
-    plot_pos_lvl_gpr_individual(df, opt=False, ref=True)
-    plot_pos_lvl_gpr_individual(df, opt=True, ref=True)
+    # TODO refactor that by querying via parameters in a loop
+    # plot_pos_lvl_gpr_individual(df, opt=False, ref=False, x_range=(-15, 150), y_range=(-20, 150))
+    # plot_pos_lvl_gpr_individual(df, opt=True, ref=False, x_range=(-15, 150), y_range=(-20, 150))
+    # plot_pos_lvl_gpr_individual(df, opt=False, ref=True, x_range=(-15, 150), y_range=(-20, 150))
+    plot_pos_lvl_gpr_individual(df, opt=True, ref=True, x_range=(-15, 150), y_range=(-20, 150))
+    # plot_mut_lvl_gpr_individual(df, opt=False, ref=False, x_range=(-15, 150), y_range=(-20, 150))
+    # plot_mut_lvl_gpr_individual(df, opt=True, ref=False, x_range=(-15, 150), y_range=(-20, 150))
+    # plot_mut_lvl_gpr_individual(df, opt=False, ref=True, x_range=(-15, 150), y_range=(-20, 150))
+    plot_mut_lvl_gpr_individual(df, opt=True, ref=True, x_range=(-15, 150), y_range=(-20, 150))
     # plot total pos lvl
-    plot_pos_lvl_gpr_total(df, opt=False, ref=False)
-    plot_pos_lvl_gpr_total(df, opt=True, ref=False, suffix="optimized")
-    plot_pos_lvl_gpr_total(df, opt=False, ref=True, suffix="2σ")
+    # plot_pos_lvl_gpr_total(df, opt=False, ref=False)
+    # plot_pos_lvl_gpr_total(df, opt=True, ref=False, suffix="optimized")
+    # plot_pos_lvl_gpr_total(df, opt=False, ref=True, suffix="2σ")
     plot_pos_lvl_gpr_total(df, opt=True, ref=True, suffix="optimized 2σ")
 
 
@@ -127,17 +132,19 @@ def plot_hyperparameters(hyper_df, weight_df):
     #plot_neg_ll(hyper_df)
 
 
-def load_regression_results(pdbs, optim, refs):
+def load_regression_results(pdbs, optim, refs, cvs):
     frames = []
+    # TODO eliminate nested loops - use 
     for pdb in pdbs:
         for opt in optim:
             for ref in refs:
-                results = load_pkl_results(pdb, opt=opt, ref=ref)
-                predictions = parse_prediction_results(results)
-                if not predictions:
-                    continue
-                pred_df = create_prediction_df(predictions, pdb, ref, opt, cv="pos_lvl")
-                frames.append(pred_df) 
+                for cv in cvs:
+                    results = load_pkl_results(pdb, cv=cv, opt=opt, ref=ref)
+                    predictions = parse_prediction_results(results)
+                    if not predictions:
+                        continue
+                    pred_df = create_prediction_df(predictions, pdb, ref, opt, cv=cv)
+                    frames.append(pred_df) 
     predictions_df = pd.concat(frames, ignore_index=True)
     return predictions_df
 
@@ -166,9 +173,10 @@ if __name__ == "__main__":
     pdbs = ["1TIB"]
     optim = [False, True]
     refs = [False, True]
+    cvs = ["pos_lvl", "mut_lvl"]
     
-    regression_df = load_regression_results(pdbs, optim, refs)
-    #plot_regression_results(regression_df)
+    regression_df = load_regression_results(pdbs, optim, refs, cvs)
+    plot_regression_results(regression_df)
     results_table(regression_df)
     weight_df, hyperparameters_df = load_hyperparameter_results(pdbs, optim, refs)
     #plot_hyperparameters(hyperparameters_df, weight_df)
