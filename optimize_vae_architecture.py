@@ -49,22 +49,22 @@ if __name__ == "__main__":
     sampler = torch.utils.data.WeightedRandomSampler(seq_train.weights, 
                                                     num_samples=len(seq_train), replacement=True)
     test_seq_dataset = WeightedMSADataset(test_seqs, num_classes=num_classes)
-    train_loader = torch.utils.data.DataLoader(seq_train, batch_size=BATCH_SIZE, 
+    train_loader = torch.utils.data.DataLoader(seq_train, batch_size=128, 
                                             sampler=sampler, collate_fn=seq_collate)
-    test_loader = torch.utils.data.DataLoader(seq_test, batch_size=BATCH_SIZE, 
+    test_loader = torch.utils.data.DataLoader(seq_test, batch_size=128, 
                                             shuffle=True, collate_fn=seq_collate)
     WT = F.one_hot(torch.tensor(family_seqs[0], dtype=torch.int64), 
                     num_classes=num_classes).flatten().float()
     torch.autograd.set_detect_anomaly(True)
 
-    def fit_model(svi, vae, train_loader=train_loader, test_loader=test_loader, epochs=EPOCHS):
+    def fit_model(svi, vae, train_loader=train_loader, test_loader=test_loader, epochs=250):
         vae.train()
         for epoch in tqdm(range(epochs)):
-            total_epoch_loss_train = train(svi, train_loader, USE_CUDA)
+            total_epoch_loss_train = train(svi, train_loader, False)
             print(f"[epoch {epoch}] avrg. train loss: {total_epoch_loss_train}")
 
             if epoch % VALIDATE == 0:
-                total_epoch_loss_test = evaluate(svi, test_loader, USE_CUDA)
+                total_epoch_loss_test = evaluate(svi, test_loader, False)
                 print(f"[epoch {epoch}] avrg. test loss: {total_epoch_loss_test}")
         return svi, vae
 

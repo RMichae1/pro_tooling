@@ -388,7 +388,7 @@ def parse_alignment(a2m_filename: str) -> pd.DataFrame:
     for line in alignment:
         if line.startswith(">"):
             sequence.append(seq)
-            identifier.append(line)
+            identifier.append(line[1:])
             seq = []
         else:
             seq.append(line)
@@ -397,3 +397,19 @@ def parse_alignment(a2m_filename: str) -> pd.DataFrame:
     encoded_sequence = list(map(seq2idx, map(lambda x: "".join(x).upper(), sequence[1:])))
     df = pd.DataFrame({"seq": encoded_sequence, "identifier": identifier})
     return df
+
+
+def filter_alignment(a2m_filename: str, gap_code=22, wt_idx=0) -> pd.DataFrame:
+    """
+    Returns matrix of sequences by filtering gaps for the 
+    """
+    alignment_df = parse_alignment(a2m_filename)
+    seqs = np.array([np.array(s) for s in alignment_df.seq])
+    # select wildtype against which we select
+    wt_sequence = seqs[wt_idx]
+    ungapped_idx = np.argwhere(wt_sequence!=gap_code).flatten()
+    filtered_sequences = seqs[:, ungapped_idx]
+    alignment_df["seq"] = list(filtered_sequences)
+    return alignment_df
+
+
