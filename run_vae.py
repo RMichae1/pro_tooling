@@ -77,7 +77,7 @@ def parse_PGA():
 
 
 def parse_UBQ():
-    ubq_df = parse_alignment("./data/ubq/P0CG48_ALL.a2m")
+    ubq_df = parse_alignment("./data/ubq/UBC_HUMAN_P0CG48_ubiquitin.a2m")
     family_seqs = np.array([[int(elem) for elem in seq] for seq in ubq_df.seq])
     # for testing combine protabank sequences with DeepSequence Bolon 2013 data
     protabank_df = pd.read_csv("./data/ubq/RL401_Bolon2013_YHUnpqbw.csv", delimiter=",")
