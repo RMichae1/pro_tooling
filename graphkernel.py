@@ -10,16 +10,29 @@ from torch.distributions.normal import Normal
 from tqdm import tqdm
 from scipy.io import loadmat
 from reference_alphabet import IUPAC_SEQ2IDX
+from vae import VAE
 
 
 class KernelLoader:
-    def __init__(self, sub_matrices: list=[], sub_mat_ids: list=[]):
+    def __init__(self, mat_type="substitution", sub_matrices: list=[], sub_mat_ids: list=[], vae: VAE=None):
         """
         Interface to MatrixKernel that encapsulates the collection of substitution matrices
         used. 
         Has list of kernels as class property.
         sub_mat_ids takes IDs from SubMat Matlab
         """
+        if mat_type == "substitution":
+            s_mat, s_mat_id = self.load_sub_matrices(sub_matrices, sub_mat_ids)
+            self.kernels: list = [MatrixKernel(matrix=s, matrix_id=m_id) 
+                                    for s, m_id in zip(s_mat, s_mat_id)]
+        elif mat_type == "vae":
+            self.kernels: list = [VaeKernel(vae)]
+        else:
+            raise RuntimeError("Selected matrix type does not exist!\n Set: \{substitution | vae\}")
+        self.sub_matrices_ids = s_mat_id
+        assert len(self.kernels) == len(self.sub_matrices_ids)
+    
+    def load_sub_matrices(self, sub_matrices, sub_mat_ids,):
         matrices = loadmat(f"{os.path.dirname(__file__)}/data/mgp/subMats.mat").get('subMats')
         s_mat = []
         s_mat_id = []
@@ -34,9 +47,7 @@ class KernelLoader:
             else:
                 s_mat_id.append(m_id[0])
                 s_mat.append(m_vals)
-        self.kernels: list = [MatrixKernel(matrix=s, matrix_id=m_id) for s, m_id in zip(s_mat, s_mat_id)]
-        self.sub_matrices_ids = s_mat_id
-        assert len(self.kernels) == len(self.sub_matrices_ids)
+        return s_mat, s_mat_id
     
     @staticmethod
     def select_sub_matrices(matrix_id, matrix_info, sub_matrices, s_mat_ids) -> bool:
@@ -96,80 +107,79 @@ class VaeKernel:
         self.alphabet = alphabet
         self.latent_random = torch.normal(0, 1, size=(n_samples, 
                                         self.latent_dim)).float()
+        # TODO importance sampling...
         self.importance = Normal(loc=torch.zeros(1), 
                                 scale=torch.ones(1)).log_prob(self.latent_random)
-        self.p_x_z = self.vae.decoder(self.latent_random).detach().numpy()
         self.block = block_size
         assert(type(self.p_x_z) == np.ndarray)
         assert(self.importance.shape == [n_samples, self.latent_dim])
 
-    def p_i(self, x: np.ndarray, i: int) -> torch.Tensor:
+    def p_xi(self, x: np.ndarray, i: int) -> torch.Tensor:
         """
-        Marginalize over latent representationm. Σ over all residues.
+        Marginalize over latent representation with respect to residue at 
+        position i. Σ over all residues.
         : input: sequence x, position i
         : return: likelihood ...
         """
         _x = x[:, i].copy()
-        p_z_i = np.zeros([x.shape[0], self.latent_dim])
+        marginal_p_x_i = np.zeros([x.shape[0], self.latent_dim])
         for aa in self.alphabet.keys():
             x[:, i] = aa
             z_loc, z_scale = self.vae.encoder(x)
             z_dist = Normal(z_loc, z_scale)
             # TODO investigate Importance Sampling
-            p_z_i += torch.exp(torch.sum(z_dist.log_prob(self.latent_random) - self.importance, axis=-1))
+            #p_z_i += torch.exp(torch.sum(z_dist.log_prob(self.latent_random) - self.importance, axis=-1))
+            marginal_p_x_i += torch.exp(torch.sum(z_dist.log_prob(x), axis=-1))
         x[:, i] = _x
-        p_x_i_z = self.p_x_z[:, i, _x].reshape(1, -1)
-        p = torch.sum(p_x_i_z*p_z_i, axis=-1)
-        # TODO assert and test stepwise
-        return p
+        return marginal_p_x_i
+
+    def p_x(self, x: np.ndarray) -> torch.Tensor:
+        """
+        Marginal over latent representation
+        """
+        z_loc, z_scale = self.vae.encoder(x)
+        z_dist = Normal(z_loc, z_scale)
+        likelihood_x = torch.exp(torch.sum(z_dist.log_prob(x), axis=-1))
+        return likelihood_x
+
+    def sequence_likelihood(self, _x, i):
+        p_xi = self.p_xi(_x, i)
+        p_x_not_i = torch.sum(p_xi*(1-p_xi), axis=-1)
+        p_marginal_x = self.p_x(_x)
+        p_z = self.importance
+        return 1/p_x_not_i * ((p_marginal_x*p_z)/p_xi)
 
     def k_vec(self, x, i) -> torch.Tensor:
+        """
+        block-wise computation of k-vector
+        """
         k_x = np.zeros([x.shape[0], 1])
         for n in range(0, int(np.ceil(x.shape[0] / self.block))):
             p = n * self.block
             q = min(p + self.block, x.shape[0])
             _x = x.numpy()[p:q, :]
-            k_x[p:q] = self.p_i(_x, i)
+            k_x[p:q] = self.sequence_likelihood(_x, i)
         return torch.Tensor(k_x)
     
-    def k(self, x_p, x_q=None) -> torch.Tensor:
+    def k(self, x_p, x_q=None, adjacencies: List[tuple]=None) -> torch.Tensor:
         N = x_p.shape[0]
         k = torch.zeros([N, N])
-        assert x_p.shape[1] == x_q.shape[1]
-        for i in range(0, x_p.shape[1]):
-            k_x_p = self.k_vec(x_p, i)
-            if x_q is None:
-                k_x_q = k_x_p
-            else:
-                k_x_q = self.k_vec(x_q, i)
-            k += torch.matmul(k_x_p, k_x_q.T)
-            # TODO test p.s.d.
-        return k
-
-    # def k(self, sequences: np.ndarray, adjacencies: List[tuple]) -> np.ndarray:
-    #     N = sequences.shape[0]
-    #     k = np.zeros([N, N])
-    #     temp_k = np.zeros([N, N])
-    #     neighborhoods = adjacencies
-    #     if isinstance(adjacencies[0], tuple):
-    #         neighborhoods = np.array([contacts for _, contacts in adjacencies])
-
-    #     for idx, neighbors in neighborhoods:
-    #         temp_k.fill(0.)
-    #         for n in neighbors:
-    #             p_x = self.vae.encoder(x)
-    #             p_y = self.vae.encoder(y)
-    #             temp_k += (self.p_i(x, n)*self.p_i(y, n)/(p_x*p_y))
-    #         p_x = self.vae.encoder(x)
-    #         p_y = self.vae.encoder(y)
-    #         temp_k *= (self.p_i(x, idx)*self.p_i(y, idx)/(p_x*p_y))
-    #         k += temp_k
-
-    #     # TODO compute p_x_i
-    #     # TODO compute p(x)
-    #     # TODO compute p(y)
-
-    #     norm = np.sqrt(np.diag(k))[:, np.newaxis]
-    #     k_hat = k / norm.dot(norm.T)
-    #     return torch.Tensor(k_hat).type(torch.float64)
+        temp_k = np.zeros([N, N])
+        neighborhoods = np.array([contact for _, contact in 
+                        adjacencies]) if isinstance(adjacencies[0], tuple) else adjacencies
+        neighborhood_iterator = tqdm(enumerate(neighborhoods))
+        for idx, neighbors in neighborhood_iterator:
+            temp_k.fill(0.)
+            for n in neighbors:
+                k_x_p = self.k_vec(x_p, n)
+                k_x_q = k_x_p if x_q is None else self.k_vec(x_q, n)
+                assert x_p.shape[1] == x_q.shape[1]
+                temp_k += torch.matmul(k_x_p, k_x_q.T)
+            k_x_p = self.k_vec(x_p, idx)
+            k_x_q = k_x_p if x_q is None else self.k_vec(x_q, idx)
+            temp_k *= torch.matmul(k_x_p, k_x_q.T)
+            k += temp_k
+        norm = np.sqrt(np.diag(k))[:, np.newaxis]
+        k_hat = k / norm.dot(norm.T)
+        return torch.Tensor(k_hat).type(torch.float64)
 
