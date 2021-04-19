@@ -14,21 +14,20 @@ from vae import VAE
 
 
 class KernelLoader:
-    def __init__(self, mat_type="substitution", sub_matrices: list=[], sub_mat_ids: list=[], vae: VAE=None):
+    def __init__(self, sub_matrices: list=[], sub_mat_ids: list=[], vae: VAE=None):
         """
         Interface to MatrixKernel that encapsulates the collection of substitution matrices
         used. 
         Has list of kernels as class property.
         sub_mat_ids takes IDs from SubMat Matlab
         """
-        if mat_type == "substitution":
+        if isinstance(vae, VAE):
+            self.kernels: list = [VaeKernel(vae)]
+            s_mat_id = ["VAE-kernel"]
+        else:
             s_mat, s_mat_id = self.load_sub_matrices(sub_matrices, sub_mat_ids)
             self.kernels: list = [MatrixKernel(matrix=s, matrix_id=m_id) 
                                     for s, m_id in zip(s_mat, s_mat_id)]
-        elif mat_type == "vae":
-            self.kernels: list = [VaeKernel(vae)]
-        else:
-            raise RuntimeError("Selected matrix type does not exist!\n Set: \{substitution | vae\}")
         self.sub_matrices_ids = s_mat_id
         assert len(self.kernels) == len(self.sub_matrices_ids)
     

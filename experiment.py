@@ -19,13 +19,14 @@ class Experiment:
     Wrapper Class that encapsulates experiment configurations
     """
     def __init__(self, pdb: str, experiment_type: str, idx: int, optimization: bool, 
-                fusion: bool, reference: bool, vae_input: bool, vae_kernel: bool, 
-                exp_data_filename: str, is_data_filename: str, run_id: str) -> None:
+                fusion: bool, reference: bool, vae_input: bool, vae_kernel: bool,
+                exp_data_filename: str, is_data_filename: str, run_id: str, **vae_params) -> None:
         self.pdb = pdb
         self.experiment_type = experiment_type
         self.idx = idx
         self.fusion = fusion
         self.optimization = optimization
+        self.vae = None
         self.vae_input = vae_input
         self.vae_kernel = vae_kernel
         self.exp_data_filename = exp_data_filename
@@ -35,12 +36,11 @@ class Experiment:
         self.experimental_data = self.prepare_experimental_data()
         self.contact_map = ContactMapper(pdb_file=f"./pdb/{pdb.lower()}.pdb", tri_dist=True)
         self.ref_adj = self.contact_map.adjacency
-        # TODO add VAE kernel to proteincollection
-        self.protein = ProteinCollection(self.contact_map, pdb_ID=pdb, 
-                            mutations_exp=self.experimental_data, TESTING=False)
         if vae_input or vae_kernel:
             self.vae_model_FILENAME = f"./models/VAE_t{experiment_type}_z55_h[1700, 1200]_e200_d0.065_wTrue.pt"
-            self.vae = self.prepare_vae()
+            self.vae = self.prepare_vae(experiment_type, vae_params)
+        self.protein = ProteinCollection(self.contact_map, pdb_ID=pdb, 
+                            mutations_exp=self.experimental_data, vae=self.vae, TESTING=False)
         self.in_silico_data = self.prepare_in_silico_data() if self.fusion else {}
         self.X_wt, self.X_exp, self.X_is, self.y_wt, self.ΔΔg_exp, self.ΔΔg_is_scaled, self.scaler_σ, self.max_y, self.mean_y = self.init_experiment_run()
         if not self.fusion:
@@ -65,6 +65,8 @@ class Experiment:
             return self.prepare_tll_experimental_data()
         elif self.experiment_type == "mgpf":
             return parse_matlab_mutation_file(self.exp_data_filename, query="ddg_protherm")
+        elif self.experiment_type == "ubq":
+            return self.prepare_ubq_experimental_data()
         else:
             raise NotImplementedError("Specified experimental data configuration not available.")
     
@@ -86,8 +88,8 @@ class Experiment:
                 pickle.dump(is_mutation_dict, filehandle)
         return is_mutation_dict
 
-    def prepare_vae(self, vae_type: str = "blat"): # TODO load VAE from self.type
-        with open("./data/blat/BLAT_data_df.pkl", "rb") as filehandle: # TODO replace this
+    def prepare_vae(self, vae_type, **vae_params): 
+        with open(f"./data/{vae_type.lower()}/{vae_type.upper()}_data_df.pkl", "rb") as filehandle:
             blat_df = pickle.load(filehandle)
         family_df = blat_df[blat_df.assay.isna()]
         # cast sequence labels to int
@@ -95,10 +97,10 @@ class Experiment:
         num_classes = np.unique(family_seqs).shape[0]
         WT = F.one_hot(torch.tensor(family_seqs[0], dtype=torch.int64),
                     num_classes=num_classes).flatten().float()
-        vae = VAE(z_dim=55, encoder_dim=[1700],
-                decoder_dim=[1200],
-                input_dims=WT.shape[0], use_cuda=False, wt=WT, dropout=0.065,
-                num_categories=num_classes)
+        vae = VAE(z_dim=vae_params["latent_dim"], encoder_dim=list(vae_params["encoder_dim"]),
+                decoder_dim=list(vae_params["decoder_dim"]),
+                input_dims=WT.shape[0], use_cuda=vae_params["cuda"], wt=WT, 
+                dropout=vae_params["dropout"], num_categories=num_classes)
         if os.path.exists(self.vae_model_FILENAME):
             vae.load_state_dict(torch.load(self.vae_model_FILENAME))
         else:
