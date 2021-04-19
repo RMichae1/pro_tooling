@@ -55,7 +55,7 @@ class ContactMapper:
         return coord_vec
 
     @staticmethod
-    def calc_residue_tri_distance(coord_X: np.ndarray, coord_Y: np.ndarray) -> np.float:
+    def calc_residue_tri_distance(coord_X: np.ndarray, coord_Y: np.ndarray) -> float:
         # take min atom distance between residues see mgpfusion/code/protein.m:494
         d_vec = np.array([[euclidean(c_X, c_Y) for c_Y in coord_Y] for c_X in coord_X])
         if len(d_vec) == 1:
@@ -66,7 +66,7 @@ class ContactMapper:
         return min_dist
     
     def calculate_chain_distance(self, chain_X: Chain, chain_Y: Chain, tri_res_calculation=False) -> np.array:
-        mat = np.zeros((len(chain_X), len(chain_Y)), np.float)
+        mat = np.zeros((len(chain_X), len(chain_Y)), float)
         t_coord_X = []
         coord_X = []
         skipped_res = 0
@@ -91,7 +91,7 @@ class ContactMapper:
             self.all_coordinates.append(t_coord_X)
         # with 1 chain this is quadratic - WARN: does not work for multiple chains
         dim_X = len(chain_X) - skipped_res
-        mat_resized = np.zeros((dim_X, dim_X), np.float)
+        mat_resized = np.zeros((dim_X, dim_X), float)
         mat_resized = mat[:dim_X, :dim_X].copy()
         self.sequence = np.array(self.sequence)
         return mat_resized

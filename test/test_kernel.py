@@ -12,8 +12,8 @@ from contact_mapper import ContactMapper
 from utility import get_split_training_and_test_data
 
 cm = ContactMapper(pdb_file="./pdb/1pga.pdb", tri_dist=True)
-mut_exp = parse_matlab_mutation_file("./data/ddg_protherm.mat", query="ddg_protherm")
-mut_is = parse_matlab_mutation_file("./data/ddg_rosetta_single.mat", query="ddg_rosetta_single")
+mut_exp = parse_matlab_mutation_file("./data/mgp/ddg_protherm.mat", query="ddg_protherm")
+mut_is = parse_matlab_mutation_file("./data/mgp/ddg_rosetta_single.mat", query="ddg_rosetta_single")
 
 ref_file = loadmat(os.path.join(os.path.dirname(__file__), os.path.join("data", "1PGAkernel_matrices.mat")))
 matrices = ref_file["subMats"]
@@ -88,7 +88,7 @@ def test_parsed_seq_against_ref():
 def test_adjacency_against_ref():
         # TEST adjacencies
         # THIS FAILS
-        contacts = np.array([contacts for res, contacts in cm.adjacency])
+        contacts = np.array([contacts for res, contacts in cm.adjacency], dtype=object)
         assert len(ref_contact_graph) == len(contacts)
         # assert np.all([elem_ref == elem for elem_ref, elem in zip(ref_contact_graph, contacts)])
 

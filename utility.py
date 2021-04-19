@@ -51,7 +51,7 @@ def load_mutations(pdb_id: str, wild_type: Seq):
 
     x_wild_type = seq2int(str(wild_type))
 
-    wetlab_results_file = os.path.join("data", "ddg_protherm.mat")
+    wetlab_results_file = os.path.join("data/mgp", "ddg_protherm.mat")
     wetlab_mat = scipy.io.loadmat(os.path.join(data_dir, wetlab_results_file))['ddg_protherm']
     id = -1
     for i in range(wetlab_mat.shape[0]):
@@ -62,7 +62,7 @@ def load_mutations(pdb_id: str, wild_type: Seq):
     X_wetlab, single_wl_mutations, single_mutations_idx = apply_wetlab_mutations(wild_type, x_wild_type,
                                                                                  wetlab_mat[id, 1][:, 0])
 
-    insilico_results_file = os.path.join("data", "ddg_rosetta_single.mat")
+    insilico_results_file = os.path.join("data/mgp", "ddg_rosetta_single.mat")
     mat = scipy.io.loadmat(os.path.join(data_dir, insilico_results_file))["ddg_rosetta_single"]
     y_insilico = np.concatenate(mat[id, 1][:, 1]).ravel()[:, np.newaxis]
     X_insilico, matching_mutations = apply_insilico_mutations(wild_type, x_wild_type, mat[id, 1][:, 0],
@@ -155,7 +155,7 @@ def aa2int(x: str):
 
 
 def seq2int(seq: str):
-    int_seq = np.zeros(len(seq), dtype=np.int)
+    int_seq = np.zeros(len(seq), dtype=int)
     for i, s in enumerate(seq):
         int_seq[i] = aa2int(s)
     return int_seq
@@ -184,7 +184,7 @@ def list_of_pairs_2_seq(list):
 def get_sequence_and_contact_graph_from_ref_matlab_file(pdb_id: str, cutoff_distance=5., chain_id=None) -> (Seq, list):
     if not cutoff_distance == 5.:
         raise RuntimeError("The matlab reference files have a fixed cutoff distance of 5 angstrom!")
-    data_dir = os.path.join(os.path.dirname(__file__), "data")
+    data_dir = os.path.join(os.path.dirname(__file__), "data/mgp")
     filename = pdb_id + '.mat'
     mat = scipy.io.loadmat(os.path.join(data_dir, filename))
     ref_sequence = np.squeeze(mat['sequence']['letters'])
@@ -379,7 +379,7 @@ class WeightedMSADataset(Dataset):
         return self.one_hot_sequence[index], self.weights[index], self.neff
 
 
-def parse_alignment(a2m_filename: str) -> pd.DataFrame:
+def parse_alignment(a2m_filename: str, drop_lowercase=True) -> pd.DataFrame:
     with open(a2m_filename, "r") as filehandle:
         alignment = filehandle.read().splitlines()
     identifier = []
@@ -393,8 +393,10 @@ def parse_alignment(a2m_filename: str) -> pd.DataFrame:
         else:
             seq.append(line)
     sequence.append(seq)  # add last
+    if drop_lowercase: # TODO filter lowercase
+        sequence = [''.join(x for x in s if not x.islower()) for s in sequence]
     # convert to string and encode
-    encoded_sequence = list(map(seq2idx, map(lambda x: "".join(x).upper(), sequence[1:])))
+    encoded_sequence = list(map(seq2idx, map(lambda x: "".join(x), sequence[1:])))
     df = pd.DataFrame({"seq": encoded_sequence, "identifier": identifier})
     return df
 
