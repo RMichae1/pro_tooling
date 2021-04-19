@@ -12,7 +12,7 @@ import numpy as np
 from scipy.stats import spearmanr, pearsonr
 from utility import compute_ρ
 from utility import WeightedMSADataset, seq_collate 
-from utility import parse_mutations, parse_alignment
+from utility import parse_mutations, parse_alignment, filter_alignment
 from utility import convert_aa_sequence
 from protein_representation import ProteinCollection
 from contact_mapper import ContactMapper
@@ -68,7 +68,7 @@ def parse_TLL():
 
 def parse_PGA():
     test_df = pd.read_csv("./data/pga/Nisthal_Mayo_2019_updated_3xESLyS9.csv", delimiter=",")
-    #family_seqs = np.array([seq2idx(seq) for seq in pga_df.Sequence.unique()])
+    pga_df = filter_alignment("./data/pga/hmmer_PGA_msa_n42.a3m")
     family_seqs = np.array([seq2idx(seq) for seq in pga_df.Sequence])
     # build sequences from test_df
     test_seqs = family_seqs  # TODO get test sequences
@@ -77,7 +77,7 @@ def parse_PGA():
 
 
 def parse_UBQ():
-    ubq_df = parse_alignment("./data/ubq/UBC_HUMAN_P0CG48_ubiquitin.a2m")
+    ubq_df = filter_alignment("./data/ubq/UBC_HUMAN_P0CG48_ubiquitin.a2m")
     family_seqs = np.array([[int(elem) for elem in seq] for seq in ubq_df.seq])
     # for testing combine protabank sequences with DeepSequence Bolon 2013 data
     protabank_df = pd.read_csv("./data/ubq/RL401_Bolon2013_YHUnpqbw.csv", delimiter=",")
@@ -99,26 +99,26 @@ if __name__ == "__main__":
     pyro.clear_param_store()
     warnings.filterwarnings("ignore")
     parser = argparse.ArgumentParser(description="VAE Module - train and run VAE.")
-    parser.add_argument("-lr", "--learn_rate", type=float, default=5e-4, help="learning rate for optimizer")
+    parser.add_argument("-lr", "--learn_rate", type=float, default=0.000027, help="learning rate for optimizer")
     parser.add_argument("--cuda", action="store_true", help="Boolean flag to use cuda.")
     parser.add_argument("-v", "--verbose", action='store_true', help="Verbosity boolean.")
     parser.add_argument("--seed", type=int, default=42, help="Random Seed for reproducability.")
-    parser.add_argument("-e", "--epochs", type=int, default=500, help="Training epochs.")
-    parser.add_argument("--latent_dim", type=int, default=30, help="Dimensionality of hidden latent random variable.")
+    parser.add_argument("-e", "--epochs", type=int, default=200, help="Training epochs.")
+    parser.add_argument("--latent_dim", type=int, default=55, help="Dimensionality of hidden latent random variable.")
     parser.add_argument("-s", "--save", type=str, help="Destination for models output.")
-    parser.add_argument("--encoder_dim", nargs="+", type=int, default=[1500, 1500],
+    parser.add_argument("--encoder_dim", nargs="+", type=int, default=[1700],
                         help="Hidden dimension(s) for VAE encoder module.")
-    parser.add_argument("--decoder_dim", nargs="+", type=int, default=[100, 2000],
+    parser.add_argument("--decoder_dim", nargs="+", type=int, default=[1200],
                         help="Hidden dimension(s) for the VAE decoder module.")
     parser.add_argument("--test_split", type=float, default=0.1, help="Fraction of test data from total data-set.")
     parser.add_argument("--validate", type=int, default=10, help="Frequency of validation step.")
     parser.add_argument("-b", "--batch_size", type=int, default=128, help="Int size of batches.")
     parser.add_argument("--experiment", type=str, help="experiment str as ID for tracking.")
-    parser.add_argument("-wd", "--weight_decay", type=float, default=0., help="Adam Optimizer weight decay.")
-    parser.add_argument("-d", "--dropout", type=float, default=0., help="Add Dropout layer with dropout probability.")
-    parser.add_argument("-sw", "--sequence_weighting", action="store_true",
+    parser.add_argument("-wd", "--weight_decay", type=float, default=0.0007, help="Adam Optimizer weight decay.")
+    parser.add_argument("-d", "--dropout", type=float, default=0.065, help="Add Dropout layer with dropout probability.")
+    parser.add_argument("-sw", "--sequence_weighting", action="store_false", # TODO reverse action
                         help="Weighing input sequences in the training procedure.")
-    parser.add_argument("-t", "--type", choices=VAE_TYPES, default="blat", help="Type ID of MSA used to create VAE.")
+    parser.add_argument("-t", "--type", choices=VAE_TYPES, default="ubq", help="Type ID of MSA used to create VAE.")
     parser.add_argument("-p", "--plot", action="store_true", help="Plot low-latent-representation outputs and feature correlation.")
     parser.add_argument("--sample_vae", action="store_true", help="Prepare in-silico sample.")
     args = parser.parse_args()  # TODO change weighting to store_true
@@ -140,7 +140,7 @@ if __name__ == "__main__":
 
     n, length = family_seqs.shape
     test_n = test_seqs.shape[0]
-    num_classes = np.unique(family_seqs).shape[0]  # TODO double check this.. PGA has 20 classes Error
+    num_classes = np.unique(family_seqs).shape[0] +1  # TODO double check this.. PGA has 20 classes Error
     indices = list(range(n))
     random.shuffle(indices)
     test_size = int(args.test_split * n)
