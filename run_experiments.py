@@ -16,7 +16,7 @@ import mlflow
 from mlflow.tracking import MlflowClient
 
 
-def run_mgpfusion_experiment_pos_lvl(experiment: Experiment, verbose=True, write=True) -> None:
+def run_mgpfusion_experiment_pos_lvl(experiment: Experiment, verbose=True, write=True, max_n=500) -> None:
     if verbose:
         print(f"{experiment.pdb} - pos: {experiment.idx},  optim: {experiment.optimization}, reference: {experiment.two_sigma}")
     # TODO make mutation index an experiment property
@@ -25,6 +25,9 @@ def run_mgpfusion_experiment_pos_lvl(experiment: Experiment, verbose=True, write
     mutation_bool_mask = np.array([bool(experiment.idx in mut) for mut in experimental_mutation_index])
     test_mutation_idx = np.where(mutation_bool_mask)[0]
     not_test_mutation_idx = np.where(~mutation_bool_mask)[0]
+    # limit BLAT maximum number of experimental observations
+    if experiment.pdb == "1FQG" and len(not_test_mutation_idx) >= max_n:
+        not_test_mutation_idx = np.random.choice(not_test_mutation_idx, max_n, replace=False)
     if len(test_mutation_idx) == 0:
         print(f"No Mutation at pos:{experiment.idx} - skipping...")
         return
