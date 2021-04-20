@@ -37,6 +37,7 @@ logger = logging.getLogger(__name__)
 
 VAE_TYPES = ["blat", "sp400", "pga", "ubq"]
 
+
 def parse_BLAT():
     with open("./data/blat/BLAT_data_df.pkl", "rb") as infile:
             blat_df = pickle.load(infile)
@@ -68,11 +69,15 @@ def parse_TLL():
 
 def parse_PGA():
     test_df = pd.read_csv("./data/pga/Nisthal_Mayo_2019_updated_3xESLyS9.csv", delimiter=",")
+    test_df = test_df[~test_df["Assay/Protocol"].str.contains("SD ")]  # exclude standard-deviation
+    test_df = test_df[test_df.Units == "kcal/mol"]
+    test_df = test_df[test_df["Assay/Protocol"].str.contains("^ddG")]  # select only ddG values
+    test_df = test_df[["Sequence", "Data", "Assay/Protocol"]].dropna()  # select relevant columns
     pga_df = filter_alignment("./data/pga/hmmer_PGA_msa_n42.a3m")
-    family_seqs = np.array([seq2idx(seq) for seq in pga_df.Sequence])
+    family_seqs = np.array([s for s in pga_df.seq])
     # build sequences from test_df
-    test_seqs = family_seqs  # TODO get test sequences
-    test_y = np.zeros(len(test_seqs))
+    test_seqs = np.array([seq2idx(seq) for seq in test_df.Sequence])
+    test_y =test_df.Data.astype(float)
     return family_seqs, test_seqs, test_y
 
 
@@ -83,6 +88,9 @@ def parse_UBQ():
     protabank_df = pd.read_csv("./data/ubq/RL401_Bolon2013_YHUnpqbw.csv", delimiter=",")
     # drop SD values
     protabank_df = protabank_df[~protabank_df["Assay/Protocol"].str.contains("SD ")]
+    # drop last two elements from sequence "...GG" and duplicate last residues
+    protabank_df["Sequence"] = protabank_df.Sequence.str[0:-4]
+    # measurements as used in DeepSequence paper
     deep_seq_df = pd.read_csv("./data/ubq/RL401_Bolon2013.csv", delimiter=";")
     deep_seq_df = deep_seq_df[["mutant", "selection_coefficient"]].dropna()
     test_df = deep_seq_df.merge(protabank_df[["Description", "Data", "Sequence"]], 
@@ -104,7 +112,7 @@ if __name__ == "__main__":
     parser.add_argument("-v", "--verbose", action='store_true', help="Verbosity boolean.")
     parser.add_argument("--seed", type=int, default=42, help="Random Seed for reproducability.")
     parser.add_argument("-e", "--epochs", type=int, default=200, help="Training epochs.")
-    parser.add_argument("--latent_dim", type=int, default=55, help="Dimensionality of hidden latent random variable.")
+    parser.add_argument("--latent_dim", type=int, default=2, help="Dimensionality of hidden latent random variable.")
     parser.add_argument("-s", "--save", type=str, help="Destination for models output.")
     parser.add_argument("--encoder_dim", nargs="+", type=int, default=[1700],
                         help="Hidden dimension(s) for VAE encoder module.")
@@ -119,7 +127,7 @@ if __name__ == "__main__":
     parser.add_argument("-sw", "--sequence_weighting", action="store_false", # TODO reverse action
                         help="Weighing input sequences in the training procedure.")
     parser.add_argument("-t", "--type", choices=VAE_TYPES, default="ubq", help="Type ID of MSA used to create VAE.")
-    parser.add_argument("-p", "--plot", action="store_true", help="Plot low-latent-representation outputs and feature correlation.")
+    parser.add_argument("-p", "--plot", action="store_false", help="Plot low-latent-representation outputs and feature correlation.")
     parser.add_argument("--sample_vae", action="store_true", help="Prepare in-silico sample.")
     args = parser.parse_args()  # TODO change weighting to store_true
 
@@ -129,9 +137,9 @@ if __name__ == "__main__":
     if args.type == "blat":
         family_seqs, test_seqs, test_y = parse_BLAT()
     elif args.type == "sp400":
-        family_seqs, test_seqs, test_y = parse_TLL() # TODO
+        family_seqs, test_seqs, test_y = parse_TLL()   # TODO
     elif args.type == "pga":
-        family_seqs, test_seqs, test_y = parse_PGA() # TODO
+        family_seqs, test_seqs, test_y = parse_PGA()
     elif args.type == "ubq":
         family_seqs, test_seqs, test_y = parse_UBQ()
     else:
@@ -140,7 +148,7 @@ if __name__ == "__main__":
 
     n, length = family_seqs.shape
     test_n = test_seqs.shape[0]
-    num_classes = np.unique(family_seqs).shape[0] +1  # TODO double check this.. PGA has 20 classes Error
+    num_classes = np.unique(family_seqs).shape[0] + 2  # TODO double check this.. PGA has 20 classes Error
     indices = list(range(n))
     random.shuffle(indices)
     test_size = int(args.test_split * n)

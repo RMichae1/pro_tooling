@@ -5,14 +5,15 @@ import numpy as np
 import torch
 from torch import nn
 from torch.distributions import kl_divergence
-from torch.nn.functional import nll_loss, relu
+from torch.nn.functional import nll_loss, relu, one_hot
 pyro.enable_validation()
 
 
 class Encoder(nn.Module):
-    def __init__(self, z_dim, hidden_dims, input_dims):
+    def __init__(self, z_dim, hidden_dims, input_dims, num_categories):
         super().__init__()
         self.sequence_dims = input_dims
+        self.num_classes = num_categories
         encoding_layers = []
         current_dim = input_dims
         for hidden_dim in hidden_dims:
@@ -23,10 +24,15 @@ class Encoder(nn.Module):
         self.mean = nn.Linear(current_dim, z_dim)
         self.log_var = nn.Linear(current_dim, z_dim)
 
+    def convert_one_hot(self, x):
+        x = x.to(torch.int) if x.type() != torch.int else x
+        return one_hot(x, num_classes=self.num_classes).to(torch.float)
+
     def forward(self, x):
+        x = self.convert_one_hot(x) if (self.sequence_dims > len(x) and max(np.unique(x))) > 1 else x
         x = x.reshape(-1, self.sequence_dims)
         z_loc = self.mean(self.encoding_nn(x))
-        z_scale = torch.exp(self.log_var(self.encoding_nn(x))) # TODO multiply with 0.5?
+        z_scale = torch.exp(self.log_var(self.encoding_nn(x)))  # TODO multiply with 0.5?
         return z_loc, z_scale
 
 
@@ -62,9 +68,9 @@ class VAE(nn.Module):
         self.input_dims = input_dims
         self.num_categories = num_categories
         self.sequence_length = int(input_dims / num_categories)
-        self.encoder = Encoder(z_dim, encoder_dim, input_dims)
-        self.decoder = Decoder(z_dim, decoder_dim, input_dims=input_dims, 
-                                num_categories=num_categories, dropout=dropout)
+        self.encoder = Encoder(z_dim, encoder_dim, input_dims, num_categories=num_categories)
+        self.decoder = Decoder(z_dim, decoder_dim, input_dims=input_dims, num_categories=num_categories,
+                               dropout=dropout)
         self.mse = nn.MSELoss()
         if use_cuda:
             self.cuda()

@@ -14,11 +14,12 @@ from utility import WeightedMSADataset, parse_matlab_mutation_file
 import torch
 import torch.nn.functional as F
 
+
 class Experiment:
     """
     Wrapper Class that encapsulates experiment configurations
     """
-    def __init__(self, pdb: str, experiment_type: str, idx: int, optimization: bool, 
+    def __init__(self, pdb: str, experiment_type: str, idx: int, optimization: bool,
                 fusion: bool, reference: bool, vae_input: bool, vae_kernel: bool,
                 exp_data_filename: str, is_data_filename: str, run_id: str, **vae_params) -> None:
         self.pdb = pdb
@@ -39,7 +40,7 @@ class Experiment:
         if vae_input or vae_kernel:
             self.vae_model_FILENAME = f"./models/VAE_t{experiment_type}_z55_h[1700, 1200]_e200_d0.065_wTrue.pt"
             self.vae = self.prepare_vae(experiment_type, vae_params)
-        self.protein = ProteinCollection(self.contact_map, pdb_ID=pdb, 
+        self.protein = ProteinCollection(self.contact_map, pdb_ID=pdb,
                             mutations_exp=self.experimental_data, vae=self.vae, TESTING=False)
         self.in_silico_data = self.prepare_in_silico_data() if self.fusion else {}
         self.X_wt, self.X_exp, self.X_is, self.y_wt, self.ΔΔg_exp, self.ΔΔg_is_scaled, self.scaler_σ, self.max_y, self.mean_y = self.init_experiment_run()
@@ -88,7 +89,7 @@ class Experiment:
                 pickle.dump(is_mutation_dict, filehandle)
         return is_mutation_dict
 
-    def prepare_vae(self, vae_type, **vae_params): 
+    def prepare_vae(self, vae_type, **vae_params):
         with open(f"./data/{vae_type.lower()}/{vae_type.upper()}_data_df.pkl", "rb") as filehandle:
             blat_df = pickle.load(filehandle)
         family_df = blat_df[blat_df.assay.isna()]
@@ -99,7 +100,7 @@ class Experiment:
                     num_classes=num_classes).flatten().float()
         vae = VAE(z_dim=vae_params["latent_dim"], encoder_dim=list(vae_params["encoder_dim"]),
                 decoder_dim=list(vae_params["decoder_dim"]),
-                input_dims=WT.shape[0], use_cuda=vae_params["cuda"], wt=WT, 
+                input_dims=WT.shape[0], use_cuda=vae_params["cuda"], wt=WT,
                 dropout=vae_params["dropout"], num_categories=num_classes)
         if os.path.exists(self.vae_model_FILENAME):
             vae.load_state_dict(torch.load(self.vae_model_FILENAME))
@@ -129,7 +130,7 @@ class Experiment:
     def load_blat_experimental_mutations_from_csv(self, save_file="./data/blat/blat_mutations.pkl"):
         blat_df = pd.read_csv(self.exp_data_filename)
         blat_df["growth"] = blat_df["2500"]
-        clipped_mutations = list(filter(lambda x: int(x[0][1:-1]) <= 263, 
+        clipped_mutations = list(filter(lambda x: int(x[0][1:-1]) <= 263,
                                         zip(blat_df.mutant, blat_df.growth)))
         # WARNING: we clip mutations at position 263 - mutations go until 286, however pdb is only 263 (A chain) long
         mutation_dict = {"1FQG": clipped_mutations}
@@ -173,8 +174,8 @@ class Experiment:
 
     def init_mgp_regression(self):
         gpr = GPRegression(protein_representation=self.protein, X_wt=self.X_wt, X_exp=self.X_exp, X_is=self.X_is,
-                        y_wt=self.y_wt, y_exp=self.ΔΔg_exp, y_is=self.ΔΔg_is_scaled, adjacencies=self.ref_adj,
-                        σ_T=self.scaler_σ, y_max=self.max_y, y_mean=self.mean_y, cached=True, fusion=self.fusion)
+                           y_wt=self.y_wt, y_exp=self.ΔΔg_exp, y_is=self.ΔΔg_is_scaled, adjacencies=self.ref_adj,
+                           σ_T=self.scaler_σ, y_max=self.max_y, y_mean=self.mean_y, cached=True, fusion=self.fusion)
         # TODO fix scaler sigma (to array of sigmas)
         return gpr
 
@@ -183,14 +184,15 @@ class Experiment:
         ref_mat_file = os.path.join(os.path.dirname(__file__), os.path.join("data/mgp/", f"{self.pdb.upper()}.mat"))
         if os.path.isfile(ref_mat_file) and load_reference_adjaciencies:
             pga_file = loadmat(ref_mat_file)
-            self.ref_adj = convert_graph_from_matlab_file(pga_file["contact_map"])  # in case precalculated contacts exist
+            self.ref_adj = convert_graph_from_matlab_file(
+                pga_file["contact_map"])  # in case precalculated contacts exist
             self.contact_map.adjacency = self.ref_adj  # propagate contactmap to all dependencies
         mut_S_exp, _, ΔΔg_exp, mut_ids_exp = parse_mutations(mutation_dict=self.experimental_data.get(self.pdb),
-                                                                    sequence=self.protein.sequence, 
-                                                                    adjacency=self.ref_adj)
+                                                             sequence=self.protein.sequence,
+                                                             adjacency=self.ref_adj)
         mut_S_is, _, ΔΔg_is, mut_ids_is = parse_mutations(mutation_dict=self.in_silico_data.get(self.pdb),
-                                                                sequence=self.protein.sequence, 
-                                                                adjacency=self.ref_adj)
+                                                          sequence=self.protein.sequence,
+                                                          adjacency=self.ref_adj)
         X_exp, X_is = convert_aa_sequence(mut_S_exp), convert_aa_sequence(mut_S_is)
         y_wt = np.array([0])[:, np.newaxis]
         X_wt = convert_aa_sequence([self.protein.sequence])
@@ -200,6 +202,8 @@ class Experiment:
                                     experimentally_observed_ΔΔg=ΔΔg_exp, TESTING=False, pdb_ID=self.pdb, cached=True, 
                                     vae=self.vae_input)
             bs_rosetta.plot_scaling()
+                                     experimentally_observed_ΔΔg=ΔΔg_exp, TESTING=False, pdb_ID=self.pdb, cached=True,
+                                     vae=self.vae_input)
         ΔΔg_is_scaled = bs_rosetta.transform(ΔΔg_is)[:, np.newaxis] if self.fusion else ΔΔg_is[:, np.newaxis]
         sigma_T = bs_rosetta.σ_T if self.fusion else torch.Tensor([0.])
         ΔΔg_exp = ΔΔg_exp[:, np.newaxis]
