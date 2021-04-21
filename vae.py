@@ -63,7 +63,8 @@ class Decoder(nn.Module):
 
 
 class VAE(nn.Module):
-    def __init__(self, z_dim, encoder_dim, decoder_dim, input_dims, wt, num_categories, use_cuda=False, dropout=0.0):
+    def __init__(self, z_dim: int, encoder_dim: list, decoder_dim: list, input_dims: int, wt: np.ndarray,
+                 num_categories: int, use_cuda: bool = False, dropout: float = 0.0):
         super().__init__()
         self.input_dims = input_dims
         self.num_categories = num_categories

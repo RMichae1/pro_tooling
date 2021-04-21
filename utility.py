@@ -393,10 +393,14 @@ def parse_alignment(a2m_filename: str, drop_lowercase=True) -> pd.DataFrame:
         else:
             seq.append(line)
     sequence.append(seq)  # add last
-    if drop_lowercase: # TODO filter lowercase
-        sequence = [''.join(x for x in s if not x.islower()) for s in sequence]
+    sequence = sequence[1:]  # eliminate first empty entry
+    wt_seq = ''.join(sequence[0])
+    uppercase_idx = [idx for idx in range(len(wt_seq)) if wt_seq[idx].isupper()]
     # convert to string and encode
-    encoded_sequence = list(map(seq2idx, map(lambda x: "".join(x), sequence[1:])))
+    encoded_sequence = list(map(seq2idx, map(lambda x: "".join(x), sequence)))
+    if drop_lowercase:
+        encoded_sequence = np.array([np.array(s) for s in encoded_sequence])
+        encoded_sequence = list(encoded_sequence[:, uppercase_idx])
     df = pd.DataFrame({"seq": encoded_sequence, "identifier": identifier})
     return df
 
@@ -409,7 +413,8 @@ def filter_alignment(a2m_filename: str, gap_code=22, wt_idx=0) -> pd.DataFrame:
     seqs = np.array([np.array(s) for s in alignment_df.seq])
     # select wildtype against which we select
     wt_sequence = seqs[wt_idx]
-    ungapped_idx = np.argwhere(wt_sequence!=gap_code).flatten()
+    # cut gaps
+    ungapped_idx = np.argwhere(wt_sequence != gap_code).flatten()
     filtered_sequences = seqs[:, ungapped_idx]
     alignment_df["seq"] = list(filtered_sequences)
     return alignment_df

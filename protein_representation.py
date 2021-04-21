@@ -23,9 +23,8 @@ class ProteinCollection:
     Class that captures protein properties Sequence, adjacecny, mutations and
     computed covariance matrices
     """
-    def __init__(self, contactmap: ContactMapper, pdb_ID: str, 
-            mutations_exp: dict={}, mutations_sim: dict={}, vae=None,
-            TESTING=False):
+    def __init__(self, contactmap: ContactMapper, pdb_ID: str, mutations_exp: dict={}, mutations_sim: dict={}, vae=None,
+                 TESTING=False):
         self.pdb_ID: str = pdb_ID
         self.contactmap = contactmap
         self.adjacency = contactmap.adjacency

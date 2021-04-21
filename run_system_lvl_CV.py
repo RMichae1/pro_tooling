@@ -6,14 +6,10 @@ import mlflow
 from contact_mapper import ContactMapper
 from utility import parse_matlab_mutation_file
 
-todos = []
-done = []
-pdbs = ["1BVC"] #, "2RN2", "4LYZ", "2LZM", "1RTB"] #,"1BVC", "1PGA", "1CSP", "1BPI", "1RGG"]
-
 EXPERIMENTAL_DATA = {"mgpf": "./data/mgp/ddg_protherm.mat",
-                    "tll": "./data/tll/lipase_variants_tll_tm_tapo_20nov2020.xlsx",
-                    "blat": "./data/blat/BLAT_ECOLX_Ranganathan2015.csv",
-                    "ubq": "./data/ubq/RL401_Bolon2013_YHUnpqbw.csv"}
+                     "tll": "./data/tll/lipase_variants_tll_tm_tapo_20nov2020.xlsx",
+                     "blat": "./data/blat/BLAT_ECOLX_Ranganathan2015.csv",
+                     "ubq": "./data/ubq/RL401_Bolon2013.csv"} # TODO add PGA
 
 IN_SILICO_DATA = {"mgpf": "./data/mgp/ddg_rosetta_single.mat",
                   "tll": "./data/tll/TLL_IS_closed_results.xlsx"}
@@ -66,8 +62,8 @@ def create_mlflow_run_pos_lvl(pdb: str, cv: str, optim: bool, ref: bool, no_fusi
     return None
 
 
-def create_mlflow_run_mut_lvl(pdb: str, cv: str, optim: bool, ref: str, no_fusion: bool=False, data: str = None,
-                              ref_contact_map: bool=False) -> None:
+def create_mlflow_run_mut_lvl(pdb: str, cv: str, optim: bool, ref: str, no_fusion: bool = False, data: str = None,
+                              ref_contact_map: bool = False) -> None:
     exp_mutations = parse_matlab_mutation_file(f"./data/mgp/ddg_protherm.mat",
                                                query="ddg_protherm").get(pdb)
     experiment_name = f"{pdb}: {cv}"
@@ -75,7 +71,7 @@ def create_mlflow_run_mut_lvl(pdb: str, cv: str, optim: bool, ref: str, no_fusio
     with mlflow.start_run(experiment_id=experiment) as run:
         exp_params = {"pdb": pdb, "cv": cv, "optimization": optim, "2σ": ref, "reference_contacts": ref_contact_map}
         mlflow.log_params(exp_params)
-        for idx in range(1, len(exp_mutations)+1): # exclude WT zero round
+        for idx in range(1, len(exp_mutations) + 1):  # exclude WT zero round
             # run position lvl no optimization
             run_sys_CV(pdb, idx, cv=cv, ref=ref, optim=optim, experiment=experiment_name, run_id=run.info.run_id,
                        no_fusion=no_fusion, data=data, verbose=True, ref_contact_map=ref_contact_map)
@@ -84,6 +80,9 @@ def create_mlflow_run_mut_lvl(pdb: str, cv: str, optim: bool, ref: str, no_fusio
 
 
 def run_MGPF() -> None:
+    todos = []
+    done = []
+    pdbs = ["1BVC"]  # , "2RN2", "4LYZ", "2LZM", "1RTB"] #,"1BVC", "1PGA", "1CSP", "1BPI", "1RGG"]
     print(f"Tracking URI: {mlflow.get_tracking_uri()}")
     for pdb in pdbs:
         # TODO rerun 1BVC position level - its overwritten with mutation level
@@ -146,21 +145,24 @@ def run_BLAT() -> None:
     # create_mlflow_run_pos_lvl(pdb="1FQG", cv="pos_lvl", optim=True, ref=False,
     #                             vae_input=True, data="blat")
     create_mlflow_run_pos_lvl(pdb="1FQG", cv="pos_lvl", optim=False, ref=False,
-                                vae_kernel=True, data="blat")
+                              vae_kernel=True, data="blat")
     create_mlflow_run_pos_lvl(pdb="1FQG", cv="pos_lvl", optim=True, ref=False,
-                                vae_kernel=True, data="blat")
+                              vae_kernel=True, data="blat")
     create_mlflow_run_pos_lvl(pdb="1FQG", cv="pos_lvl", optim=False, ref=False,
-                                vae_input=True, vae_kernel=True,
+                              vae_input=True, vae_kernel=True,
                               data="blat")
     create_mlflow_run_pos_lvl(pdb="1FQG", cv="pos_lvl", optim=True, ref=False,
-                                vae_input=True, vae_kernel=True,
+                              vae_input=True, vae_kernel=True,
                               data="blat")
 
 
 def run_UBQ() -> None:
     print(f"Tracking URI: {mlflow.get_tracking_uri()}")
-    create_mlflow_run_pos_lvl(pdb="1UBQ", cv="pos_lvl", optim=False, ref=False,
-                                vae_kernel=True, data="ubq")
+    create_mlflow_run_pos_lvl(pdb="1UBQ", cv="pos_lvl", optim=False, ref=False, no_fusion=True, data="ubq")
+    create_mlflow_run_pos_lvl(pdb="1UBQ", cv="pos_lvl", optim=True, ref=False, no_fusion=True, data="ubq")
+    create_mlflow_run_pos_lvl(pdb="1UBQ", cv="pos_lvl", optim=False, ref=False, vae_input=True, data="ubq")
+    create_mlflow_run_pos_lvl(pdb="1UBQ", cv="pos_lvl", optim=True, ref=False, vae_input=True, data="ubq")
+    create_mlflow_run_pos_lvl(pdb="1UBQ", cv="pos_lvl", optim=False, ref=False, vae_kernel=True, data="ubq")
 
 
 if __name__ == "__main__":
@@ -168,5 +170,4 @@ if __name__ == "__main__":
     # run_TLL()
     # run_MGPF()
     # run_BLAT()
-    # run_UBQ()
-    
+    run_UBQ()

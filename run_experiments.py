@@ -18,7 +18,8 @@ from mlflow.tracking import MlflowClient
 
 def run_mgpfusion_experiment_pos_lvl(experiment: Experiment, verbose=True, write=True, max_n=500) -> None:
     if verbose:
-        print(f"{experiment.pdb} - pos: {experiment.idx},  optim: {experiment.optimization}, reference: {experiment.two_sigma}")
+        print(
+            f"{experiment.pdb} - pos: {experiment.idx},  optim: {experiment.optimization}, reference: {experiment.two_sigma}")
     # TODO make mutation index an experiment property
     experimental_mutation_index = get_mutation_idx(experiment.protein.mut_ids_exp)
     # gather all mutations at that position and assign train and test indices
@@ -59,18 +60,18 @@ def run_mgpfusion_experiment_pos_lvl(experiment: Experiment, verbose=True, write
     fit_params = {'mu': f_μ.squeeze().detach().numpy(),
                   'cov': cov.squeeze().detach().numpy(),
                   'y_exp': (experiment.gpr.y_test.detach().numpy() * experiment.gpr.y_max) + experiment.gpr.y_mean
-                  } # TODO make this part of the experiment wrapper
+                  }  # TODO make this part of the experiment wrapper
     client = MlflowClient()
     run = client.get_run(experiment.run_id)
     print(run.info.run_id)
     spearman_r, spearman_p = spearmanr(fit_params.get('mu'), fit_params.get("y_exp"))
     mse = mean_squared_error(np.atleast_1d(fit_params.get('mu')), np.atleast_1d(fit_params.get("y_exp")))
-    client.log_metric(run_id=run.info.run_id, key="spearman r", 
-                    value=spearman_r, step=experiment.idx)
-    client.log_metric(run_id=run.info.run_id, key="spearman p", 
-                    value=spearman_p, step=experiment.idx)
-    client.log_metric(run_id=run.info.run_id, key="mse", value=mse, 
-                    step=experiment.idx)
+    client.log_metric(run_id=run.info.run_id, key="spearman r",
+                      value=spearman_r, step=experiment.idx)
+    client.log_metric(run_id=run.info.run_id, key="spearman p",
+                      value=spearman_p, step=experiment.idx)
+    client.log_metric(run_id=run.info.run_id, key="mse", value=mse,
+                      step=experiment.idx)
     filename = f"./output/{experiment.pdb}_pos_lvl_opt_{experiment.optimization}_ref_{experiment.two_sigma}_{experiment.idx}.pkl"
     if write and bool(opt_params):
         data_dict = {**opt_params, **fit_params, "idx": experiment.idx, "n_mut": n_mutations}
@@ -86,7 +87,8 @@ def run_mgpfusion_experiment_mut_lvl(experiment: Experiment, verbose=False, writ
     Runs Loo CV routine on experiment
     """
     if verbose:
-        print(f"{experiment.pdb} - pos: {experiment.idx},  optim: {experiment.optimization}, reference: {experiment.two_sigma}")
+        print(
+            f"{experiment.pdb} - pos: {experiment.idx},  optim: {experiment.optimization}, reference: {experiment.two_sigma}")
     # get all experimental mutations incl WT
     if experiment.idx == 0:  # exclude WT from CV
         print("WT excluded from LOO")
@@ -94,7 +96,8 @@ def run_mgpfusion_experiment_mut_lvl(experiment: Experiment, verbose=False, writ
     # set train and testing indices
     experiment.gpr.set_train_index(np.delete(np.arange(0, experiment.gpr.X.shape[0]), experiment.idx))
     experiment.gpr.set_test_index(np.array([experiment.idx]))
-    n_mutations = experiment.gpr.protein.mutation_ids[experiment.idx].count(")")  # get mutations by closing brackets on tuple
+    n_mutations = experiment.gpr.protein.mutation_ids[experiment.idx].count(
+        ")")  # get mutations by closing brackets on tuple
     nll_init = experiment.gpr.neg_ll()
     if experiment.optimization:
         try:
@@ -175,12 +178,12 @@ def run_pos_lvl_CV_no_fusion(experiment: Experiment, write: bool = True) -> dict
     print(run.info.run_id)
     spearman_r, spearman_p = spearmanr(fit_params.get('mu'), fit_params.get("y_exp"))
     mse = mean_squared_error(np.atleast_1d(fit_params.get('mu')), np.atleast_1d(fit_params.get("y_exp")))
-    client.log_metric(run_id=run.info.run_id, key="spearman r", 
-                    value=spearman_r, step=experiment.idx)
-    client.log_metric(run_id=run.info.run_id, key="spearman p", 
-                    value=spearman_p, step=experiment.idx)
-    client.log_metric(run_id=run.info.run_id, key="mse", 
-                    value=mse, step=experiment.idx)
+    client.log_metric(run_id=run.info.run_id, key="spearman r",
+                      value=spearman_r, step=experiment.idx)
+    client.log_metric(run_id=run.info.run_id, key="spearman p",
+                      value=spearman_p, step=experiment.idx)
+    client.log_metric(run_id=run.info.run_id, key="mse",
+                      value=mse, step=experiment.idx)
     results = {"optimization": optimization_params,
                "regression": fit_params,
                "mutations": mutations,
@@ -196,7 +199,7 @@ def run_pos_lvl_CV_no_fusion(experiment: Experiment, write: bool = True) -> dict
 
 if __name__ == "__main__":
     cv_options = ["pos_lvl", "mut_lvl"]
-    data_options = ["tll", "blat", "mgpf"]
+    data_options = ["tll", "blat", "mgpf", "ubq", "pga"]
     parser = argparse.ArgumentParser(description="Experiment Module - run specific Regression calls.")
     parser.add_argument("-p", "--pdb", type=str, help="Identifier string of pdb file")
     parser.add_argument("-i", "--idx", type=int, help="Index of CV run")
@@ -220,10 +223,11 @@ if __name__ == "__main__":
     np.random.seed(args.seed)
     torch.manual_seed(args.seed)
 
-    experiment = Experiment(pdb=args.pdb, experiment_type=args.data, idx=args.idx, optimization=args.optim, 
-                        fusion=bool(not args.no_fusion), reference=args.mode, run_id=args.run_id, 
-                        vae_kernel=args.vae_kernel, vae_input=args.vae_input,
-                        exp_data_filename=args.experimental_data, is_data_filename=args.simulated_data)
+    experiment = Experiment(pdb=args.pdb, experiment_type=args.data, idx=args.idx, optimization=args.optim,
+                            fusion=bool(not args.no_fusion), reference=args.mode, run_id=args.run_id,
+                            vae_kernel=args.vae_kernel, vae_input=args.vae_input,
+                            exp_data_filename=args.experimental_data, is_data_filename=args.simulated_data,
+                            latent_dim=55, encoder_dim=1700, decoder_dim=1200, cuda=False, dropout=0.065)
     if args.run == "pos_lvl" and args.no_fusion:
         run_pos_lvl_CV_no_fusion(experiment)
     elif args.run == "pos_lvl":

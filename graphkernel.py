@@ -32,7 +32,7 @@ class KernelLoader:
         assert len(self.kernels) == len(self.sub_matrices_ids)
 
     def load_sub_matrices(self, sub_matrices, sub_mat_ids, ):
-        matrices = loadmat(f"{os.path.dirname(__file__)}/data/mgp/subMats.mat").get('subMats')
+        matrices = loadmat(f"./data/mgp/subMats.mat").get('subMats')
         s_mat = []
         s_mat_id = []
         # check for provided sub_matrices in data subMat
@@ -119,7 +119,7 @@ class VaeKernel:
         """
         _x = x[:, i].copy()
         sum_p_x_not_i = np.zeros([x.shape[0], self.latent_dim])
-        for aa in self.alphabet.values():
+        for aa in self.alphabet.values():  # marginalize over all possible residues
             x[:, i] = aa
             z_loc, z_scale = self.vae.encoder(torch.Tensor(x))
             z_dist = Normal(z_loc, z_scale)

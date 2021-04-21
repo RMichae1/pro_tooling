@@ -112,7 +112,7 @@ if __name__ == "__main__":
     parser.add_argument("-v", "--verbose", action='store_true', help="Verbosity boolean.")
     parser.add_argument("--seed", type=int, default=42, help="Random Seed for reproducability.")
     parser.add_argument("-e", "--epochs", type=int, default=200, help="Training epochs.")
-    parser.add_argument("--latent_dim", type=int, default=2, help="Dimensionality of hidden latent random variable.")
+    parser.add_argument("--latent_dim", type=int, default=55, help="Dimensionality of hidden latent random variable.")
     parser.add_argument("-s", "--save", type=str, help="Destination for models output.")
     parser.add_argument("--encoder_dim", nargs="+", type=int, default=[1700],
                         help="Hidden dimension(s) for VAE encoder module.")
@@ -126,7 +126,7 @@ if __name__ == "__main__":
     parser.add_argument("-d", "--dropout", type=float, default=0.065, help="Add Dropout layer with dropout probability.")
     parser.add_argument("-sw", "--sequence_weighting", action="store_false", # TODO reverse action
                         help="Weighing input sequences in the training procedure.")
-    parser.add_argument("-t", "--type", choices=VAE_TYPES, default="ubq", help="Type ID of MSA used to create VAE.")
+    parser.add_argument("-t", "--type", choices=VAE_TYPES, default="blat", help="Type ID of MSA used to create VAE.")
     parser.add_argument("-p", "--plot", action="store_false", help="Plot low-latent-representation outputs and feature correlation.")
     parser.add_argument("--sample_vae", action="store_true", help="Prepare in-silico sample.")
     args = parser.parse_args()  # TODO change weighting to store_true
@@ -246,9 +246,10 @@ if __name__ == "__main__":
     print(f"Corr. (Spearman) Δ ELBO and data: {spearmanr(delta_log_p, test_y)}")
 
     if args.plot:
+        samples = [vae.latent_sample(s.flatten(), n=1).reshape(-1).detach().numpy() for s, _, _ in seq_train]
         samples = np.array(samples)
-        plt.scatter(samples[:, 0], samples[:, 1], c=log_likelihoods, alpha=0.25, s=1.5)
-        plt.title(f"VAE z={args.latent_dim} latent representation in 2D \n {args.type}")
+        plt.scatter(samples[:, 0], samples[:, 1], alpha=0.25, s=1.5)
+        plt.title(f"VAE z={args.latent_dim} latent representation of training data in 2D \n {args.type}")
         plt.savefig(f"./fig/vae_z{args.latent_dim}_2d_{args.type}.png")
         plt.show()
         
