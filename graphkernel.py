@@ -100,13 +100,14 @@ class MatrixKernel:
 
 
 class VaeKernel:
-    def __init__(self, vae, alphabet=IUPAC_SEQ2IDX, n_samples=100, block_size=1024) -> None:
+    def __init__(self, vae, alphabet=IUPAC_SEQ2IDX, n_samples=500, block_size=1024) -> None:
         self.vae = vae
         self.latent_dim = vae.z_dim
         self.alphabet = alphabet
-        self.latent_random = torch.normal(0, 1, size=(n_samples, self.latent_dim)).float()
+        self.latent_sample = torch.normal(0, 1, size=(n_samples, self.latent_dim)).float()
         # importance sampling via p(z)
-        self.importance = Normal(loc=torch.zeros(1), scale=torch.ones(1)).log_prob(self.latent_random)
+        self.p_z = Normal(loc=torch.zeros(1), scale=torch.ones(1)).log_prob(self.latent_sample)
+        self.n = n_samples
         self.block = block_size
         #   assert (self.importance.shape == [n_samples, self.latent_dim])
 
@@ -123,28 +124,16 @@ class VaeKernel:
             x[:, i] = aa
             z_loc, z_scale = self.vae.encoder(torch.Tensor(x))
             z_dist = Normal(z_loc, z_scale)
-            # TODO investigate Importance Sampling
-            # p_z_i += torch.exp(torch.sum(z_dist.log_prob(self.latent_random) - self.importance, axis=-1))
             sum_p_x_not_i += torch.exp(torch.sum(z_dist.log_prob(x), axis=-1))
         x[:, i] = _x
         return sum_p_x_not_i
 
-    def p_x(self, x: np.ndarray) -> torch.Tensor:
-        """
-        Marginal over latent representation
-        """
-        z_loc, z_scale = self.vae.encoder(x)
-        z_dist = Normal(z_loc, z_scale)
-        likelihood_x = torch.exp(torch.sum(z_dist.log_prob(x), axis=-1))
-        return likelihood_x
+    def p_x_i_x_not_i(self, x):
+        p_x_z = self.vae.decoder(self.latent_sample).log_prob(x)
+        q_z_x = self.vae.encoder(x).log_prob(self.latent_sample)
+        return torch.sum(1/self.n * ((p_x_z * self.p_z) / q_z_x), axis=-1))
 
-    def sequence_likelihood(self, _x, i):
-        p_x_not_i = self.p_x_not_i(_x, i)
-        p_marginal_x = self.p_x(_x)
-        p_z = self.importance
-        return 1 / p_x_not_i * ((p_marginal_x * p_z) / p_marginal_x)
-
-    def k_vec(self, x, i) -> torch.Tensor:
+    def k_vec(self, x) -> torch.Tensor:
         """
         block-wise computation of k-vector
         """
@@ -153,7 +142,7 @@ class VaeKernel:
             p = n * self.block
             q = min(p + self.block, x.shape[0])
             _x = x.numpy()[p:q, :]
-            k_x[p:q] = self.sequence_likelihood(_x, i)
+            k_x[p:q] = self.p_x_i_x_not_i(_x)
         return torch.Tensor(k_x)
 
     def k(self, x_p, x_q=None, adjacencies: List[tuple] = None) -> torch.Tensor:
@@ -166,14 +155,15 @@ class VaeKernel:
         for idx, neighbors in neighborhood_iterator:
             temp_k.fill(0.)
             for n in neighbors:
-                k_x_p = self.k_vec(x_p, n)
-                k_x_q = k_x_p if x_q is None else self.k_vec(x_q, n)
+                k_x_p = self.k_vec(x_p)
+                k_x_q = k_x_p if x_q is None else self.k_vec(x_q)
                 assert x_p.shape[1] == x_q.shape[1]
-                temp_k += torch.matmul(k_x_p, k_x_q.T)
+                temp_k += torch.sum(k_x_p, k_x_q)  # sum of log
             k_x_p = self.k_vec(x_p, idx)
             k_x_q = k_x_p if x_q is None else self.k_vec(x_q, idx)
-            temp_k *= torch.matmul(k_x_p, k_x_q.T)
+            temp_k *= torch.sum(k_x_p, k_x_q) 
             k += temp_k
+            # TODO normalize by -log(p(x))-log(p(y))
         norm = np.sqrt(np.diag(k))[:, np.newaxis]
         k_hat = k / norm.dot(norm.T)
         return torch.Tensor(k_hat).type(torch.float64)
