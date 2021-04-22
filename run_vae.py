@@ -16,6 +16,7 @@ from utility import parse_mutations, parse_alignment, filter_alignment
 from utility import convert_aa_sequence
 from protein_representation import ProteinCollection
 from contact_mapper import ContactMapper
+from graphkernel import VaeKernel
 import torch
 import torch.nn.functional as F
 from tqdm import tqdm
@@ -89,7 +90,7 @@ def parse_UBQ():
     # drop SD values
     protabank_df = protabank_df[~protabank_df["Assay/Protocol"].str.contains("SD ")]
     # drop last two elements from sequence "...GG" and duplicate last residues
-    protabank_df["Sequence"] = protabank_df.Sequence.str[0:-4]
+    protabank_df["Sequence"] = protabank_df.Sequence
     # measurements as used in DeepSequence paper
     deep_seq_df = pd.read_csv("./data/ubq/RL401_Bolon2013.csv", delimiter=";")
     deep_seq_df = deep_seq_df[["mutant", "selection_coefficient"]].dropna()
@@ -112,7 +113,7 @@ if __name__ == "__main__":
     parser.add_argument("-v", "--verbose", action='store_true', help="Verbosity boolean.")
     parser.add_argument("--seed", type=int, default=42, help="Random Seed for reproducability.")
     parser.add_argument("-e", "--epochs", type=int, default=200, help="Training epochs.")
-    parser.add_argument("--latent_dim", type=int, default=55, help="Dimensionality of hidden latent random variable.")
+    parser.add_argument("--latent_dim", type=int, default=2, help="Dimensionality of hidden latent random variable.")
     parser.add_argument("-s", "--save", type=str, help="Destination for models output.")
     parser.add_argument("--encoder_dim", nargs="+", type=int, default=[1700],
                         help="Hidden dimension(s) for VAE encoder module.")
@@ -126,7 +127,7 @@ if __name__ == "__main__":
     parser.add_argument("-d", "--dropout", type=float, default=0.065, help="Add Dropout layer with dropout probability.")
     parser.add_argument("-sw", "--sequence_weighting", action="store_false", # TODO reverse action
                         help="Weighing input sequences in the training procedure.")
-    parser.add_argument("-t", "--type", choices=VAE_TYPES, default="blat", help="Type ID of MSA used to create VAE.")
+    parser.add_argument("-t", "--type", choices=VAE_TYPES, default="ubq", help="Type ID of MSA used to create VAE.")
     parser.add_argument("-p", "--plot", action="store_false", help="Plot low-latent-representation outputs and feature correlation.")
     parser.add_argument("--sample_vae", action="store_true", help="Prepare in-silico sample.")
     args = parser.parse_args()  # TODO change weighting to store_true
@@ -244,6 +245,12 @@ if __name__ == "__main__":
 
     delta_log_p = np.array([(l - wt_log_prob) for l in log_likelihoods], dtype=float)
     print(f"Corr. (Spearman) Δ ELBO and data: {spearmanr(delta_log_p, test_y)}")
+
+    ## TEST KERNEL
+    contact_map = ContactMapper(pdb_file=f"./pdb/1ubq.pdb", tri_dist=True)
+    ref_adj = contact_map.adjacency
+    v_k = VaeKernel(vae)
+    print(v_k.k(family_seqs, adjacencies=ref_adj))
 
     if args.plot:
         samples = [vae.latent_sample(s.flatten(), n=1).reshape(-1).detach().numpy() for s, _, _ in seq_train]

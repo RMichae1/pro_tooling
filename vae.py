@@ -5,7 +5,8 @@ import numpy as np
 import torch
 from torch import nn
 from torch.distributions import kl_divergence
-from torch.nn.functional import nll_loss, relu, one_hot
+from torch.nn.functional import nll_loss, relu
+
 pyro.enable_validation()
 
 
@@ -24,12 +25,7 @@ class Encoder(nn.Module):
         self.mean = nn.Linear(current_dim, z_dim)
         self.log_var = nn.Linear(current_dim, z_dim)
 
-    def convert_one_hot(self, x):
-        x = x.to(torch.int) if x.type() != torch.int else x
-        return one_hot(x, num_classes=self.num_classes).to(torch.float)
-
     def forward(self, x):
-        x = self.convert_one_hot(x) if (self.sequence_dims > len(x) and max(np.unique(x))) > 1 else x
         x = x.reshape(-1, self.sequence_dims)
         z_loc = self.mean(self.encoding_nn(x))
         z_scale = torch.exp(self.log_var(self.encoding_nn(x)))  # TODO multiply with 0.5?
@@ -106,14 +102,15 @@ class VAE(nn.Module):
         reconstruction = self.representation(z_dist)
         return reconstruction
 
-    def log_p(self, x): 
+    def log_p(self, x):
         z_loc, z_scale = self.encoder(x)
         z_dist = dist.Normal(z_loc, z_scale)
         kld = self.kld_loss(z_dist)
         reconstruction = self.decoder(z_dist.loc)
         # nll loss input requires: (batch, categories, data)
-        log_p = nll_loss(reconstruction.permute(0, 2, 1), 
-                            x.view(self.sequence_length, self.num_categories).argmax(-1)[np.newaxis, :], reduction="none").mul(-1).sum(1)
+        log_p = nll_loss(reconstruction.permute(0, 2, 1),
+                         x.view(self.sequence_length, self.num_categories).argmax(-1)[np.newaxis, :],
+                         reduction="none").mul(-1).sum(1)
         # log_p = dist.Categorical(self.decoder(z_dist.loc).exp()).log_prob(x.argmax(-1)).sum(1) 
         elbo = log_p + kld
         return elbo, log_p, kld
@@ -159,4 +156,3 @@ def evaluate(svi, test_loader, use_cuda=False):
         test_loss += svi.evaluate_loss(x)
     total_epoch_loss_train = test_loss / len(test_loader.dataset)
     return total_epoch_loss_train
-
