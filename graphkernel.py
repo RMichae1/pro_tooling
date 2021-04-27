@@ -164,13 +164,12 @@ class VaeKernel:
         for idx, neighbors in neighborhood_iterator:
             temp_k.fill(0.)
             for n in neighbors:
-                k_x_p = self.k_vec(x_p, n)
-                k_x_q = self.k_vec(x_q, n)
-                assert x_p.shape[1] == x_q.shape[1]
-                temp_k += (k_x_p - log_p_x[:, n]) + (k_x_q - log_p_y[:, n])  # subtract ll for normalization
-            k_x_p = self.k_vec(x_p, idx)
-            k_x_q = self.k_vec(x_q, idx)
-            temp_k *= (k_x_p - log_p_x[:, idx]) + (k_x_q - log_p_y[:, idx])
+                # subtract log-p for normalization
+                #temp_k += (self.k_vec(x_p, n) - log_p_x[:, n][:, np.newaxis]) + (self.k_vec(x_q, n) - log_p_y[:, n][:, np.newaxis])
+                temp_k += np.matmul(self.k_vec(x_p, n), self.k_vec(x_q, n).T) / np.matmul(np.exp(log_p_x[:, n])[:, np.newaxis], np.exp(log_p_y[:, n])[:, np.newaxis].T)
+            #temp_k *= (self.k_vec(x_p, idx) - log_p_x[:, idx]) + (self.k_vec(x_q, idx) - log_p_y[:, idx])
+            temp_k *= np.matmul(self.k_vec(x_p, idx), self.k_vec(x_q, idx).T) / np.matmul(
+                np.exp(log_p_x[:, idx])[:, np.newaxis], np.exp(log_p_y[:, idx])[:, np.newaxis].T)
             k += temp_k
         norm = np.sqrt(np.diag(k))
         k_hat = k / norm.dot(norm.T)
