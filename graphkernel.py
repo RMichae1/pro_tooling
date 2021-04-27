@@ -145,6 +145,7 @@ class VaeKernel:
         return z_dist
 
     def k(self, x_p, x_q=None, adjacencies: List[tuple] = None) -> torch.Tensor:
+        # torch no-grad
         x_p = torch.Tensor(x_p)
         N = x_p.shape[0]
         self.n = N
@@ -157,12 +158,14 @@ class VaeKernel:
         neighborhoods = np.array([contact for _, contact in adjacencies]) if isinstance(adjacencies[0], tuple) \
             else adjacencies
         neighborhood_iterator = tqdm(enumerate(neighborhoods))
+        temp_k = torch.zeros([N, N])
+        # TODO allocate temporary vector 
         for idx, neighbors in neighborhood_iterator:
-            temp_k = torch.zeros([N, N])
+            temp_k.fill_(0.)
             for n in neighbors:
                 k_x_p = self.k_vec(x_p, n)
                 k_x_q = self.k_vec(x_q, n)
-                assert x_p.shape[1] == x_q.shape[1]
+                assert x_p.shape[1] == x_q.shape[1] # TODO inspect normalization with log_p!!
                 temp_k += (k_x_p - log_p_x[:, n]) + (k_x_q - log_p_y[:, n])  # sum of log normalization by minus ll
             k_x_p = self.k_vec(x_p, idx)
             k_x_q = self.k_vec(x_q, idx)
