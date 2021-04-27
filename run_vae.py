@@ -28,6 +28,7 @@ import seaborn as sns
 import matplotlib.pyplot as plt
 import random
 from reference_alphabet import seq2idx
+from utility import derive_elements_matrix
 
 import os
 
@@ -250,7 +251,15 @@ if __name__ == "__main__":
     contact_map = ContactMapper(pdb_file=f"./pdb/1ubq.pdb", tri_dist=True)
     ref_adj = contact_map.adjacency
     v_k = VaeKernel(vae)
-    print(v_k.k(family_seqs, adjacencies=ref_adj))
+    s_vae_val_fam = v_k.k(family_seqs[:100, :], adjacencies=ref_adj)
+    s_vae_val_test = v_k.k(test_seqs[:100, :], adjacencies=ref_adj)
+    fig, ax = plt.subplots(1, 2)
+    sns.heatmap(s_vae_val_fam.detach().numpy(), ax=ax[0])
+    sns.heatmap(s_vae_val_test.detach().numpy(), ax=ax[1])
+    plt.suptitle("Kernel Values UBQ")
+    ax[0].set_title("MSA Sequences")
+    ax[1].set_title("SSL Sequences")
+    plt.show()
 
     if args.plot:
         samples = [vae.latent_sample(s.flatten(), n=1).reshape(-1).detach().numpy() for s, _, _ in seq_train]
