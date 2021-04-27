@@ -107,8 +107,10 @@ class VaeKernel:
         self.latent_dim = vae.z_dim
         self.alphabet = alphabet
         self.sample_size = sample_size
-        self.n = block_size
+        self.n = None
         self.block = block_size
+        self.latent_sample = torch.normal(0, 1, size=(sample_size, self.latent_dim)).float()
+        self.p_z = Normal(loc=torch.zeros(1), scale=torch.ones(1)).log_prob(self.latent_sample).sum(1)
         #   assert (self.importance.shape == [n_samples, self.latent_dim])
 
     def convert_one_hot(self, x):
@@ -116,14 +118,13 @@ class VaeKernel:
         return one_hot(x, num_classes=self.vae.num_categories).to(torch.float)
 
     def likelihood(self, x, i):
-        latent_sample = torch.normal(0, 1, size=(x.shape[0], self.latent_dim)).float()
-        p_z = Normal(loc=torch.zeros(1), scale=torch.ones(1)).log_prob(latent_sample).sum(1)
+        N = x.shape[0]
         oh_x = self.convert_one_hot(x)
         z_x_loc, z_x_scale = self.vae.encoder(oh_x)
-        q_z_x = Normal(z_x_loc, z_x_scale).log_prob(latent_sample).sum(1)
-        p_x_z = Categorical(self.vae.decoder(latent_sample).exp()).log_prob(torch.Tensor(x))
+        q_z_x = Normal(z_x_loc, z_x_scale).log_prob(self.latent_sample[:N]).sum(1)
+        p_x_z = Categorical(self.vae.decoder(self.latent_sample[:N]).exp()).log_prob(torch.Tensor(x))
         p_x_z_not_i = p_x_z[:, :i].sum(-1) + p_x_z[:, (i+1):].sum(-1)
-        p_x_i_x_not_i = (1/self.n) * torch.sum(p_x_z[:, i] * (p_x_z_not_i * p_z) / q_z_x, axis=-1)
+        p_x_i_x_not_i = (1/self.n) * torch.sum(p_x_z[:, i] * (p_x_z_not_i * self.p_z[:N]) / q_z_x, axis=-1)
         return p_x_i_x_not_i
 
     def k_vec(self, x, i) -> torch.Tensor:
@@ -146,6 +147,7 @@ class VaeKernel:
     def k(self, x_p, x_q=None, adjacencies: List[tuple] = None) -> torch.Tensor:
         x_p = torch.Tensor(x_p)
         N = x_p.shape[0]
+        self.n = N
         k = torch.zeros([N, N])
         x_q = x_p if x_q is None else torch.Tensor(x_q)
         z_x_dist = self.compute_encoder_dist(x_p)
@@ -166,6 +168,6 @@ class VaeKernel:
             k_x_q = self.k_vec(x_q, idx)
             temp_k *= (k_x_p - log_p_x[:, idx]) + (k_x_q - log_p_y[:, idx])
             k += temp_k
-        norm = np.sqrt(np.diag(k))[:, np.newaxis]
-        k_hat = k / norm.dot(norm.T)
-        return torch.Tensor(k_hat).type(torch.float64)
+        norm = torch.sqrt(torch.diag(k))
+        k_hat = torch.abs(k) / norm.dot(norm.T)
+        return k_hat.to(torch.float64)
