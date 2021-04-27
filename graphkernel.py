@@ -102,7 +102,7 @@ class MatrixKernel:
 
 
 class VaeKernel:
-    def __init__(self, vae, alphabet=IUPAC_SEQ2IDX, sample_size=1024, block_size=1024) -> None:
+    def __init__(self, vae, alphabet=IUPAC_SEQ2IDX, sample_size=10000, block_size=1024) -> None:
         self.vae = vae
         self.latent_dim = vae.z_dim
         self.alphabet = alphabet
@@ -111,27 +111,27 @@ class VaeKernel:
         self.block = block_size
         self.latent_sample = torch.normal(0, 1, size=(sample_size, self.latent_dim)).float()
         self.p_z = Normal(loc=torch.zeros(1), scale=torch.ones(1)).log_prob(self.latent_sample).sum(1)
-        #   assert (self.importance.shape == [n_samples, self.latent_dim])
 
     def convert_one_hot(self, x):
         x = torch.Tensor(x).to(torch.int64)
         return one_hot(x, num_classes=self.vae.num_categories).to(torch.float)
 
-    def likelihood(self, x, i):
+    @torch.no_grad()
+    def likelihood(self, x, i) -> np.array:
         N = x.shape[0]
         oh_x = self.convert_one_hot(x)
         z_x_loc, z_x_scale = self.vae.encoder(oh_x)
         q_z_x = Normal(z_x_loc, z_x_scale).log_prob(self.latent_sample[:N]).sum(1)
         p_x_z = Categorical(self.vae.decoder(self.latent_sample[:N]).exp()).log_prob(torch.Tensor(x))
         p_x_z_not_i = p_x_z[:, :i].sum(-1) + p_x_z[:, (i+1):].sum(-1)
-        p_x_i_x_not_i = (1/self.n) * torch.sum(p_x_z[:, i] * (p_x_z_not_i * self.p_z[:N]) / q_z_x, axis=-1)
-        return p_x_i_x_not_i
+        p_x_i_x_not_i = (1/self.n) * p_x_z[:, i] * (p_x_z_not_i * self.p_z[:N]) / q_z_x
+        return np.array(p_x_i_x_not_i)[:, np.newaxis]
 
-    def k_vec(self, x, i) -> torch.Tensor:
+    def k_vec(self, x, i) -> np.array:
         """
         block-wise computation of k-vector
         """
-        k_x = torch.zeros([x.shape[0], 1])
+        k_x = np.zeros([x.shape[0], 1])
         for n in range(0, int(np.ceil(x.shape[0] / self.block))):
             p = n * self.block
             q = min(p + self.block, x.shape[0])
@@ -144,33 +144,34 @@ class VaeKernel:
         z_dist = Normal(z_loc, z_scale)
         return z_dist
 
+    @torch.no_grad()
     def k(self, x_p, x_q=None, adjacencies: List[tuple] = None) -> torch.Tensor:
         # torch no-grad
-        x_p = torch.Tensor(x_p)
+        x_p = np.array(x_p)
         N = x_p.shape[0]
         self.n = N
-        k = torch.zeros([N, N])
-        x_q = x_p if x_q is None else torch.Tensor(x_q)
+        k = np.zeros([N, N])
+        x_q = x_p if x_q is None else x_q
         z_x_dist = self.compute_encoder_dist(x_p)
         z_y_dist = self.compute_encoder_dist(x_q)
-        log_p_x = Categorical(self.vae.decoder(z_x_dist.loc).exp()).log_prob(x_p)  # compute x likelihoods
-        log_p_y = Categorical(self.vae.decoder(z_y_dist.loc).exp()).log_prob(x_q)
+        # compute x and y likelihoods
+        log_p_x = Categorical(self.vae.decoder(z_x_dist.loc).exp()).log_prob(torch.Tensor(x_p)).detach().numpy()
+        log_p_y = Categorical(self.vae.decoder(z_y_dist.loc).exp()).log_prob(torch.Tensor(x_q)).detach().numpy()
         neighborhoods = np.array([contact for _, contact in adjacencies]) if isinstance(adjacencies[0], tuple) \
             else adjacencies
         neighborhood_iterator = tqdm(enumerate(neighborhoods))
-        temp_k = torch.zeros([N, N])
-        # TODO allocate temporary vector 
+        temp_k = np.zeros([N, N])
         for idx, neighbors in neighborhood_iterator:
-            temp_k.fill_(0.)
+            temp_k.fill(0.)
             for n in neighbors:
                 k_x_p = self.k_vec(x_p, n)
                 k_x_q = self.k_vec(x_q, n)
-                assert x_p.shape[1] == x_q.shape[1] # TODO inspect normalization with log_p!!
-                temp_k += (k_x_p - log_p_x[:, n]) + (k_x_q - log_p_y[:, n])  # sum of log normalization by minus ll
+                assert x_p.shape[1] == x_q.shape[1]
+                temp_k += (k_x_p - log_p_x[:, n]) + (k_x_q - log_p_y[:, n])  # subtract ll for normalization
             k_x_p = self.k_vec(x_p, idx)
             k_x_q = self.k_vec(x_q, idx)
             temp_k *= (k_x_p - log_p_x[:, idx]) + (k_x_q - log_p_y[:, idx])
             k += temp_k
-        norm = torch.sqrt(torch.diag(k))
-        k_hat = torch.abs(k) / norm.dot(norm.T)
-        return k_hat.to(torch.float64)
+        norm = np.sqrt(np.diag(k))
+        k_hat = k / norm.dot(norm.T)
+        return torch.Tensor(k_hat).to(torch.float64)
