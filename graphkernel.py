@@ -107,10 +107,9 @@ class VaeKernel:
         self.latent_dim = vae.z_dim
         self.alphabet = alphabet
         self.sample_size = sample_size
-        self.n = None
         self.block = block_size
         self.latent_sample = torch.normal(0, 1, size=(sample_size, self.latent_dim)).float()
-        self.p_z = Normal(loc=torch.zeros(1), scale=torch.ones(1)).log_prob(self.latent_sample).sum(1)
+        self.p_z = Normal(loc=torch.zeros(1), scale=torch.ones(1)).log_prob(self.latent_sample).sum(1).exp()
 
     def convert_one_hot(self, x):
         x = torch.Tensor(x).to(torch.int64)
@@ -121,10 +120,11 @@ class VaeKernel:
         N = x.shape[0]
         oh_x = self.convert_one_hot(x)
         z_x_loc, z_x_scale = self.vae.encoder(oh_x)
-        q_z_x = Normal(z_x_loc, z_x_scale).log_prob(self.latent_sample[:N]).sum(1)
-        p_x_z = Categorical(self.vae.decoder(self.latent_sample[:N]).exp()).log_prob(torch.Tensor(x))
-        p_x_z_not_i = p_x_z[:, :i].sum(-1) + p_x_z[:, (i+1):].sum(-1)
-        p_x_i_x_not_i = (1/self.n) * p_x_z[:, i] * (p_x_z_not_i * self.p_z[:N]) / q_z_x
+        z = z_x_loc + self.latent_sample * torch.sqrt(z_x_scale)
+        q_z_x = Normal(z_x_loc, z_x_scale).log_prob(z).sum(1).exp()
+        p_x_z = Categorical(self.vae.decoder(z).exp()).log_prob(torch.Tensor(x))
+        p_x_z_not_i = p_x_z[:, :i].sum(-1).exp() + p_x_z[:, (i+1):].sum(-1).exp() # TODO extract this and sum out of scope
+        p_x_i_x_not_i = (1/self.sample_size) * p_x_z[:, i] * (p_x_z_not_i * self.p_z) / q_z_x
         return np.array(p_x_i_x_not_i)[:, np.newaxis]
 
     def k_vec(self, x, i) -> np.array:
@@ -149,14 +149,13 @@ class VaeKernel:
         # torch no-grad
         x_p = np.array(x_p)
         N = x_p.shape[0]
-        self.n = N
         k = np.zeros([N, N])
         x_q = x_p if x_q is None else x_q
         z_x_dist = self.compute_encoder_dist(x_p)
         z_y_dist = self.compute_encoder_dist(x_q)
         # compute x and y likelihoods
-        log_p_x = Categorical(self.vae.decoder(z_x_dist.loc).exp()).log_prob(torch.Tensor(x_p)).detach().numpy()
-        log_p_y = Categorical(self.vae.decoder(z_y_dist.loc).exp()).log_prob(torch.Tensor(x_q)).detach().numpy()
+        p_x = Categorical(self.vae.decoder(z_x_dist.loc).exp()).log_prob(torch.Tensor(x_p)).exp().detach().numpy()
+        p_y = Categorical(self.vae.decoder(z_y_dist.loc).exp()).log_prob(torch.Tensor(x_q)).exp().detach().numpy()
         neighborhoods = np.array([contact for _, contact in adjacencies]) if isinstance(adjacencies[0], tuple) \
             else adjacencies
         neighborhood_iterator = tqdm(enumerate(neighborhoods))
@@ -165,11 +164,8 @@ class VaeKernel:
             temp_k.fill(0.)
             for n in neighbors:
                 # subtract log-p for normalization
-                #temp_k += (self.k_vec(x_p, n) - log_p_x[:, n][:, np.newaxis]) + (self.k_vec(x_q, n) - log_p_y[:, n][:, np.newaxis])
-                temp_k += np.matmul(self.k_vec(x_p, n), self.k_vec(x_q, n).T) / np.matmul(np.exp(log_p_x[:, n])[:, np.newaxis], np.exp(log_p_y[:, n])[:, np.newaxis].T)
-            #temp_k *= (self.k_vec(x_p, idx) - log_p_x[:, idx]) + (self.k_vec(x_q, idx) - log_p_y[:, idx])
-            temp_k *= np.matmul(self.k_vec(x_p, idx), self.k_vec(x_q, idx).T) / np.matmul(
-                np.exp(log_p_x[:, idx])[:, np.newaxis], np.exp(log_p_y[:, idx])[:, np.newaxis].T)
+                temp_k += np.matmul(self.k_vec(x_p, n), self.k_vec(x_q, n).T) #/ (p_x[:, n][:, np.newaxis] * p_y[:, n][:, np.newaxis])
+            temp_k *= np.matmul(self.k_vec(x_p, idx), self.k_vec(x_q, idx).T) #/ (p_x[:, idx][:, np.newaxis] * p_y[:, idx][:, np.newaxis])
             k += temp_k
         norm = np.sqrt(np.diag(k))
         k_hat = k / norm.dot(norm.T)
