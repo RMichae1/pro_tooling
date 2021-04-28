@@ -27,7 +27,12 @@ def likelihood(_vae: VAE, seq: np.array, idx: int, latent_sample: np.array) -> n
     joint_p_right_sequence = np.sum(ll_p_x_z[idx+1:][idx+1:, seq[idx+1:]])
     p_x_z_not_i = np.exp(joint_p_left_sequence + joint_p_right_sequence)
     # p(x_i==a) is exp(log_likelihood(p_x[n_sample, position, residue]))
-    p_x_i_x_not_i = (1/n_samples) * (np.exp(ll_p_x_z[idx, seq[idx]]) * p_x_z_not_i * p_z) / q_z_x
+    #p_x_i_x_not_i = (1/n_samples) * (np.exp(ll_p_x_z[idx, seq[idx]]) * p_x_z_not_i * p_z) / q_z_x
+    p_x_not_i = (1/n_samples) * (np.exp(np.sum(ll_p_x_z[idx, :])) * p_x_z_not_i * p_z) / q_z_x
+    print(np.exp(np.sum(ll_p_x_z[idx, :])))
+    print(p_x_not_i)
+    p_x_i_x_not_i = (1/p_x_not_i) * (1 / n_samples) * np.prod((np.exp(ll_p_x_z[idx, seq[idx]]) * p_z) / q_z_x)
+    print(p_x_i_x_not_i)
     return np.array(p_x_i_x_not_i)
 
 
@@ -38,8 +43,8 @@ def naive_v_K(sequences: np.ndarray, adj: np.ndarray, vae: VAE, sample_size=1) -
     latent_sample = torch.normal(0, 1, size=(sample_size, vae.z_dim)).float()
     n = sequences.shape[0]
     elements = vae.num_categories
-    K = np.zeros([elements, n, n])
-    temp_K = np.zeros([elements, n, n])
+    K = np.zeros([n, n])
+    temp_K = np.zeros([n, n])
     Ks = []
     for seq in sequences:
         for p in range(n):
@@ -48,12 +53,8 @@ def naive_v_K(sequences: np.ndarray, adj: np.ndarray, vae: VAE, sample_size=1) -
                     nbps = adj[idx]
                     temp_K.fill(0.)
                     for l in nbps:
-                        p_vals = likelihood(vae, seq, l, latent_sample)
-                        for i in range(elements):
-                            temp_K[i, p, q] += p_vals[i]
-                    p_vals = likelihood(vae, seq, idx, latent_sample)
-                    for i in range(elements):
-                        temp_K[i, p, q] *= p_vals[i]
+                        temp_K[p, q] += likelihood(vae, seq, l, latent_sample)
+                    temp_K[p, q] *= likelihood(vae, seq, idx, latent_sample)
                     K += temp_K
         print(K)
         # normalize
