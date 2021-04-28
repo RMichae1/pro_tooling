@@ -93,18 +93,20 @@ def test_vectorized_VAE_kernel():
 
 
 def test_tiny_categorical():
-    sequence = np.array([[1, 2, 1, 2, 5, 6]])
-    cat_ll = Categorical(logits=sequence).log_prob(sequence)
-    elementwise = []
-    for idx in range(sequence.shape[1]):
-        left = []
-        right = []
-        for elem in sequence[0]:
-            if elem == idx:
-                continue
-            elif elem < idx:
-                left.append(cat_ll[elem])
-            elif elem > idx:
-                right.append(cat_ll[elem])
-        one_line = np.exp(np.sum(cat_ll[0, :idx][:idx, sequence[:idx]]) + np.sum(cat_ll[0, idx+1:][idx+1:, sequence[idx+1]]))
-        assert one_line == np.sum(np.array(left))+np.sum(np.array(right))
+    cat = Categorical(torch.Tensor([0.75, 0.2, 0.05]))
+    sequences = torch.Tensor([[0, 1, 2, 1, 2, 0, 1]])
+    for s, sequence in enumerate(sequences):
+        cat_ll = cat.log_prob(sequence).detach().numpy()
+        for idx in range(len(sequence)):
+            left = []
+            right = []
+            for i, elem in enumerate(sequence):
+                if i == idx:
+                    continue
+                elif i < idx:
+                    left.append(cat_ll[i])
+                elif i > idx:
+                    right.append(cat_ll[i])
+            assert np.sum(np.array(left)) == np.sum(cat_ll[:idx][sequence[:idx]])
+            print(cat_ll[idx+1:])
+            assert np.sum(np.array(right)) == np.sum(cat_ll[idx+1:][sequence[idx+1:]])
