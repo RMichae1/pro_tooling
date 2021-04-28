@@ -10,6 +10,8 @@ from scipy.io import loadmat
 from protein_representation import ProteinCollection
 from contact_mapper import ContactMapper
 from utility import get_split_training_and_test_data
+import matlab
+import matlab.engine
 
 cm = ContactMapper(pdb_file="./pdb/1pga.pdb", tri_dist=True)
 mut_exp = parse_matlab_mutation_file("./data/mgp/ddg_protherm.mat", query="ddg_protherm")
@@ -21,7 +23,7 @@ m = matrices[0]
 kernel = MatrixKernel(matrix=m[0], matrix_id=None)
 
 
-def naive_K(seq: np.ndarray, adj: np.ndarray, S:np.ndarray) -> np.ndarray:
+def naive_K(seq: np.ndarray, adj: np.ndarray, S: np.ndarray) -> np.ndarray:
     """
     Kernel as described in the paper
     """
@@ -79,11 +81,13 @@ sequence_WT = list(seq_WT_str)
 
 prot = ProteinCollection(cm, pdb_ID="1PGA", mutations_exp=mut_exp, mutations_sim=mut_is)
 
+
 def test_parsed_seq_against_ref():
         """
         is reference sequence equal to own parsed sequence
         """
         assert np.all([x == y for x,y in zip(prot.sequence, sequence_WT)])
+
 
 def test_adjacency_against_ref():
         # TEST adjacencies
@@ -91,6 +95,7 @@ def test_adjacency_against_ref():
         contacts = np.array([contacts for res, contacts in cm.adjacency], dtype=object)
         assert len(ref_contact_graph) == len(contacts)
         # assert np.all([elem_ref == elem for elem_ref, elem in zip(ref_contact_graph, contacts)])
+
 
 ### PARSING MUTATIONS
 # Richard Code:
@@ -104,6 +109,7 @@ _, x_wild_type, _, X_wetlab, _, _, _, _, _, X_test, _ = get_split_training_and_t
                         "1PGA", cutoff_distance=5., p=np.arange(num_wet_lab_obs))
 _X = np.vstack([x_wild_type, X_test, X_wetlab])
 
+
 def test_mutations_consistent():
     """
     Test against gp_modeling parsing reference for experimental mutations
@@ -111,8 +117,6 @@ def test_mutations_consistent():
     assert len(X) == len(_X)
     assert np.all([x == y for x, y in zip(X, _X)])
 
-import matlab
-import matlab.engine
 
 K_script = """
 function K=mWDK(WTSeq,mutations,al,depth,normalize,S)
@@ -212,12 +216,14 @@ matlab_m = matlab.double(m[0].tolist())
 matlab_contacts = [matlab.int8(contacts.tolist()) for contacts in contact_graph_matlab]
 ref_mutations = [str(mut[0][0]) for mut in ref_file.get('mutE')]
 
+
 def test_matlab_kernel_against_naive():
     S = kernel.matrix
     S_mat = matlab.double(S.tolist())
     k_matlab = eng.kernel_script(seq_WT_str, ref_mutations, matlab_contacts, 1, True, S_mat)
     k_ref = naive_K(X, ref_contact_graph, S)
     np.testing.assert_almost_equal(k_matlab, k_ref)
+
 
 def test_normalized_kernel():
     """
