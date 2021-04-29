@@ -99,9 +99,9 @@ def likelihood(_vae: VAE, seq: np.array, idx: int, latent_sample: np.array) -> n
     normalization_array = build_normalization(seq=seq, idx=idx, cat=Categorical(_vae.decoder(z).exp()),
                                               p_x_z_not_i=p_x_z_not_i, p_z=p_z, q_z_x=q_z_x)
     normalization_C = np.mean(normalization_array)
-    p_x_i_x_not_i = normalization_array[idx] * normalization_C
-    p_x_not_i = (1/n_samples) * (np.exp(np.sum(ll_p_x_z[idx, :])) * p_x_z_not_i * p_z) / q_z_x
-    p_x_i_x_not_i = (1/p_x_not_i) * (1 / n_samples) * p_x_i_x_not_i
+    p_x_i_x_not_i = (1 / n_samples) * normalization_array[idx] * normalization_C
+    # p_x_not_i = (1/n_samples) * (np.exp(np.sum(ll_p_x_z[idx, :])) * p_x_z_not_i * p_z) / q_z_x
+    # p_x_i_x_not_i = (1/p_x_not_i) * (1 / n_samples) * p_x_i_x_not_i
     return np.array(p_x_i_x_not_i)
 
 
