@@ -1,11 +1,82 @@
 import numpy as np
-from vae import VAE
 from contact_mapper import ContactMapper
 from graphkernel import VaeKernel
-from utility import parse_UBQ
+from utility import parse_UBQ, WeightedMSADataset, seq_collate
 import torch.nn.functional as F
 import torch
 from torch.distributions import Normal, Categorical
+from vae import VAE, train, evaluate
+import pyro
+from pyro.infer import SVI, JitTrace_ELBO
+from pyro.optim import Adam
+from torch.utils.data import DataLoader
+import random
+
+
+def setup_dummy_data_train_test():
+    N = 250  # number of sequences in MSA
+    L = 10  # length of the sequence
+    AA = 19  # number of amino acids
+    BATCHSIZE = 128
+    dummy_sequences = np.random.randint(0, AA, size=[N, L])
+    indices = list(range(N))
+    random.shuffle(indices)
+    test_size = int(0.1 * N)  # 10% test split
+    train_idx = indices[:(N - test_size)]
+    test_idx = indices[(N - test_size):]
+    seq_train = WeightedMSADataset(dummy_sequences[train_idx], num_classes=AA+1)
+    seq_test = WeightedMSADataset(dummy_sequences[test_idx], num_classes=AA+1)
+    train_loader = torch.utils.data.DataLoader(seq_train, batch_size=BATCHSIZE, shuffle=True, collate_fn=seq_collate)
+    test_loader = torch.utils.data.DataLoader(seq_test, batch_size=BATCHSIZE, shuffle=True, collate_fn=seq_collate)
+    return dummy_sequences, train_loader, test_loader
+
+
+def setup_dummy_VAE():
+    TRAIN_EPOCHS = 100
+    VALIDATION = 10
+    dummy_sequences, train_loader, test_loader = setup_dummy_data_train_test()
+    num_classes = np.unique(dummy_sequences).shape[0] + 1
+    WT = F.one_hot(torch.Tensor(dummy_sequences[0]).to(torch.int64), num_classes=num_classes).flatten().float()
+    vae = VAE(z_dim=2, encoder_dim=[100], decoder_dim=[100], input_dims=WT.shape[0], use_cuda=False, wt=WT,
+              dropout=0.01,
+              num_categories=num_classes)
+    optimizer = Adam({"lr": 0.001, "weight_decay": 0.000001})
+    svi = SVI(vae.model, vae.guide, optimizer, loss=JitTrace_ELBO())
+    vae.train()
+    torch.autograd.set_detect_anomaly(True)
+    for epoch in range(TRAIN_EPOCHS):
+        total_epoch_loss_train = train(svi, train_loader, False)
+        print(f"[epoch {epoch}] avrg. train loss: {total_epoch_loss_train}")
+        if epoch % VALIDATION == 0:
+            total_epoch_loss_test = evaluate(svi, test_loader, False)
+            print(f"[epoch {epoch}] avrg. test loss: {total_epoch_loss_test}")
+    vae.eval()
+    return vae
+
+
+def setup_UBQ_VAE():
+    # LOAD AND TEST VAE ON 1 UBQ SEQUENCE
+    family_seqs, test_seqs, test_y = parse_UBQ()
+    num_classes = np.unique(family_seqs).shape[0] + 2
+    WT = F.one_hot(torch.tensor(family_seqs[0], dtype=torch.int64),
+                   num_classes=num_classes).flatten().float()
+    model_FILENAME = f"/home/rimichael/pro_tooling/models/VAE_tubq_z2_h[1700, 1200]_e200_d0.065_wTrue.pt"
+    vae = VAE(z_dim=2, encoder_dim=[1700], decoder_dim=[1200], input_dims=WT.shape[0],
+              use_cuda=False, wt=WT, dropout=0.065,
+              num_categories=num_classes)
+    vae.load_state_dict(torch.load(model_FILENAME))
+    vae.eval()
+    return family_seqs, vae
+
+
+def build_normalization(seq, idx, cat, p_x_z_not_i, p_z, q_z_x, AAs=20):
+    normalization = []
+    for aa in range(AAs):
+        _seq = seq.copy()
+        _seq[:, idx] = aa
+        cat_ll_i = cat.log_prob(torch.Tensor(_seq)).detach().numpy()[:, idx]  # log likelihood of categorical at pos idx
+        normalization.append((np.exp(cat_ll_i) * p_x_z_not_i * p_z) / q_z_x)
+    return np.array(normalization)
 
 
 def likelihood(_vae: VAE, seq: np.array, idx: int, latent_sample: np.array) -> np.array:
@@ -16,23 +87,21 @@ def likelihood(_vae: VAE, seq: np.array, idx: int, latent_sample: np.array) -> n
     """
     oh_x = F.one_hot(torch.Tensor(seq).to(torch.int64), num_classes=_vae.num_categories).float()
     n_samples = latent_sample.shape[0]
-    p_z = Normal(loc=torch.zeros(1), scale=torch.ones(1)).log_prob(latent_sample).sum(1).exp().detach().numpy()
+    p_z = Normal(loc=torch.zeros(_vae.z_dim), scale=torch.ones(_vae.z_dim)).log_prob(latent_sample).sum(1).exp().detach().numpy()
     z_x_loc, z_x_scale = _vae.encoder(oh_x)
     # transform latent sample z' => z
     z = z_x_loc + torch.Tensor(latent_sample)*torch.sqrt(z_x_scale)
-    q_z_x = Normal(z_x_loc, z_x_scale).log_prob(z).sum(1).exp().detach().numpy()
-    ll_p_x_z = Categorical(_vae.decoder(z).exp()).log_prob(torch.Tensor(seq)).permute(1, 0).detach().numpy()
-    # print(ll_p_x_z[:, :idx][:, :idx, seq[:, :idx]])
-    joint_p_left_sequence = np.sum(ll_p_x_z[:idx][:idx, seq[:idx]])
-    joint_p_right_sequence = np.sum(ll_p_x_z[idx+1:][idx+1:, seq[idx+1:]])
-    p_x_z_not_i = np.exp(joint_p_left_sequence + joint_p_right_sequence)
-    # p(x_i==a) is exp(log_likelihood(p_x[n_sample, position, residue]))
-    #p_x_i_x_not_i = (1/n_samples) * (np.exp(ll_p_x_z[idx, seq[idx]]) * p_x_z_not_i * p_z) / q_z_x
+    q_z_x = Normal(z_x_loc, z_x_scale).log_prob(z).sum(-1).exp().detach().numpy()
+    ll_p_x_z = Categorical(_vae.decoder(z).exp()).log_prob(torch.Tensor(seq)).detach().numpy()
+    joint_p_left_x_not_i = np.sum(ll_p_x_z[:, :idx])  # log_prob already evaluates sequence value expressions
+    joint_p_right_x_not_i = np.sum(ll_p_x_z[:, idx+1:])
+    p_x_z_not_i = np.exp(joint_p_left_x_not_i + joint_p_right_x_not_i)
+    normalization_array = build_normalization(seq=seq, idx=idx, cat=Categorical(_vae.decoder(z).exp()),
+                                              p_x_z_not_i=p_x_z_not_i, p_z=p_z, q_z_x=q_z_x)
+    normalization_C = np.mean(normalization_array)
+    p_x_i_x_not_i = normalization_array[idx] * normalization_C
     p_x_not_i = (1/n_samples) * (np.exp(np.sum(ll_p_x_z[idx, :])) * p_x_z_not_i * p_z) / q_z_x
-    print(np.exp(np.sum(ll_p_x_z[idx, :])))
-    print(p_x_not_i)
-    p_x_i_x_not_i = (1/p_x_not_i) * (1 / n_samples) * np.prod((np.exp(ll_p_x_z[idx, seq[idx]]) * p_z) / q_z_x)
-    print(p_x_i_x_not_i)
+    p_x_i_x_not_i = (1/p_x_not_i) * (1 / n_samples) * p_x_i_x_not_i
     return np.array(p_x_i_x_not_i)
 
 
@@ -42,52 +111,47 @@ def naive_v_K(sequences: np.ndarray, adj: np.ndarray, vae: VAE, sample_size=1) -
     """
     latent_sample = torch.normal(0, 1, size=(sample_size, vae.z_dim)).float()
     n = sequences.shape[0]
-    elements = vae.num_categories
     K = np.zeros([n, n])
     temp_K = np.zeros([n, n])
-    Ks = []
-    for seq in sequences:
-        for p in range(n):
-            for q in range(n):
-                for idx in range(sequences.shape[1]):
-                    nbps = adj[idx]
-                    temp_K.fill(0.)
-                    for l in nbps:
-                        temp_K[p, q] += likelihood(vae, seq, l, latent_sample)
-                    temp_K[p, q] *= likelihood(vae, seq, idx, latent_sample)
-                    K += temp_K
-        print(K)
-        # normalize
-        for p in range(n):
-            for q in range(n):
-                if p == q:
-                    continue
-                K[p, q] /= (np.sqrt(K[p, p]) * np.sqrt(K[q, q]))
+    for p in range(n):
+        for q in range(n):
+            for idx in range(sequences.shape[1]):
+                nbps = adj[idx]
+                temp_K.fill(0.)
+                for l in nbps:
+                    temp_K[p, q] += likelihood(vae, sequences, l, latent_sample)
+                temp_K[p, q] *= likelihood(vae, sequences, idx, latent_sample)
+                K += temp_K
+    print(K)
+    # normalize
+    for p in range(n):
+        for q in range(n):
+            if p == q:
+                continue
+            K[p, q] /= (np.sqrt(K[p, p]) * np.sqrt(K[q, q]))
     # set diagonal explicitly
     # for i in range(0, n):
     #     K[i, i] = 1  # TODO validate if this is still true
-        Ks.append(K)
-    return Ks
+    return K
 
 
-# LOAD AND TEST VAE ON 1 UBQ SEQUENCE
-family_seqs, test_seqs, test_y = parse_UBQ()
-num_classes = np.unique(family_seqs).shape[0] + 2
-WT = F.one_hot(torch.tensor(family_seqs[0], dtype=torch.int64),
-               num_classes=num_classes).flatten().float()
-model_FILENAME = f"/home/rimichael/pro_tooling/models/VAE_tubq_z2_h[1700, 1200]_e200_d0.065_wTrue.pt"
-contact_map = ContactMapper(pdb_file=f"/home/rimichael/pro_tooling/pdb/1ubq.pdb", tri_dist=True)
-vae = VAE(z_dim=2, encoder_dim=[1700], decoder_dim=[1200], input_dims=WT.shape[0],
-          use_cuda=False, wt=WT, dropout=0.065,
-          num_categories=num_classes)
-vae.load_state_dict(torch.load(model_FILENAME))
-vae.eval()
+def test_naive_VAE_kernel():
+    vae = setup_dummy_VAE()
+    test_dummy_sequences, _, _ = setup_dummy_data_train_test()
+    L = test_dummy_sequences.shape[1]
+    adj = [np.random.randint(0, L, [np.random.randint(0, L)]) for _ in range(0, L)]
+    k_mat = naive_v_K(test_dummy_sequences[0][np.newaxis, :], adj, vae)
+
+    np.testing.assert_almost_equal(k_mat, np.zeros(k_mat.shape))
 
 
 def test_vectorized_VAE_kernel():
+    family_seqs, vae = setup_UBQ_VAE()
+    contact_map = ContactMapper(pdb_file=f"/home/rimichael/pro_tooling/pdb/1ubq.pdb", tri_dist=True)
+    num_classes = np.unique(family_seqs).shape[0] + 2
     sequence = family_seqs[0][np.newaxis, :]
     ref_adj = [c for elem, c in contact_map.adjacency]
-    naive_vae_val = naive_v_K(sequence, ref_adj, vae, num_classes)
+    naive_vae_val = naive_v_K(sequence, ref_adj, vae)
     v_k = VaeKernel(vae, sample_size=1)
     s_vae_val = v_k.k(sequence, adjacencies=ref_adj)
     np.testing.assert_almost_equal(s_vae_val, naive_vae_val)
