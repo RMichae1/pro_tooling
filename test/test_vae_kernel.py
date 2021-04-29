@@ -69,14 +69,14 @@ def setup_UBQ_VAE():
     return family_seqs, vae
 
 
-def build_normalization(seq, idx, cat, p_x_z_not_i, p_z, q_z_x, AAs=20):
-    normalization = []
+def build_normalization_vec(seq, idx, cat, p_x_z_not_i, p_z, q_z_x, AAs=20):
+    normalization_vec = []
     for aa in range(AAs):
         _seq = seq.copy()
         _seq[:, idx] = aa
         cat_ll_i = cat.log_prob(torch.Tensor(_seq)).detach().numpy()[:, idx]  # log likelihood of categorical at pos idx
-        normalization.append((np.exp(cat_ll_i) * p_x_z_not_i * p_z) / q_z_x)
-    return np.array(normalization)
+        normalization_vec.append((np.exp(cat_ll_i) * p_x_z_not_i * p_z) / q_z_x)
+    return np.array(normalization_vec)
 
 
 def likelihood(_vae: VAE, seq: np.array, idx: int, latent_sample: np.array) -> np.array:
@@ -96,12 +96,11 @@ def likelihood(_vae: VAE, seq: np.array, idx: int, latent_sample: np.array) -> n
     joint_p_left_x_not_i = np.sum(ll_p_x_z[:, :idx])  # log_prob already evaluates sequence value expressions
     joint_p_right_x_not_i = np.sum(ll_p_x_z[:, idx+1:])
     p_x_z_not_i = np.exp(joint_p_left_x_not_i + joint_p_right_x_not_i)
-    normalization_array = build_normalization(seq=seq, idx=idx, cat=Categorical(_vae.decoder(z).exp()),
-                                              p_x_z_not_i=p_x_z_not_i, p_z=p_z, q_z_x=q_z_x)
-    normalization_C = np.mean(normalization_array)
-    p_x_i_x_not_i = (1 / n_samples) * normalization_array[idx] * normalization_C
+    normalization_vec = build_normalization_vec(seq=seq, idx=idx, cat=Categorical(_vae.decoder(z).exp()),
+                                                p_x_z_not_i=p_x_z_not_i, p_z=p_z, q_z_x=q_z_x)
+    p_x_not_i = np.mean(normalization_vec)
     # p_x_not_i = (1/n_samples) * (np.exp(np.sum(ll_p_x_z[idx, :])) * p_x_z_not_i * p_z) / q_z_x
-    # p_x_i_x_not_i = (1/p_x_not_i) * (1 / n_samples) * p_x_i_x_not_i
+    p_x_i_x_not_i = (1/p_x_not_i) * (1 / n_samples) * np.sum((normalization_vec[idx] * normalization_vec))
     return np.array(p_x_i_x_not_i)
 
 
