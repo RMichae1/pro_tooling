@@ -107,8 +107,8 @@ def S(_vae, seq_x, seq_y, idx: int, n_samples=1):
         cat_dist_y, log_prob_y_z_i, log_prob_y_z_not_i = cat_likelihoods(_vae, seq_y, z_dist=z_y_dist, idx=idx,
                                                                          latent_sample=sample)
         y_vec.append(cat_dist_y)
-    p_x_not_i = np.exp(np.mean(x_vec))
-    p_y_not_i = np.exp(np.mean(y_vec))
+    p_x_not_i = np.exp(np.mean(np.sum(x_vec, -1)))
+    p_y_not_i = np.exp(np.mean(np.sum(y_vec, -1)))
     p_x_i_x_not_i = 1/p_x_not_i * 1/n_samples * np.exp(log_prob_x_z_i) * np.exp(log_prob_x_z_not_i) * np.exp(p_z) * 1/p_x
     p_y_i_y_not_i = 1/p_y_not_i * 1/n_samples * np.exp(log_prob_y_z_i) * np.exp(log_prob_y_z_not_i) * np.exp(p_z) * 1/p_y
     return p_x_i_x_not_i * p_y_i_y_not_i
