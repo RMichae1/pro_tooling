@@ -69,16 +69,6 @@ def setup_UBQ_VAE():
     return family_seqs, vae
 
 
-def build_ll_vec(seq, idx, cat, AAs=20):
-    normalization_vec = []
-    for aa in range(AAs):
-        _seq = seq.copy()
-        _seq[:, idx] = aa
-        cat_ll = cat.log_prob(torch.Tensor(_seq)).detach().numpy()  # log likelihood of categorical at pos idx
-        normalization_vec.append(cat_ll)
-    return np.array(normalization_vec)
-
-
 def cat_likelihoods(_vae: VAE, seq: np.array, z_dist, idx: int, latent_sample: np.array) -> np.array:
     """
     _vae is VAE object for S-computations
@@ -89,13 +79,12 @@ def cat_likelihoods(_vae: VAE, seq: np.array, z_dist, idx: int, latent_sample: n
     z_loc, z_scale = z_dist
     # transform latent sample z' => z
     z = z_loc + torch.Tensor(latent_sample)*torch.sqrt(z_scale)
-    q_z_x = Normal(z_loc, z_scale).log_prob(z).detach().numpy()
+    q_z_x = Normal(z_loc, z_scale).log_prob(z).sum(1).detach().numpy()
     cat_log_prob_p_x_z = Categorical(_vae.decoder(z).exp()).log_prob(torch.Tensor(seq)).detach().numpy()
-    cat_log_prob_left_x_not_i = np.sum(cat_log_prob_p_x_z[:, :idx] - q_z_x[:idx]/L)
-    cat_log_prob_right_x_not_i = np.sum(cat_log_prob_p_x_z[:, idx+1:] - q_z_x[idx+1:]/L)
-    log_prob_x_z_not_i = cat_log_prob_left_x_not_i + cat_log_prob_right_x_not_i - q_z_x[idx]/L
-    cat_log_prob_vec = build_ll_vec(seq=seq, idx=idx, cat=Categorical(_vae.decoder(z).exp()))
-    return cat_log_prob_vec, cat_log_prob_p_x_z[idx], log_prob_x_z_not_i
+    cat_log_prob_left_x_not_i = np.sum(cat_log_prob_p_x_z[:, :idx] - q_z_x/L)
+    cat_log_prob_right_x_not_i = np.sum(cat_log_prob_p_x_z[:, idx+1:] - q_z_x/L)
+    log_prob_x_z_not_i = cat_log_prob_left_x_not_i + cat_log_prob_right_x_not_i - q_z_x/L
+    return Categorical(_vae.decoder(z).exp()), cat_log_prob_p_x_z[idx], log_prob_x_z_not_i
 
 
 def S(_vae, seq_x, seq_y, idx: int, n_samples=1):
@@ -112,12 +101,12 @@ def S(_vae, seq_x, seq_y, idx: int, n_samples=1):
     x_vec = []
     y_vec = []
     for sample in latent_samples:
-        vec_x, log_prob_x_z_i, log_prob_x_z_not_i = cat_likelihoods(_vae, seq_x, z_dist=z_x_dist, idx=idx,
-                                                                    latent_sample=sample)
-        x_vec.append(vec_x)
-        vec_y, log_prob_y_z_i, log_prob_y_z_not_i = cat_likelihoods(_vae, seq_y, z_dist=z_y_dist, idx=idx,
-                                                                    latent_sample=sample)
-        y_vec.append(vec_y)
+        cat_dist_x, log_prob_x_z_i, log_prob_x_z_not_i = cat_likelihoods(_vae, seq_x, z_dist=z_x_dist, idx=idx,
+                                                                         latent_sample=sample)
+        x_vec.append(cat_dist_x)
+        cat_dist_y, log_prob_y_z_i, log_prob_y_z_not_i = cat_likelihoods(_vae, seq_y, z_dist=z_y_dist, idx=idx,
+                                                                         latent_sample=sample)
+        y_vec.append(cat_dist_y)
     p_x_not_i = np.exp(np.mean(x_vec))
     p_y_not_i = np.exp(np.mean(y_vec))
     p_x_i_x_not_i = 1/p_x_not_i * 1/n_samples * np.exp(log_prob_x_z_i) * np.exp(log_prob_x_z_not_i) * np.exp(p_z) * 1/p_x
