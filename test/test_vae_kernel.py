@@ -69,46 +69,66 @@ def setup_UBQ_VAE():
     return family_seqs, vae
 
 
-def build_normalization_vec(seq, idx, cat, p_x_z_not_i, p_z, q_z_x, AAs=20):
+def build_ll_vec(seq, idx, cat, AAs=20):
     normalization_vec = []
     for aa in range(AAs):
         _seq = seq.copy()
         _seq[:, idx] = aa
-        cat_ll_i = cat.log_prob(torch.Tensor(_seq)).detach().numpy()[:, idx]  # log likelihood of categorical at pos idx
-        normalization_vec.append((np.exp(cat_ll_i) * p_x_z_not_i * p_z) / q_z_x)
+        cat_ll = cat.log_prob(torch.Tensor(_seq)).detach().numpy()  # log likelihood of categorical at pos idx
+        normalization_vec.append(cat_ll)
     return np.array(normalization_vec)
 
 
-def likelihood(_vae: VAE, seq: np.array, idx: int, latent_sample: np.array) -> np.array:
+def cat_likelihoods(_vae: VAE, seq: np.array, z_dist, idx: int, latent_sample: np.array) -> np.array:
     """
     _vae is VAE object for S-computations
     seq is n_sequences x length of sequence
     idx is int position in sequence
     """
-    oh_x = F.one_hot(torch.Tensor(seq).to(torch.int64), num_classes=_vae.num_categories).float()
-    n_samples = latent_sample.shape[0]
-    p_z = Normal(loc=torch.zeros(_vae.z_dim), scale=torch.ones(_vae.z_dim)).log_prob(latent_sample).sum(1).exp().detach().numpy()
-    z_x_loc, z_x_scale = _vae.encoder(oh_x)
+    L = len(seq)
+    z_loc, z_scale = z_dist
     # transform latent sample z' => z
-    z = z_x_loc + torch.Tensor(latent_sample)*torch.sqrt(z_x_scale)
-    q_z_x = Normal(z_x_loc, z_x_scale).log_prob(z).sum(-1).exp().detach().numpy()
-    ll_p_x_z = Categorical(_vae.decoder(z).exp()).log_prob(torch.Tensor(seq)).detach().numpy()
-    joint_p_left_x_not_i = np.sum(ll_p_x_z[:, :idx])  # log_prob already evaluates sequence value expressions
-    joint_p_right_x_not_i = np.sum(ll_p_x_z[:, idx+1:])
-    p_x_z_not_i = np.exp(joint_p_left_x_not_i + joint_p_right_x_not_i)
-    normalization_vec = build_normalization_vec(seq=seq, idx=idx, cat=Categorical(_vae.decoder(z).exp()),
-                                                p_x_z_not_i=p_x_z_not_i, p_z=p_z, q_z_x=q_z_x)
-    p_x_not_i = np.mean(normalization_vec)
-    # p_x_not_i = (1/n_samples) * (np.exp(np.sum(ll_p_x_z[idx, :])) * p_x_z_not_i * p_z) / q_z_x
-    p_x_i_x_not_i = (1/p_x_not_i) * (1 / n_samples) * np.sum((normalization_vec[idx] * normalization_vec))
-    return np.array(p_x_i_x_not_i)
+    z = z_loc + torch.Tensor(latent_sample)*torch.sqrt(z_scale)
+    q_z_x = Normal(z_loc, z_scale).log_prob(z).detach().numpy()
+    cat_log_prob_p_x_z = Categorical(_vae.decoder(z).exp()).log_prob(torch.Tensor(seq)).detach().numpy()
+    cat_log_prob_left_x_not_i = np.sum(cat_log_prob_p_x_z[:, :idx] - q_z_x[:idx]/L)
+    cat_log_prob_right_x_not_i = np.sum(cat_log_prob_p_x_z[:, idx+1:] - q_z_x[idx+1:]/L)
+    log_prob_x_z_not_i = cat_log_prob_left_x_not_i + cat_log_prob_right_x_not_i - q_z_x[idx]/L
+    cat_log_prob_vec = build_ll_vec(seq=seq, idx=idx, cat=Categorical(_vae.decoder(z).exp()))
+    return cat_log_prob_vec, cat_log_prob_p_x_z[idx], log_prob_x_z_not_i
+
+
+def S(_vae, seq_x, seq_y, idx: int, n_samples=1):
+    latent_samples = torch.normal(0, 1, size=(n_samples, _vae.z_dim)).float()
+    oh_x = F.one_hot(torch.Tensor(seq_x).to(torch.int64), num_classes=_vae.num_categories).float()
+    oh_y = F.one_hot(torch.Tensor(seq_y).to(torch.int64), num_classes=_vae.num_categories).float()
+    z_x_dist = _vae.encoder(oh_x)
+    z_y_dist = _vae.encoder(oh_y)
+    # Normal(z_x_dist[0], z_x_dist[1]).loc == z_x_dist[0]
+    p_x = Categorical(_vae.decoder(z_x_dist[0]).exp()).log_prob(torch.Tensor(seq_x)).exp().detach().numpy()
+    p_y = Categorical(_vae.decoder(z_y_dist[0]).exp()).log_prob(torch.Tensor(seq_y)).exp().detach().numpy()
+    p_z = Normal(loc=torch.zeros(_vae.z_dim), scale=torch.ones(_vae.z_dim)).log_prob(latent_samples).sum(
+        1).detach().numpy()
+    x_vec = []
+    y_vec = []
+    for sample in latent_samples:
+        vec_x, log_prob_x_z_i, log_prob_x_z_not_i = cat_likelihoods(_vae, seq_x, z_dist=z_x_dist, idx=idx,
+                                                                    latent_sample=sample)
+        x_vec.append(vec_x)
+        vec_y, log_prob_y_z_i, log_prob_y_z_not_i = cat_likelihoods(_vae, seq_y, z_dist=z_y_dist, idx=idx,
+                                                                    latent_sample=sample)
+        y_vec.append(vec_y)
+    p_x_not_i = np.exp(np.mean(x_vec))
+    p_y_not_i = np.exp(np.mean(y_vec))
+    p_x_i_x_not_i = 1/p_x_not_i * 1/n_samples * np.exp(log_prob_x_z_i) * np.exp(log_prob_x_z_not_i) * np.exp(p_z) * 1/p_x
+    p_y_i_y_not_i = 1/p_y_not_i * 1/n_samples * np.exp(log_prob_y_z_i) * np.exp(log_prob_y_z_not_i) * np.exp(p_z) * 1/p_y
+    return p_x_i_x_not_i * p_y_i_y_not_i
 
 
 def naive_v_K(sequences: np.ndarray, adj: np.ndarray, vae: VAE, sample_size=1) -> np.ndarray:
     """
     Kernel as described in the paper
     """
-    latent_sample = torch.normal(0, 1, size=(sample_size, vae.z_dim)).float()
     n = sequences.shape[0]
     K = np.zeros([n, n])
     temp_K = np.zeros([n, n])
@@ -118,8 +138,8 @@ def naive_v_K(sequences: np.ndarray, adj: np.ndarray, vae: VAE, sample_size=1) -
                 nbps = adj[idx]
                 temp_K.fill(0.)
                 for l in nbps:
-                    temp_K[p, q] += likelihood(vae, sequences, l, latent_sample)
-                temp_K[p, q] *= likelihood(vae, sequences, idx, latent_sample)
+                    temp_K[p, q] += S(vae, seq_x=sequences[p], seq_y=sequences[q], idx=l)
+                temp_K[p, q] *= S(vae, seq_x=sequences[p], seq_y=sequences[q], idx=idx)
                 K += temp_K
     print(K)
     # normalize
@@ -154,23 +174,3 @@ def test_vectorized_VAE_kernel():
     v_k = VaeKernel(vae, sample_size=1)
     s_vae_val = v_k.k(sequence, adjacencies=ref_adj)
     np.testing.assert_almost_equal(s_vae_val, naive_vae_val)
-
-
-def test_tiny_categorical():
-    cat = Categorical(torch.Tensor([0.75, 0.2, 0.05]))
-    sequences = torch.Tensor([[0, 1, 2, 1, 2, 0, 1]])
-    for s, sequence in enumerate(sequences):
-        cat_ll = cat.log_prob(sequence).detach().numpy()
-        for idx in range(len(sequence)):
-            left = []
-            right = []
-            for i, elem in enumerate(sequence):
-                if i == idx:
-                    continue
-                elif i < idx:
-                    left.append(cat_ll[i])
-                elif i > idx:
-                    right.append(cat_ll[i])
-            assert np.sum(np.array(left)) == np.sum(cat_ll[:idx][sequence[:idx]])
-            print(cat_ll[idx+1:])
-            assert np.sum(np.array(right)) == np.sum(cat_ll[idx+1:][sequence[idx+1:]])
