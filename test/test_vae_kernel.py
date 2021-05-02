@@ -224,17 +224,18 @@ def test_naive_VAE_kernel():
 
 
 def test_naive_VAE_kernel_multiple_sequences():
-    k_mat = naive_v_K(test_dummy_sequences, adj, vae)
-    k_mat_stable = naive_v_K(test_dummy_sequences, adj, vae, stable=True)
-    np.testing.assert_almost_equal(k_mat, k_mat_stable)
+    k_mat = naive_v_K(test_dummy_sequences[:5], adj, vae, fixed_sample=True)
+    k_mat_stable = naive_v_K(test_dummy_sequences[:5], adj, vae, stable=True, fixed_sample=True)
+    np.testing.assert_almost_equal(k_mat, k_mat_stable, decimal=6)
 
 
 def test_naive_VAE_kernel_sampling():
     L = test_dummy_sequences.shape[1]
     adj = [np.random.randint(0, L, [np.random.randint(0, L)]) for _ in range(0, L)]
-    k_mat = naive_v_K(test_dummy_sequences[0][np.newaxis, :], adj, vae, sample_size=1, stable=True)
-    k_mat_100 = naive_v_K(test_dummy_sequences[0][np.newaxis, :], adj, vae, sample_size=100, stable=True)
-    np.testing.assert_almost_equal(k_mat, k_mat_100)
+    k_mat = naive_v_K(test_dummy_sequences[0][np.newaxis, :], adj, vae, sample_size=100, fixed_sample=True)
+    k_mat_stable = naive_v_K(test_dummy_sequences[0][np.newaxis, :], adj, vae, sample_size=100, stable=True,
+                             fixed_sample=True)
+    np.testing.assert_almost_equal(k_mat, k_mat_stable)
 
 
 def test_vectorized_VAE_kernel():
@@ -242,7 +243,7 @@ def test_vectorized_VAE_kernel():
     contact_map = ContactMapper(pdb_file=f"/home/rimichael/pro_tooling/pdb/1ubq.pdb", tri_dist=True)
     sequence = family_seqs[0][np.newaxis, :]
     ref_adj = [c for elem, c in contact_map.adjacency]
-    naive_vae_val = naive_v_K(sequence, ref_adj, vae, sample_size=1, stable=True)
-    v_k = VaeKernel(vae, sample_size=1)
+    naive_vae_val = naive_v_K(sequence, ref_adj, vae, sample_size=5, stable=True, fixed_sample=True)
+    v_k = VaeKernel(vae, sample_size=5, fixed_sample=True)
     s_vae_val = v_k.k(sequence, adjacencies=ref_adj)
     np.testing.assert_almost_equal(s_vae_val, naive_vae_val)
