@@ -88,7 +88,7 @@ def stable_likelihoods(_vae: VAE, seq: np.array, z_dist, idx: int, latent_sample
     cat_log_prob_p_x_z = Categorical(_vae.decoder(z).exp()).log_prob(torch.Tensor(seq)).detach().numpy()
     cat_log_prob_x_not_i = np.sum(cat_log_prob_p_x_z[:, :idx] - q_z_x/L) + np.sum(cat_log_prob_p_x_z[:, idx+1:] - q_z_x/L)
     # TODO: pull p(z) into normalization as well
-    p_x_i_x_not_i = cat_log_prob_p_x_z[:, idx] + cat_log_prob_x_not_i - q_z_x/L - p_z
+    p_x_i_x_not_i = cat_log_prob_p_x_z[:, idx] + cat_log_prob_x_not_i + p_z - q_z_x/L 
     return Categorical(_vae.decoder(z).exp()), p_x_i_x_not_i
 
 
