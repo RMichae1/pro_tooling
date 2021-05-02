@@ -12,6 +12,8 @@ from pyro.optim import Adam
 from torch.utils.data import DataLoader
 import random
 
+torch.manual_seed(0)
+
 
 def setup_dummy_data_train_test():
     N = 250  # number of sequences in MSA
@@ -69,8 +71,10 @@ def setup_UBQ_VAE():
     return family_seqs, vae
 
 
-def cat_likelihoods(_vae: VAE, seq: np.array, z_dist, idx: int, latent_sample: np.array) -> np.array:
+@torch.no_grad()
+def stable_likelihoods(_vae: VAE, seq: np.array, z_dist, idx: int, latent_sample: np.array) -> np.array:
     """
+    COMPUTE NUMERICALLY STABLE LIKELIHOODS
     _vae is VAE object for S-computations
     seq is n_sequences x length of sequence
     idx is int position in sequence
@@ -78,17 +82,74 @@ def cat_likelihoods(_vae: VAE, seq: np.array, z_dist, idx: int, latent_sample: n
     L = len(seq)
     z_loc, z_scale = z_dist
     # transform latent sample z' => z
-    z = z_loc + torch.Tensor(latent_sample)*torch.sqrt(z_scale)
+    z = z_loc + torch.Tensor(latent_sample) * torch.sqrt(z_scale)
+    p_z = Normal(loc=torch.zeros(_vae.z_dim), scale=torch.ones(_vae.z_dim)).log_prob(z).sum(1).detach().numpy()
     q_z_x = Normal(z_loc, z_scale).log_prob(z).sum(1).detach().numpy()
     cat_log_prob_p_x_z = Categorical(_vae.decoder(z).exp()).log_prob(torch.Tensor(seq)).detach().numpy()
-    cat_log_prob_left_x_not_i = np.sum(cat_log_prob_p_x_z[:, :idx] - q_z_x/L)
-    cat_log_prob_right_x_not_i = np.sum(cat_log_prob_p_x_z[:, idx+1:] - q_z_x/L)
-    log_prob_x_z_not_i = cat_log_prob_left_x_not_i + cat_log_prob_right_x_not_i - q_z_x/L
-    return Categorical(_vae.decoder(z).exp()), cat_log_prob_p_x_z[idx], log_prob_x_z_not_i
+    cat_log_prob_x_not_i = np.sum(cat_log_prob_p_x_z[:, :idx] - q_z_x/L) + np.sum(cat_log_prob_p_x_z[:, idx+1:] - q_z_x/L)
+    # TODO: pull p(z) into normalization as well
+    p_x_i_x_not_i = cat_log_prob_p_x_z[:, idx] + cat_log_prob_x_not_i - q_z_x/L - p_z
+    return Categorical(_vae.decoder(z).exp()), p_x_i_x_not_i
 
 
-def S(_vae, seq_x, seq_y, idx: int, n_samples=1):
+@torch.no_grad()
+def likelihoods(_vae: VAE, seq: np.array, z_dist, idx: int, latent_sample: np.array) -> np.array:
+    """
+    NAIVE LIKELIHOOD COMPUTATION:
+    "exp, ..., exp everywhere" - calculating directly with the likelihoods - NOT the log-likelihoods.
+    """
+    L = len(seq)
+    z_loc, z_scale = z_dist
+    z = z_loc + torch.Tensor(latent_sample)*torch.sqrt(z_scale)
+    p_z = Normal(loc=torch.zeros(_vae.z_dim), scale=torch.ones(_vae.z_dim)).log_prob(z).sum(1).exp().detach().numpy()
+    q_z_x = Normal(z_loc, z_scale).log_prob(z).sum(1).exp().detach().numpy()
+    cat_p = Categorical(_vae.decoder(z).exp())
+    cat_p_x_z = Categorical(_vae.decoder(z).exp()).log_prob(torch.Tensor(seq)).exp().detach().numpy()
+    cat_p_x_not_i_z = np.prod(cat_p_x_z[:, :idx]).astype(np.float64) * np.prod(cat_p_x_z[:, idx+1:]).astype(np.float64)
+    p_x_i_x_not_i = ((cat_p_x_z[:, idx] * cat_p_x_not_i_z) * p_z) / q_z_x
+    return cat_p, p_x_i_x_not_i
+
+
+@torch.no_grad()
+def S_stable(_vae, seq_x, seq_y, idx: int, n_samples=1, fixed_sample=False):
     latent_samples = torch.normal(0, 1, size=(n_samples, _vae.z_dim)).float()
+    if fixed_sample:
+        latent_samples = torch.ones((n_samples, _vae.z_dim)).float()
+    oh_x = F.one_hot(torch.Tensor(seq_x).to(torch.int64), num_classes=_vae.num_categories).float()
+    oh_y = F.one_hot(torch.Tensor(seq_y).to(torch.int64), num_classes=_vae.num_categories).float()
+    z_x_dist = _vae.encoder(oh_x)
+    z_y_dist = _vae.encoder(oh_y)
+    # Normal(z_x_dist[0], z_x_dist[1]).loc == z_x_dist[0]
+    p_x = Categorical(_vae.decoder(z_x_dist[0]).exp()).log_prob(torch.Tensor(seq_x)).detach().numpy()
+    p_y = Categorical(_vae.decoder(z_y_dist[0]).exp()).log_prob(torch.Tensor(seq_y)).detach().numpy()
+    x_vec = []
+    y_vec = []
+    ll_x_i_x_not_i_vec = []
+    ll_y_i_y_not_i_vec = []
+    for sample in latent_samples:
+        cat_dist_x, log_prob_x_i_x_not_i = stable_likelihoods(_vae, seq_x, z_dist=z_x_dist, idx=idx,
+                                                              latent_sample=sample)
+        x_vec.append(cat_dist_x)
+        ll_x_i_x_not_i_vec.append(log_prob_x_i_x_not_i[0])
+        cat_dist_y, log_prob_y_i_z_y_not_i = stable_likelihoods(_vae, seq_y, z_dist=z_y_dist, idx=idx,
+                                                                latent_sample=sample)
+        y_vec.append(cat_dist_y)
+        ll_y_i_y_not_i_vec.append(log_prob_y_i_z_y_not_i[0])
+    ll_x_not_i_vec = np.array([cat.probs.log().numpy() for cat in x_vec]).squeeze(1)
+    ll_y_not_i_vec = np.array([cat.probs.log().numpy() for cat in y_vec]).squeeze(1)
+    ll_x_not_i = np.float64(np.mean(np.sum(ll_x_not_i_vec, axis=-1)))
+    ll_y_not_i = np.float64(np.mean(np.sum(ll_y_not_i_vec, axis=-1)))
+    p_x_i = np.float64(p_x[:, idx])
+    p_y_i = np.float64(p_y[:, idx])
+    S_val = np.exp((np.sum(ll_x_i_x_not_i_vec)/n_samples + np.sum(ll_y_i_y_not_i_vec)/n_samples - p_x_i - p_y_i - ll_x_not_i - ll_y_not_i))
+    return np.float64(S_val)
+
+
+@torch.no_grad()
+def S(_vae, seq_x, seq_y, idx: int, n_samples=1, fixed_sample=False):
+    latent_samples = torch.normal(0, 1, size=(n_samples, _vae.z_dim)).float()
+    if fixed_sample:
+        latent_samples = torch.ones((n_samples, _vae.z_dim)).float()
     oh_x = F.one_hot(torch.Tensor(seq_x).to(torch.int64), num_classes=_vae.num_categories).float()
     oh_y = F.one_hot(torch.Tensor(seq_y).to(torch.int64), num_classes=_vae.num_categories).float()
     z_x_dist = _vae.encoder(oh_x)
@@ -98,23 +159,29 @@ def S(_vae, seq_x, seq_y, idx: int, n_samples=1):
     p_y = Categorical(_vae.decoder(z_y_dist[0]).exp()).log_prob(torch.Tensor(seq_y)).exp().detach().numpy()
     p_z = Normal(loc=torch.zeros(_vae.z_dim), scale=torch.ones(_vae.z_dim)).log_prob(latent_samples).sum(
         1).detach().numpy()
-    x_vec = []
-    y_vec = []
+    norm_x_vec = []
+    norm_y_vec = []
+    p_x_i_x_not_i_vec = []
+    p_y_i_y_not_i_vec = []
     for sample in latent_samples:
-        cat_dist_x, log_prob_x_z_i, log_prob_x_z_not_i = cat_likelihoods(_vae, seq_x, z_dist=z_x_dist, idx=idx,
-                                                                         latent_sample=sample)
-        x_vec.append(cat_dist_x)
-        cat_dist_y, log_prob_y_z_i, log_prob_y_z_not_i = cat_likelihoods(_vae, seq_y, z_dist=z_y_dist, idx=idx,
-                                                                         latent_sample=sample)
-        y_vec.append(cat_dist_y)
-    p_x_not_i = np.exp(np.mean(np.sum(x_vec, -1)))
-    p_y_not_i = np.exp(np.mean(np.sum(y_vec, -1)))
-    p_x_i_x_not_i = 1/p_x_not_i * 1/n_samples * np.exp(log_prob_x_z_i) * np.exp(log_prob_x_z_not_i) * np.exp(p_z) * 1/p_x
-    p_y_i_y_not_i = 1/p_y_not_i * 1/n_samples * np.exp(log_prob_y_z_i) * np.exp(log_prob_y_z_not_i) * np.exp(p_z) * 1/p_y
-    return p_x_i_x_not_i * p_y_i_y_not_i
+        cat_dist_x, p_x_i_x_not_i = likelihoods(_vae, seq_x, z_dist=z_x_dist, idx=idx,
+                                                                     latent_sample=sample)
+        norm_x_vec.append(cat_dist_x)
+        p_x_i_x_not_i_vec.append(p_x_i_x_not_i[0])
+        cat_dist_y, p_y_i_y_not_i = likelihoods(_vae, seq_y, z_dist=z_y_dist, idx=idx,
+                                                                     latent_sample=sample)
+        norm_y_vec.append(cat_dist_y)
+        p_y_i_y_not_i_vec.append(p_y_i_y_not_i[0])
+    norm_x_vec_lls = np.array([cat.probs.log().numpy() for cat in norm_x_vec]).squeeze(1)
+    norm_y_vec_lls = np.array([cat.probs.log().numpy() for cat in norm_y_vec]).squeeze(1)
+    p_x_not_i = np.exp(np.mean(np.sum(norm_x_vec_lls, -1)))
+    p_y_not_i = np.exp(np.mean(np.sum(norm_y_vec_lls, -1)))
+    normalized_p_x_i_x_not_i = np.float64(1/p_x_not_i * np.sum(p_x_i_x_not_i_vec)/n_samples / p_x[:, idx])
+    normalized_p_y_i_y_not_i = np.float64(1/p_y_not_i * np.sum(p_y_i_y_not_i_vec)/n_samples / p_y[:, idx])
+    return normalized_p_x_i_x_not_i * normalized_p_y_i_y_not_i
 
 
-def naive_v_K(sequences: np.ndarray, adj: np.ndarray, vae: VAE, sample_size=1) -> np.ndarray:
+def naive_v_K(sequences: np.ndarray, adj: np.ndarray, vae: VAE, sample_size=1, stable=False, fixed_sample=False) -> np.ndarray:
     """
     Kernel as described in the paper
     """
@@ -127,8 +194,10 @@ def naive_v_K(sequences: np.ndarray, adj: np.ndarray, vae: VAE, sample_size=1) -
                 nbps = adj[idx]
                 temp_K.fill(0.)
                 for l in nbps:
-                    temp_K[p, q] += S(vae, seq_x=sequences[p], seq_y=sequences[q], idx=l)
-                temp_K[p, q] *= S(vae, seq_x=sequences[p], seq_y=sequences[q], idx=idx)
+                    temp_K[p, q] += S(vae, seq_x=sequences[p], seq_y=sequences[q], idx=l, fixed_sample=fixed_sample) if not stable else S_stable(
+                        vae, sequences[p], sequences[q], idx=l, fixed_sample=fixed_sample)
+                temp_K[p, q] *= S(vae, seq_x=sequences[p], seq_y=sequences[q], idx=idx, fixed_sample=fixed_sample) if not stable else S_stable(
+                    vae, sequences[p], sequences[q], idx=idx, fixed_sample=fixed_sample)
                 K += temp_K
     print(K)
     # normalize
@@ -143,14 +212,30 @@ def naive_v_K(sequences: np.ndarray, adj: np.ndarray, vae: VAE, sample_size=1) -
     return K
 
 
+vae = setup_dummy_VAE()
+test_dummy_sequences, _, _ = setup_dummy_data_train_test()
+L = test_dummy_sequences.shape[1]
+adj = [np.random.randint(0, L, [np.random.randint(0, L)]) for _ in range(0, L)]
+
+
 def test_naive_VAE_kernel():
-    vae = setup_dummy_VAE()
-    test_dummy_sequences, _, _ = setup_dummy_data_train_test()
+    k_mat = naive_v_K(test_dummy_sequences[0][np.newaxis, :], adj, vae, fixed_sample=True)
+    k_mat_stable = naive_v_K(test_dummy_sequences[0][np.newaxis, :], adj, vae, stable=True, fixed_sample=True)
+    np.testing.assert_almost_equal(k_mat, k_mat_stable)
+
+
+def test_naive_VAE_kernel_multiple_sequences():
+    k_mat = naive_v_K(test_dummy_sequences, adj, vae)
+    k_mat_stable = naive_v_K(test_dummy_sequences, adj, vae, stable=True)
+    np.testing.assert_almost_equal(k_mat, k_mat_stable)
+
+
+def test_naive_VAE_kernel_sampling():
     L = test_dummy_sequences.shape[1]
     adj = [np.random.randint(0, L, [np.random.randint(0, L)]) for _ in range(0, L)]
-    k_mat = naive_v_K(test_dummy_sequences[0][np.newaxis, :], adj, vae)
-
-    np.testing.assert_almost_equal(k_mat, np.zeros(k_mat.shape))
+    k_mat = naive_v_K(test_dummy_sequences[0][np.newaxis, :], adj, vae, sample_size=1, stable=True)
+    k_mat_100 = naive_v_K(test_dummy_sequences[0][np.newaxis, :], adj, vae, sample_size=100, stable=True)
+    np.testing.assert_almost_equal(k_mat, k_mat_100)
 
 
 def test_vectorized_VAE_kernel():
