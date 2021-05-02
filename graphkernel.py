@@ -163,9 +163,9 @@ class VaeKernel:
         k = np.zeros([N, N])
         x_q = x_p if x_q is None else x_q
         p_x = Categorical(self.vae.decoder(self.compute_encoder_dist(x_p).loc).exp()).log_prob(
-            torch.Tensor(x_p)).exp().detach().numpy()
+            torch.Tensor(x_p)).detach().numpy()
         p_y = Categorical(self.vae.decoder(self.compute_encoder_dist(x_p).loc).exp()).log_prob(
-            torch.Tensor(x_q)).exp().detach().numpy()
+            torch.Tensor(x_q)).detach().numpy()
         neighborhoods = np.array([contact for _, contact in adjacencies]) if isinstance(adjacencies[0], tuple) \
             else adjacencies
         neighborhood_iterator = tqdm(enumerate(neighborhoods))
@@ -174,8 +174,8 @@ class VaeKernel:
             temp_k.fill(0.)
             for n in neighbors:
                 # subtract log-p for normalization
-                temp_k += np.matmul(self.k_vec(x_p, n), self.k_vec(x_q, n).T) / np.float64(p_x[:, idx]) / np.float64(p_y[:, idx])
-            temp_k *= np.matmul(self.k_vec(x_p, idx), self.k_vec(x_q, idx).T) / np.float64(p_x[:, idx]) / np.float64(p_y[:, idx])
+                temp_k += np.log(np.matmul(self.k_vec(x_p, n), self.k_vec(x_q, n).T)) - np.float64(p_x[:, n]) - np.float64(p_y[:, n])
+            temp_k *= np.log(np.matmul(self.k_vec(x_p, idx), self.k_vec(x_q, idx).T)) - np.float64(p_x[:, idx]) - np.float64(p_y[:, idx])
             k += temp_k
         #norm = np.sqrt(np.diag(k))
         #k_hat = k / norm.dot(norm.T)

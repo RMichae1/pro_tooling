@@ -88,7 +88,7 @@ def stable_likelihoods(_vae: VAE, seq: np.array, z_dist, idx: int, latent_sample
     cat_log_prob_p_x_z = Categorical(_vae.decoder(z).exp()).log_prob(torch.Tensor(seq)).detach().numpy()
     cat_log_prob_x_not_i = np.sum(cat_log_prob_p_x_z[:, :idx] - q_z_x/L) + np.sum(cat_log_prob_p_x_z[:, idx+1:] - q_z_x/L)
     # TODO: pull p(z) into normalization as well
-    p_x_i_x_not_i = cat_log_prob_p_x_z[:, idx] + cat_log_prob_x_not_i + p_z - q_z_x/L 
+    p_x_i_x_not_i = cat_log_prob_p_x_z[:, idx] + cat_log_prob_x_not_i + p_z - q_z_x/L
     return Categorical(_vae.decoder(z).exp()), p_x_i_x_not_i
 
 
@@ -98,7 +98,6 @@ def likelihoods(_vae: VAE, seq: np.array, z_dist, idx: int, latent_sample: np.ar
     NAIVE LIKELIHOOD COMPUTATION:
     "exp, ..., exp everywhere" - calculating directly with the likelihoods - NOT the log-likelihoods.
     """
-    L = len(seq)
     z_loc, z_scale = z_dist
     z = z_loc + torch.Tensor(latent_sample)*torch.sqrt(z_scale)
     p_z = Normal(loc=torch.zeros(_vae.z_dim), scale=torch.ones(_vae.z_dim)).log_prob(z).sum(1).exp().detach().numpy()
@@ -141,7 +140,7 @@ def S_stable(_vae, seq_x, seq_y, idx: int, n_samples=1, fixed_sample=False):
     ll_y_not_i = np.float64(np.mean(np.sum(ll_y_not_i_vec, axis=-1)))
     p_x_i = np.float64(p_x[:, idx])
     p_y_i = np.float64(p_y[:, idx])
-    S_val = np.exp((np.sum(ll_x_i_x_not_i_vec)/n_samples + np.sum(ll_y_i_y_not_i_vec)/n_samples - p_x_i - p_y_i - ll_x_not_i - ll_y_not_i))
+    S_val = (np.sum(ll_x_i_x_not_i_vec)/n_samples + np.sum(ll_y_i_y_not_i_vec)/n_samples - p_x_i - p_y_i - ll_x_not_i - ll_y_not_i)
     return np.float64(S_val)
 
 
@@ -178,7 +177,7 @@ def S(_vae, seq_x, seq_y, idx: int, n_samples=1, fixed_sample=False):
     p_y_not_i = np.exp(np.mean(np.sum(norm_y_vec_lls, -1)))
     normalized_p_x_i_x_not_i = np.float64(1/p_x_not_i * np.sum(p_x_i_x_not_i_vec)/n_samples / p_x[:, idx])
     normalized_p_y_i_y_not_i = np.float64(1/p_y_not_i * np.sum(p_y_i_y_not_i_vec)/n_samples / p_y[:, idx])
-    return normalized_p_x_i_x_not_i * normalized_p_y_i_y_not_i
+    return np.log(normalized_p_x_i_x_not_i * normalized_p_y_i_y_not_i)
 
 
 def naive_v_K(sequences: np.ndarray, adj: np.ndarray, vae: VAE, sample_size=1, stable=False, fixed_sample=False) -> np.ndarray:
@@ -221,7 +220,7 @@ adj = [np.random.randint(0, L, [np.random.randint(0, L)]) for _ in range(0, L)]
 def test_naive_VAE_kernel():
     k_mat = naive_v_K(test_dummy_sequences[0][np.newaxis, :], adj, vae, fixed_sample=True)
     k_mat_stable = naive_v_K(test_dummy_sequences[0][np.newaxis, :], adj, vae, stable=True, fixed_sample=True)
-    np.testing.assert_almost_equal(k_mat, k_mat_stable)
+    np.testing.assert_almost_equal(np.log(k_mat), np.log(k_mat_stable), decimal=6)
 
 
 def test_naive_VAE_kernel_multiple_sequences():
@@ -241,10 +240,9 @@ def test_naive_VAE_kernel_sampling():
 def test_vectorized_VAE_kernel():
     family_seqs, vae = setup_UBQ_VAE()
     contact_map = ContactMapper(pdb_file=f"/home/rimichael/pro_tooling/pdb/1ubq.pdb", tri_dist=True)
-    num_classes = np.unique(family_seqs).shape[0] + 2
     sequence = family_seqs[0][np.newaxis, :]
     ref_adj = [c for elem, c in contact_map.adjacency]
-    naive_vae_val = naive_v_K(sequence, ref_adj, vae)
+    naive_vae_val = naive_v_K(sequence, ref_adj, vae, sample_size=1, stable=True)
     v_k = VaeKernel(vae, sample_size=1)
     s_vae_val = v_k.k(sequence, adjacencies=ref_adj)
     np.testing.assert_almost_equal(s_vae_val, naive_vae_val)
