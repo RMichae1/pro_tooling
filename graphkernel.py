@@ -181,6 +181,6 @@ class VaeKernel:
                 temp_k += np.log(np.matmul(np.exp(self.k_vec(x_p, n)), np.exp(self.k_vec(x_q, n).T)))
             temp_k *= np.log(np.matmul(np.exp(self.k_vec(x_p, idx)), np.exp(self.k_vec(x_q, idx).T)))
             k += temp_k
-        #norm = np.sqrt(np.diag(k))
-        #k_hat = k / norm.dot(norm.T)
-        return torch.Tensor(k).to(torch.float64)
+        norm = np.sqrt(np.diag(k))
+        k_hat = k / norm.dot(norm.T)
+        return torch.Tensor(k_hat).to(torch.float64)
