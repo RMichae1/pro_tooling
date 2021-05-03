@@ -102,7 +102,7 @@ class MatrixKernel:
 
 
 class VaeKernel:
-    def __init__(self, vae, alphabet=IUPAC_SEQ2IDX, sample_size=10000, block_size=1024, fixed_sample=False) -> None:
+    def __init__(self, vae, alphabet=IUPAC_SEQ2IDX, sample_size=100, block_size=1024, fixed_sample=False) -> None:
         """
         Kernel, which derives likelihoods from provided VAE, given an AA alphabet
         fixed sampling sets latent samples to 1 - FOR TESTING AND DEBUG ONLY!
@@ -127,21 +127,28 @@ class VaeKernel:
         returns log likelihood of sequence at index i
         shape: N x 1
         """
-        L = x.shape[1]
+        N, L = x.shape
         oh_x = self.convert_one_hot(x)
         # compute x and y likelihoods
         z_x_loc, z_x_scale = self.vae.encoder(oh_x)
-        z = z_x_loc + self.latent_sample * torch.sqrt(z_x_scale)
-        q_z_x = Normal(z_x_loc, z_x_scale).log_prob(z).sum(1)
+        z = z_x_loc + self.latent_sample[:, np.newaxis] * torch.sqrt(z_x_scale)
+        q_z_x = Normal(z_x_loc, z_x_scale).log_prob(z).sum(-1)
+        p_z = torch.mean(self.p_z)
         p_x = Categorical(self.vae.decoder(self.compute_encoder_dist(x).loc).exp()).log_prob(torch.Tensor(x)).detach().numpy()
-        p_x_z = Categorical(self.vae.decoder(z).exp()).log_prob(torch.Tensor(x))
-        p_x_not_i_lower_idx = torch.sum(p_x_z[:, :i]-(q_z_x/L)[:, np.newaxis])
-        p_x_not_i_higher_idx = torch.sum(p_x_z[:, (i+1):]-(q_z_x/L)[:, np.newaxis])
-        p_x_z_not_i = p_x_not_i_lower_idx + p_x_not_i_higher_idx
-        p_x_not_i = torch.mean(torch.sum(Categorical(self.vae.decoder(z).exp()).probs.log(), axis=-1))  # NOTE: this is already divided by N
-        normalized_p_x_i_x_not_i = torch.sum(p_x_z[:, i] + p_x_z_not_i - q_z_x/L - self.p_z)/self.sample_size - p_x_not_i
+        # decoder can only evaluate one z at a time # TODO: refactor to enable batched latent processing
+        categoricals = [Categorical(self.vae.decoder(z_i).exp()) for z_i in z]
+        all_ll_x_z = torch.stack([cat.probs.log() for cat in categoricals])
+        p_x_z = torch.stack([cat.log_prob(torch.Tensor(x)) for cat in categoricals])
+        p_x_not_i_lower_idx = torch.sum(p_x_z[:, :, :i]-(q_z_x/L)[:, :, np.newaxis], axis=-1)  # sum per sequence
+        p_x_not_i_higher_idx = torch.sum(p_x_z[:, :, (i+1):]-(q_z_x/L)[:, :, np.newaxis], axis=-1)
+        p_x_z_not_i = torch.mean(p_x_not_i_lower_idx + p_x_not_i_higher_idx, axis=-2)
+        # normalizing constant: sum over AAs -> mean over sequence -> mean over samples
+        p_x_not_i = torch.mean(torch.mean(torch.sum(all_ll_x_z, axis=-1), axis=-1), axis=0)
+        q_z_x_frac = torch.mean((q_z_x/L))
+        p_x_z_i = torch.mean(p_x_z[:, :, i], axis=0)
+        normalized_p_x_i_x_not_i = p_x_z_i + p_x_z_not_i + p_z - q_z_x_frac - p_x_not_i
         normalized_p_x_i_x_not_i = normalized_p_x_i_x_not_i - np.float64(p_x[:, i])
-        return np.atleast_1d(normalized_p_x_i_x_not_i.detach().numpy())
+        return normalized_p_x_i_x_not_i.detach().numpy()[:, np.newaxis]
 
     def k_vec(self, x, i) -> np.array:
         """
@@ -177,10 +184,13 @@ class VaeKernel:
         for idx, neighbors in neighborhood_iterator:
             temp_k.fill(0.)
             for n in neighbors:
-                # subtract log-p for normalization
                 temp_k += np.log(np.matmul(np.exp(self.k_vec(x_p, n)), np.exp(self.k_vec(x_q, n).T)))
             temp_k *= np.log(np.matmul(np.exp(self.k_vec(x_p, idx)), np.exp(self.k_vec(x_q, idx).T)))
             k += temp_k
+        print("VECT KERNEL:")
+        print(k)
         norm = np.sqrt(np.diag(k))
         k_hat = k / norm.dot(norm.T)
+        print("NORMALIZED")
+        print(k_hat)
         return torch.Tensor(k_hat).to(torch.float64)

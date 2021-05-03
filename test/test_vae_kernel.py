@@ -84,7 +84,7 @@ def stable_likelihoods(_vae: VAE, seq: np.array, z_dist, idx: int, latent_sample
     # transform latent sample z' => z
     z = z_loc + torch.Tensor(latent_sample) * torch.sqrt(z_scale)
     p_z = Normal(loc=torch.zeros(_vae.z_dim), scale=torch.ones(_vae.z_dim)).log_prob(z).sum(1).detach().numpy()
-    q_z_x = Normal(z_loc, z_scale).log_prob(z).sum(1).detach().numpy()
+    q_z_x = Normal(z_loc, z_scale).log_prob(z).sum(-1).detach().numpy()
     cat_log_prob_p_x_z = Categorical(_vae.decoder(z).exp()).log_prob(torch.Tensor(seq)).detach().numpy()
     cat_log_prob_x_not_i = np.sum(cat_log_prob_p_x_z[:, :idx] - q_z_x/L) + np.sum(cat_log_prob_p_x_z[:, idx+1:] - q_z_x/L)
     # TODO: pull p(z) into normalization as well
@@ -101,7 +101,7 @@ def likelihoods(_vae: VAE, seq: np.array, z_dist, idx: int, latent_sample: np.ar
     z_loc, z_scale = z_dist
     z = z_loc + torch.Tensor(latent_sample)*torch.sqrt(z_scale)
     p_z = Normal(loc=torch.zeros(_vae.z_dim), scale=torch.ones(_vae.z_dim)).log_prob(z).sum(1).exp().detach().numpy()
-    q_z_x = Normal(z_loc, z_scale).log_prob(z).sum(1).exp().detach().numpy()
+    q_z_x = Normal(z_loc, z_scale).log_prob(z).sum(-1).exp().detach().numpy()
     cat_p = Categorical(_vae.decoder(z).exp())
     cat_p_x_z = Categorical(_vae.decoder(z).exp()).log_prob(torch.Tensor(seq)).exp().detach().numpy()
     cat_p_x_not_i_z = np.prod(cat_p_x_z[:, :idx]).astype(np.float64) * np.prod(cat_p_x_z[:, idx+1:]).astype(np.float64)
@@ -193,11 +193,14 @@ def naive_v_K(sequences: np.ndarray, adj: np.ndarray, vae: VAE, sample_size=1, s
                 nbps = adj[idx]
                 temp_K.fill(0.)
                 for l in nbps:
-                    temp_K[p, q] += S(vae, seq_x=sequences[p], seq_y=sequences[q], idx=l, fixed_sample=fixed_sample) if not stable else S_stable(
-                        vae, sequences[p], sequences[q], idx=l, fixed_sample=fixed_sample)
-                temp_K[p, q] *= S(vae, seq_x=sequences[p], seq_y=sequences[q], idx=idx, fixed_sample=fixed_sample) if not stable else S_stable(
-                    vae, sequences[p], sequences[q], idx=idx, fixed_sample=fixed_sample)
+                    temp_K[p, q] += S(vae, seq_x=sequences[p], seq_y=sequences[q], idx=l, n_samples=sample_size,
+                                      fixed_sample=fixed_sample) if not stable else S_stable(
+                        vae, sequences[p], sequences[q], idx=l, n_samples=sample_size, fixed_sample=fixed_sample)
+                temp_K[p, q] *= S(vae, seq_x=sequences[p], seq_y=sequences[q], idx=idx, n_samples=sample_size,
+                                  fixed_sample=fixed_sample) if not stable else S_stable(
+                    vae, sequences[p], sequences[q], idx=idx, n_samples=sample_size, fixed_sample=fixed_sample)
                 K += temp_K
+    print("NAIVE KERNEL:")
     print(K)
     # normalize
     for p in range(n):
@@ -205,9 +208,10 @@ def naive_v_K(sequences: np.ndarray, adj: np.ndarray, vae: VAE, sample_size=1, s
             if p == q:
                 continue
             K[p, q] /= (np.sqrt(K[p, p]) * np.sqrt(K[q, q]))
-    # set diagonal explicitly
+    # # set diagonal explicitly
     # for i in range(0, n):
-    #     K[i, i] = 1  # TODO validate if this is still true
+    #     K[i, i] = 1
+    # print(K)
     return K
 
 
@@ -224,8 +228,8 @@ def test_naive_VAE_kernel():
 
 
 def test_naive_VAE_kernel_multiple_sequences():
-    k_mat = naive_v_K(test_dummy_sequences[:5], adj, vae, fixed_sample=True)
-    k_mat_stable = naive_v_K(test_dummy_sequences[:5], adj, vae, stable=True, fixed_sample=True)
+    k_mat = naive_v_K(test_dummy_sequences[:3], adj, vae, fixed_sample=True)
+    k_mat_stable = naive_v_K(test_dummy_sequences[:3], adj, vae, stable=True, fixed_sample=True)
     np.testing.assert_almost_equal(k_mat, k_mat_stable, decimal=6)
 
 
@@ -241,9 +245,9 @@ def test_naive_VAE_kernel_sampling():
 def test_vectorized_VAE_kernel():
     family_seqs, vae = setup_UBQ_VAE()
     contact_map = ContactMapper(pdb_file=f"/home/rimichael/pro_tooling/pdb/1ubq.pdb", tri_dist=True)
-    sequence = family_seqs[0][np.newaxis, :]
+    sequences = family_seqs[:2]
     ref_adj = [c for elem, c in contact_map.adjacency]
-    naive_vae_val = naive_v_K(sequence, ref_adj, vae, sample_size=5, stable=True, fixed_sample=True)
-    v_k = VaeKernel(vae, sample_size=5, fixed_sample=True)
-    s_vae_val = v_k.k(sequence, adjacencies=ref_adj)
-    np.testing.assert_almost_equal(s_vae_val, naive_vae_val)
+    naive_vae_val = naive_v_K(sequences, ref_adj, vae, sample_size=100, stable=True, fixed_sample=True)
+    v_k = VaeKernel(vae, sample_size=100, fixed_sample=True)
+    s_vae_val = v_k.k(sequences, adjacencies=ref_adj)
+    np.testing.assert_almost_equal(naive_vae_val, s_vae_val)
