@@ -144,9 +144,8 @@ class VaeKernel:
         p_x_z_not_i = torch.mean(p_x_not_i_lower_idx + p_x_not_i_higher_idx, axis=-2)
         # normalizing constant: sum over AAs -> mean over sequence -> mean over samples
         p_x_not_i = torch.mean(torch.mean(torch.sum(all_ll_x_z, axis=-1), axis=-1), axis=0)
-        q_z_x_frac = torch.mean((q_z_x/L))
-        p_x_z_i = torch.mean(p_x_z[:, :, i], axis=0)
-        normalized_p_x_i_x_not_i = p_x_z_i + p_x_z_not_i + p_z - q_z_x_frac - p_x_not_i
+        p_x_z_i = torch.mean(p_x_z[:, :, i] - (q_z_x/L)[:, :, np.newaxis], axis=0)
+        normalized_p_x_i_x_not_i = p_x_z_i + p_x_z_not_i + p_z - p_x_not_i
         normalized_p_x_i_x_not_i = normalized_p_x_i_x_not_i - np.float64(p_x[:, i])
         return normalized_p_x_i_x_not_i.detach().numpy()[:, np.newaxis]
 
@@ -168,7 +167,7 @@ class VaeKernel:
         return z_dist
 
     @torch.no_grad()
-    def k(self, x_p, x_q=None, adjacencies: List[tuple] = None) -> torch.Tensor:
+    def k(self, x_p, x_q=None, adjacencies: List[tuple] = None, normalize=True) -> torch.Tensor:
         """
         Numerically stable implementation of the proposed kernel function.
         """
@@ -189,6 +188,8 @@ class VaeKernel:
             k += temp_k
         print("VECT KERNEL:")
         print(k)
+        if not normalize:
+            return torch.Tensor(k).to(torch.float64)
         norm = np.sqrt(np.diag(k))
         k_hat = k / norm.dot(norm.T)
         print("NORMALIZED")

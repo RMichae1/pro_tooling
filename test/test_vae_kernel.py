@@ -202,17 +202,22 @@ def naive_v_K(sequences: np.ndarray, adj: np.ndarray, vae: VAE, sample_size=1, s
                 K += temp_K
     print("NAIVE KERNEL:")
     print(K)
+    return K
+
+
+def normalize_K(K):
     # normalize
-    for p in range(n):
-        for q in range(n):
+    for p in range(len(K)):
+        for q in range(len(K)):
             if p == q:
                 continue
             K[p, q] /= (np.sqrt(K[p, p]) * np.sqrt(K[q, q]))
     # # set diagonal explicitly
     # for i in range(0, n):
     #     K[i, i] = 1
-    # print(K)
+    print(K)
     return K
+
 
 
 vae = setup_dummy_VAE()
@@ -248,6 +253,12 @@ def test_vectorized_VAE_kernel():
     sequences = family_seqs[:2]
     ref_adj = [c for elem, c in contact_map.adjacency]
     naive_vae_val = naive_v_K(sequences, ref_adj, vae, sample_size=100, stable=True, fixed_sample=True)
+    normalized_naive_vae_val = normalize_K(naive_vae_val)
     v_k = VaeKernel(vae, sample_size=100, fixed_sample=True)
-    s_vae_val = v_k.k(sequences, adjacencies=ref_adj)
+    s_vae_val = v_k.k(sequences, adjacencies=ref_adj, normalize=False)
+    norm = np.sqrt(np.diag(s_vae_val))
+    norm_s_vae_val = s_vae_val / norm.dot(norm.T)
+    # TEST UNNORMALIZED
     np.testing.assert_almost_equal(naive_vae_val, s_vae_val)
+    # TEST NORMALIZED
+    np.testing.assert_almost_equal(normalized_naive_vae_val, norm_s_vae_val)
