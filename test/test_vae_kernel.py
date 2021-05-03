@@ -136,8 +136,8 @@ def S_stable(_vae, seq_x, seq_y, idx: int, n_samples=1, fixed_sample=False):
     # SUM OF PROBABILITIES - hence exp operation
     ll_x_not_i = torch.log(torch.sum(torch.exp(torch.mean(ll_x_i_x_not_i_vec, axis=0))))
     ll_y_not_i = torch.log(torch.sum(torch.exp(torch.mean(ll_y_i_y_not_i_vec, axis=0))))
-    normalized_ll_x_i_x_not_i = torch.mean(ll_x_i_x_not_i_vec, axis=0)[idx] - p_x[:, idx] - ll_x_not_i
-    normalized_ll_y_i_y_not_i = torch.mean(ll_y_i_y_not_i_vec, axis=0)[idx] - p_y[:, idx] - ll_y_not_i
+    normalized_ll_x_i_x_not_i = torch.mean(ll_x_i_x_not_i_vec, axis=0)[seq_x[idx]] - p_x[:, idx] - ll_x_not_i
+    normalized_ll_y_i_y_not_i = torch.mean(ll_y_i_y_not_i_vec, axis=0)[seq_y[idx]] - p_y[:, idx] - ll_y_not_i
     return normalized_ll_x_i_x_not_i + normalized_ll_y_i_y_not_i
 
 
@@ -164,8 +164,8 @@ def S(_vae, seq_x, seq_y, idx: int, n_samples=1, fixed_sample=False):
     p_y_i_y_not_i_vec = torch.stack(p_y_i_y_not_i_vec)
     p_x_not_i = torch.sum(torch.mean(p_x_i_x_not_i_vec, axis=0))
     p_y_not_i = torch.sum(torch.mean(p_y_i_y_not_i_vec, axis=0))
-    normalized_p_x_i_x_not_i = 1/p_x_not_i * torch.mean(p_x_i_x_not_i_vec, axis=0)[idx] / p_x[:, idx]
-    normalized_p_y_i_y_not_i = 1/p_y_not_i * torch.mean(p_y_i_y_not_i_vec, axis=0)[idx] / p_y[:, idx]
+    normalized_p_x_i_x_not_i = 1/p_x_not_i * torch.mean(p_x_i_x_not_i_vec, axis=0)[seq_x[idx]] / p_x[:, idx]
+    normalized_p_y_i_y_not_i = 1/p_y_not_i * torch.mean(p_y_i_y_not_i_vec, axis=0)[seq_y[idx]] / p_y[:, idx]
     return np.log(normalized_p_x_i_x_not_i * normalized_p_y_i_y_not_i)
 
 
