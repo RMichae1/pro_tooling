@@ -219,7 +219,6 @@ def normalize_K(K):
     return K
 
 
-
 vae = setup_dummy_VAE()
 test_dummy_sequences, _, _ = setup_dummy_data_train_test()
 L = test_dummy_sequences.shape[1]
@@ -248,6 +247,21 @@ def test_naive_VAE_kernel_sampling():
 
 
 def test_vectorized_VAE_kernel():
+    sequences = test_dummy_sequences[:5]
+    #naive_vae_val = naive_v_K(sequences, adj, vae, sample_size=100, stable=True, fixed_sample=True)
+    naive_vae_val = naive_v_K(sequences, adj, vae, sample_size=100, fixed_sample=True)
+    normalized_naive_vae_val = normalize_K(naive_vae_val)
+    v_k = VaeKernel(vae, sample_size=100, fixed_sample=True)
+    s_vae_val = v_k.k(sequences, adjacencies=adj, normalize=False)
+    norm = np.sqrt(np.diag(s_vae_val))
+    norm_s_vae_val = s_vae_val / norm.dot(norm.T)
+    # TEST UNNORMALIZED
+    np.testing.assert_almost_equal(naive_vae_val, s_vae_val)
+    # TEST NORMALIZED
+    np.testing.assert_almost_equal(normalized_naive_vae_val, norm_s_vae_val)
+
+
+def test_vectorized_VAE_kernel_on_UBQ():
     family_seqs, vae = setup_UBQ_VAE()
     contact_map = ContactMapper(pdb_file=f"/home/rimichael/pro_tooling/pdb/1ubq.pdb", tri_dist=True)
     sequences = family_seqs[:2]

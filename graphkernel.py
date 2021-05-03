@@ -122,7 +122,7 @@ class VaeKernel:
         return one_hot(x, num_classes=self.vae.num_categories).to(torch.float)
 
     @torch.no_grad()
-    def log_likelihood(self, x, i) -> torch.Tensor:
+    def log_likelihood(self, x: torch.Tensor, i: int) -> np.array:
         """
         returns log likelihood of sequence at index i
         shape: N x 1
@@ -141,12 +141,10 @@ class VaeKernel:
         p_x_z = torch.stack([cat.log_prob(torch.Tensor(x)) for cat in categoricals])
         p_x_not_i_lower_idx = torch.sum(p_x_z[:, :, :i]-(q_z_x/L)[:, :, np.newaxis], axis=-1)  # sum per sequence
         p_x_not_i_higher_idx = torch.sum(p_x_z[:, :, (i+1):]-(q_z_x/L)[:, :, np.newaxis], axis=-1)
-        p_x_z_not_i = torch.mean(p_x_not_i_lower_idx + p_x_not_i_higher_idx, axis=-2)
         # normalizing constant: sum over AAs -> mean over sequence -> mean over samples
         p_x_not_i = torch.mean(torch.mean(torch.sum(all_ll_x_z, axis=-1), axis=-1), axis=0)
-        p_x_z_i = torch.mean(p_x_z[:, :, i] - (q_z_x/L)[:, :, np.newaxis], axis=0)
-        normalized_p_x_i_x_not_i = p_x_z_i + p_x_z_not_i + p_z - p_x_not_i
-        normalized_p_x_i_x_not_i = normalized_p_x_i_x_not_i - np.float64(p_x[:, i])
+        p_x_i_x_not_i = torch.mean(p_x_z[:, :, i] - (q_z_x/L) + p_x_not_i_lower_idx + p_x_not_i_higher_idx + p_z, axis=0)
+        normalized_p_x_i_x_not_i = p_x_i_x_not_i - np.float64(p_x[:, i]) - p_x_not_i
         return normalized_p_x_i_x_not_i.detach().numpy()[:, np.newaxis]
 
     def k_vec(self, x, i) -> np.array:
