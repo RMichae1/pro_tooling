@@ -85,11 +85,13 @@ def stable_likelihoods(_vae: VAE, seq: np.array, z_dist, idx: int, latent_sample
     z = z_loc + torch.Tensor(latent_sample) * torch.sqrt(z_scale)
     p_z = Normal(loc=torch.zeros(_vae.z_dim), scale=torch.ones(_vae.z_dim)).log_prob(z).sum(1).detach().numpy()
     q_z_x = Normal(z_loc, z_scale).log_prob(z).sum(-1).detach().numpy()
-    cat_log_prob_p_x_z = Categorical(_vae.decoder(z).exp()).log_prob(torch.Tensor(seq)).detach().numpy()
-    cat_log_prob_x_not_i = np.sum(cat_log_prob_p_x_z[:, :idx] - q_z_x/L) + np.sum(cat_log_prob_p_x_z[:, idx+1:] - q_z_x/L)
+    cat_p = Categorical(_vae.decoder(z).exp()).probs.log()
+    ll_left_p_x_z = np.sum([cat_p[:, :idx][:, i, s] - q_z_x/L for i, s in enumerate(seq[:idx])])
+    ll_right_p_x_z = np.sum([cat_p[:, idx+1:][:, i, s] - q_z_x/L for i, s in enumerate(seq[idx+1:])])
+    cat_log_prob_x_not_i = ll_left_p_x_z + ll_right_p_x_z
     # TODO: pull p(z) into normalization as well
-    p_x_i_x_not_i = cat_log_prob_p_x_z[:, idx] + cat_log_prob_x_not_i + p_z - q_z_x/L
-    return Categorical(_vae.decoder(z).exp()), p_x_i_x_not_i
+    p_x_i_x_not_i = cat_p[:, idx] + cat_log_prob_x_not_i + p_z - q_z_x/L
+    return p_x_i_x_not_i
 
 
 @torch.no_grad()
@@ -120,29 +122,23 @@ def S_stable(_vae, seq_x, seq_y, idx: int, n_samples=1, fixed_sample=False):
     z_x_dist = _vae.encoder(oh_x)
     z_y_dist = _vae.encoder(oh_y)
     # Normal(z_x_dist[0], z_x_dist[1]).loc == z_x_dist[0]
-    p_x = Categorical(_vae.decoder(z_x_dist[0]).exp()).log_prob(torch.Tensor(seq_x)).detach().numpy()
-    p_y = Categorical(_vae.decoder(z_y_dist[0]).exp()).log_prob(torch.Tensor(seq_y)).detach().numpy()
-    x_vec = []
-    y_vec = []
+    p_x = Categorical(_vae.decoder(z_x_dist[0]).exp()).log_prob(torch.Tensor(seq_x))
+    p_y = Categorical(_vae.decoder(z_y_dist[0]).exp()).log_prob(torch.Tensor(seq_y))
     ll_x_i_x_not_i_vec = []
     ll_y_i_y_not_i_vec = []
     for sample in latent_samples:
-        cat_dist_x, log_prob_x_i_x_not_i = stable_likelihoods(_vae, seq_x, z_dist=z_x_dist, idx=idx,
-                                                              latent_sample=sample)
-        x_vec.append(cat_dist_x)
+        log_prob_x_i_x_not_i = stable_likelihoods(_vae, seq_x, z_dist=z_x_dist, idx=idx, latent_sample=sample)
         ll_x_i_x_not_i_vec.append(log_prob_x_i_x_not_i[0])
-        cat_dist_y, log_prob_y_i_z_y_not_i = stable_likelihoods(_vae, seq_y, z_dist=z_y_dist, idx=idx,
-                                                                latent_sample=sample)
-        y_vec.append(cat_dist_y)
+        log_prob_y_i_z_y_not_i = stable_likelihoods(_vae, seq_y, z_dist=z_y_dist, idx=idx, latent_sample=sample)
         ll_y_i_y_not_i_vec.append(log_prob_y_i_z_y_not_i[0])
-    ll_x_not_i_vec = np.array([cat.probs.log().numpy() for cat in x_vec]).squeeze(1)
-    ll_y_not_i_vec = np.array([cat.probs.log().numpy() for cat in y_vec]).squeeze(1)
-    ll_x_not_i = np.float64(np.mean(np.sum(ll_x_not_i_vec, axis=-1)))
-    ll_y_not_i = np.float64(np.mean(np.sum(ll_y_not_i_vec, axis=-1)))
-    p_x_i = np.float64(p_x[:, idx])
-    p_y_i = np.float64(p_y[:, idx])
-    S_val = (np.sum(ll_x_i_x_not_i_vec)/n_samples + np.sum(ll_y_i_y_not_i_vec)/n_samples - p_x_i - p_y_i - ll_x_not_i - ll_y_not_i)
-    return np.float64(S_val)
+    ll_x_i_x_not_i_vec = torch.stack(ll_x_i_x_not_i_vec)
+    ll_y_i_y_not_i_vec = torch.stack(ll_y_i_y_not_i_vec)
+    # SUM OF PROBABILITIES - hence exp operation
+    ll_x_not_i = torch.log(torch.sum(torch.exp(torch.mean(ll_x_i_x_not_i_vec, axis=0))))
+    ll_y_not_i = torch.log(torch.sum(torch.exp(torch.mean(ll_y_i_y_not_i_vec, axis=0))))
+    normalized_ll_x_i_x_not_i = torch.mean(ll_x_i_x_not_i_vec) - p_x[:, idx] - ll_x_not_i
+    normalized_ll_y_i_y_not_i = torch.mean(ll_y_i_y_not_i_vec) - p_y[:, idx] - ll_y_not_i
+    return normalized_ll_x_i_x_not_i + normalized_ll_y_i_y_not_i
 
 
 @torch.no_grad()
@@ -157,8 +153,6 @@ def S(_vae, seq_x, seq_y, idx: int, n_samples=1, fixed_sample=False):
     # Normal(z_x_dist[0], z_x_dist[1]).loc == z_x_dist[0]
     p_x = Categorical(_vae.decoder(z_x_dist[0]).exp()).log_prob(torch.Tensor(seq_x)).exp()
     p_y = Categorical(_vae.decoder(z_y_dist[0]).exp()).log_prob(torch.Tensor(seq_y)).exp()
-    norm_x_vec = []
-    norm_y_vec = []
     p_x_i_x_not_i_vec = []
     p_y_i_y_not_i_vec = []
     for sample in latent_samples:
@@ -170,8 +164,8 @@ def S(_vae, seq_x, seq_y, idx: int, n_samples=1, fixed_sample=False):
     p_y_i_y_not_i_vec = torch.stack(p_y_i_y_not_i_vec)
     p_x_not_i = torch.sum(torch.mean(p_x_i_x_not_i_vec, axis=0))
     p_y_not_i = torch.sum(torch.mean(p_y_i_y_not_i_vec, axis=0))
-    normalized_p_x_i_x_not_i = 1/p_x_not_i * torch.sum(p_x_i_x_not_i_vec)/n_samples / p_x[:, idx]
-    normalized_p_y_i_y_not_i = 1/p_y_not_i * torch.sum(p_y_i_y_not_i_vec)/n_samples / p_y[:, idx]
+    normalized_p_x_i_x_not_i = 1/p_x_not_i * torch.mean(p_x_i_x_not_i_vec) / p_x[:, idx]
+    normalized_p_y_i_y_not_i = 1/p_y_not_i * torch.mean(p_y_i_y_not_i_vec) / p_y[:, idx]
     return np.log(normalized_p_x_i_x_not_i * normalized_p_y_i_y_not_i)
 
 
@@ -224,7 +218,7 @@ adj = [np.random.randint(0, L, [np.random.randint(0, L)]) for _ in range(0, L)]
 def test_naive_VAE_kernel():
     k_mat = naive_v_K(test_dummy_sequences[0][np.newaxis, :], adj, vae, fixed_sample=True)
     k_mat_stable = naive_v_K(test_dummy_sequences[0][np.newaxis, :], adj, vae, stable=True, fixed_sample=True)
-    np.testing.assert_almost_equal(np.log(k_mat), np.log(k_mat_stable), decimal=6)
+    np.testing.assert_almost_equal(k_mat, k_mat_stable, decimal=6)
 
 
 def test_naive_VAE_kernel_multiple_sequences():
