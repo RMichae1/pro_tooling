@@ -18,7 +18,7 @@ torch.manual_seed(0)
 def setup_dummy_data_train_test():
     N = 250  # number of sequences in MSA
     L = 10  # length of the sequence
-    AA = 19  # number of amino acids
+    AA = 4  # number of amino acids
     BATCHSIZE = 128
     dummy_sequences = np.random.randint(0, AA, size=[N, L])
     indices = list(range(N))
@@ -205,6 +205,7 @@ def normalize_K(K):
     # # set diagonal explicitly
     # for i in range(0, n):
     #     K[i, i] = 1
+    print("NAIVE NORMALIZED")
     print(K)
     return K
 
@@ -218,13 +219,13 @@ adj = [np.random.randint(0, L, [np.random.randint(0, L)]) for _ in range(0, L)]
 def test_naive_VAE_kernel():
     k_mat = naive_v_K(test_dummy_sequences[0][np.newaxis, :], adj, vae, fixed_sample=True)
     k_mat_stable = naive_v_K(test_dummy_sequences[0][np.newaxis, :], adj, vae, stable=True, fixed_sample=True)
-    np.testing.assert_almost_equal(k_mat, k_mat_stable, decimal=6)
+    np.testing.assert_almost_equal(k_mat, k_mat_stable, decimal=5)
 
 
 def test_naive_VAE_kernel_multiple_sequences():
     k_mat = naive_v_K(test_dummy_sequences[:3], adj, vae, fixed_sample=True)
     k_mat_stable = naive_v_K(test_dummy_sequences[:3], adj, vae, stable=True, fixed_sample=True)
-    np.testing.assert_almost_equal(k_mat, k_mat_stable, decimal=6)
+    np.testing.assert_almost_equal(k_mat, k_mat_stable, decimal=5)
 
 
 def test_naive_VAE_kernel_sampling():
@@ -245,7 +246,7 @@ def test_vectorized_VAE_kernel():
     norm = np.sqrt(np.diag(s_vae_val))
     norm_s_vae_val = s_vae_val / norm.dot(norm.T)
     # TEST UNNORMALIZED
-    # np.testing.assert_almost_equal(naive_vae_val, s_vae_val)
+    np.testing.assert_almost_equal(naive_vae_val, s_vae_val)
     normalized_naive_vae_val = normalize_K(naive_vae_val)
     # TEST NORMALIZED
     np.testing.assert_almost_equal(normalized_naive_vae_val, norm_s_vae_val)
