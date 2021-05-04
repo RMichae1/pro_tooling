@@ -106,6 +106,8 @@ class VaeKernel:
         """
         Kernel, which derives likelihoods from provided VAE, given an AA alphabet
         fixed sampling sets latent samples to 1 - FOR TESTING AND DEBUG ONLY!
+
+        To compute a Substitution Matrix equivalent, provide a sequence, or list of sequences for `S_mat_sequence`.
         """
         self.vae = vae
         self.latent_dim = vae.z_dim
@@ -113,6 +115,9 @@ class VaeKernel:
         self.sample_size = sample_size
         self.block = block_size
         self.latent_sample = torch.normal(0, 1, size=(sample_size, self.latent_dim)).float()
+        self.s_min = 0.
+        self.s_max = 0.
+        self.S_matrix = None
         if fixed_sample:
             self.latent_sample = torch.ones((sample_size, self.latent_dim)).float()
         self.p_z = Normal(loc=torch.zeros(vae.z_dim), scale=torch.ones(vae.z_dim)).log_prob(self.latent_sample).sum(1)
@@ -120,6 +125,23 @@ class VaeKernel:
     def convert_one_hot(self, x):
         x = torch.Tensor(x).to(torch.int64)
         return one_hot(x, num_classes=self.vae.num_categories).to(torch.float)
+
+    def compute_S_matrix(self, sequences, normalize=True):
+        """
+        Normalization as conducted in Eq. 8 of Jokinen et al paper.
+        """
+        AAs = 21
+        N, L = sequences.shape
+        s = torch.zeros([AAs])
+        # marginalize over residues
+        for idx, _ in tqdm(enumerate(range(L))):
+            ll_S = np.exp(self.log_likelihood(sequences, idx))
+            # marginal - sum probs per AA across sequences
+            s += ll_S.sum(0)[:AAs]
+        s = np.log(s[:, np.newaxis] @ s[:, np.newaxis].T)
+        if normalize:
+            s = (s-torch.min(s)+1)/(torch.max(s)-torch.min(s)+1)
+        return s
 
     @torch.no_grad()
     def log_likelihood(self, x: torch.Tensor, i: int) -> np.array:
@@ -135,7 +157,6 @@ class VaeKernel:
         z = z_x_loc + self.latent_sample[:, np.newaxis] * torch.sqrt(z_x_scale)
         q_z_x = Normal(z_x_loc, z_x_scale).log_prob(z).sum(-1)
         p_z = torch.mean(self.p_z, axis=0)  # prior mean across samples
-        p_x = Categorical(self.vae.decoder(self.compute_encoder_dist(x).loc).exp()).log_prob(torch.Tensor(x))
         # decoder can only evaluate one z at a time # TODO: refactor VAE to enable batched latent processing
         categoricals = [Categorical(self.vae.decoder(z_i).exp()) for z_i in z]
         p_x_z_vec = torch.stack([cat.probs.log() for cat in categoricals])
@@ -143,8 +164,12 @@ class VaeKernel:
         p_x_not_i_lower_idx = torch.sum(p_x_z[:, :, :i]-(q_z_x/L)[:, :, np.newaxis], axis=-1)  # sum per sequence
         p_x_not_i_higher_idx = torch.sum(p_x_z[:, :, (i+1):]-(q_z_x/L)[:, :, np.newaxis], axis=-1)
         p_x_not_i = p_x_not_i_lower_idx + p_x_not_i_higher_idx
-        ll = torch.mean(p_x_z_vec[:, :, i] + p_x_not_i[:, :, np.newaxis] + p_z - (q_z_x/L)[:, :, np.newaxis], axis=0)
-        # normalizing constant: mean over samples -> sum over AAs
+        ll_x_i_x_not_i = torch.mean(p_x_z_vec[:, :, i] + p_x_not_i[:, :, np.newaxis] + p_z - (q_z_x/L)[:, :, np.newaxis], axis=0)
+        return ll_x_i_x_not_i
+
+    def log_likelihood_idx(self, x: torch.Tensor, i: int):
+        p_x = Categorical(self.vae.decoder(self.compute_encoder_dist(x).loc).exp()).log_prob(torch.Tensor(x))
+        ll = self.log_likelihood(x, i)
         p_x_not_i = torch.log(torch.sum(torch.exp(ll), axis=-1))
         normalized_p_x_i_x_not_i = torch.diag(ll[:, x[:, i]]) - p_x[:, i] - p_x_not_i
         return normalized_p_x_i_x_not_i.detach().numpy()[:, np.newaxis]
@@ -158,7 +183,7 @@ class VaeKernel:
             p = n * self.block
             q = min(p + self.block, x.shape[0])
             _x = x[p:q, :]
-            k_x[p:q] = self.log_likelihood(_x, i)
+            k_x[p:q] = self.log_likelihood_idx(_x, i)
         return k_x
 
     def compute_encoder_dist(self, x):
