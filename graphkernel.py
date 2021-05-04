@@ -126,6 +126,7 @@ class VaeKernel:
         """
         returns log likelihood of sequence at index i
         shape: N x 1
+        internal shape: N sequences x n samples x AA dims
         """
         N, L = x.shape
         oh_x = self.convert_one_hot(x)
@@ -133,18 +134,18 @@ class VaeKernel:
         z_x_loc, z_x_scale = self.vae.encoder(oh_x)
         z = z_x_loc + self.latent_sample[:, np.newaxis] * torch.sqrt(z_x_scale)
         q_z_x = Normal(z_x_loc, z_x_scale).log_prob(z).sum(-1)
-        p_z = torch.mean(self.p_z)
-        p_x = Categorical(self.vae.decoder(self.compute_encoder_dist(x).loc).exp()).log_prob(torch.Tensor(x)).detach().numpy()
-        # decoder can only evaluate one z at a time # TODO: refactor to enable batched latent processing
+        p_z = torch.mean(self.p_z, axis=0)  # prior mean across samples
+        p_x = Categorical(self.vae.decoder(self.compute_encoder_dist(x).loc).exp()).log_prob(torch.Tensor(x))
+        # decoder can only evaluate one z at a time # TODO: refactor VAE to enable batched latent processing
         categoricals = [Categorical(self.vae.decoder(z_i).exp()) for z_i in z]
-        all_ll_x_z = torch.stack([cat.probs.log() for cat in categoricals])
+        p_x_z_vec = torch.stack([cat.probs.log() for cat in categoricals])
         p_x_z = torch.stack([cat.log_prob(torch.Tensor(x)) for cat in categoricals])
         p_x_not_i_lower_idx = torch.sum(p_x_z[:, :, :i]-(q_z_x/L)[:, :, np.newaxis], axis=-1)  # sum per sequence
         p_x_not_i_higher_idx = torch.sum(p_x_z[:, :, (i+1):]-(q_z_x/L)[:, :, np.newaxis], axis=-1)
-        # normalizing constant: sum over AAs -> mean over sequence -> mean over samples
-        p_x_not_i = torch.mean(torch.mean(torch.sum(all_ll_x_z, axis=-1), axis=-1), axis=0)
+        # normalizing constant: mean over samples -> sum over AAs
+        p_x_not_i = torch.sum(torch.exp(torch.mean(p_x_z_vec, axis=0)[:, i]), axis=-1)
         p_x_i_x_not_i = torch.mean(p_x_z[:, :, i] - (q_z_x/L) + p_x_not_i_lower_idx + p_x_not_i_higher_idx + p_z, axis=0)
-        normalized_p_x_i_x_not_i = p_x_i_x_not_i - np.float64(p_x[:, i]) - p_x_not_i
+        normalized_p_x_i_x_not_i = p_x_i_x_not_i - p_x[:, i] - p_x_not_i
         return normalized_p_x_i_x_not_i.detach().numpy()[:, np.newaxis]
 
     def k_vec(self, x, i) -> np.array:
