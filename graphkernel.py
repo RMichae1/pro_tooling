@@ -142,10 +142,11 @@ class VaeKernel:
         p_x_z = torch.stack([cat.log_prob(torch.Tensor(x)) for cat in categoricals])
         p_x_not_i_lower_idx = torch.sum(p_x_z[:, :, :i]-(q_z_x/L)[:, :, np.newaxis], axis=-1)  # sum per sequence
         p_x_not_i_higher_idx = torch.sum(p_x_z[:, :, (i+1):]-(q_z_x/L)[:, :, np.newaxis], axis=-1)
+        p_x_not_i = p_x_not_i_lower_idx + p_x_not_i_higher_idx
+        ll = torch.mean(p_x_z_vec[:, :, i] + p_x_not_i[:, :, np.newaxis] + p_z - (q_z_x/L)[:, :, np.newaxis], axis=0)
         # normalizing constant: mean over samples -> sum over AAs
-        p_x_not_i = torch.sum(torch.exp(torch.mean(p_x_z_vec, axis=0)[:, i]), axis=-1)
-        p_x_i_x_not_i = torch.mean(p_x_z[:, :, i] - (q_z_x/L) + p_x_not_i_lower_idx + p_x_not_i_higher_idx + p_z, axis=0)
-        normalized_p_x_i_x_not_i = p_x_i_x_not_i - p_x[:, i] - p_x_not_i
+        p_x_not_i = torch.log(torch.sum(torch.exp(ll), axis=-1))
+        normalized_p_x_i_x_not_i = torch.diag(ll[:, x[:, i]]) - p_x[:, i] - p_x_not_i
         return normalized_p_x_i_x_not_i.detach().numpy()[:, np.newaxis]
 
     def k_vec(self, x, i) -> np.array:
@@ -191,6 +192,6 @@ class VaeKernel:
             return torch.Tensor(k).to(torch.float64)
         norm = np.sqrt(np.diag(k))
         k_hat = k / norm.dot(norm.T)
-        print("NORMALIZED")
+        print("VECT NORMALIZED")
         print(k_hat)
         return torch.Tensor(k_hat).to(torch.float64)
