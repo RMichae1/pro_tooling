@@ -102,7 +102,8 @@ class MatrixKernel:
 
 
 class VaeKernel:
-    def __init__(self, vae, alphabet=IUPAC_SEQ2IDX, sample_size=100, block_size=1024, fixed_sample=False) -> None:
+    def __init__(self, vae, alphabet=IUPAC_SEQ2IDX, sample_size=100, block_size=1024, fixed_sample=False,
+                 normalize_S=False, marginal_not_i=False) -> None:
         """
         Kernel, which derives likelihoods from provided VAE, given an AA alphabet
         fixed sampling sets latent samples to 1 - FOR TESTING AND DEBUG ONLY!
@@ -117,7 +118,8 @@ class VaeKernel:
         self.latent_sample = torch.normal(0, 1, size=(sample_size, self.latent_dim)).float()
         self.s_min = 0.
         self.s_max = 0.
-        self.S_matrix = None
+        self.normalize_S = normalize_S
+        self.marginal_p_x_not_i = marginal_not_i
         if fixed_sample:
             self.latent_sample = torch.ones((sample_size, self.latent_dim)).float()
         self.p_z = Normal(loc=torch.zeros(vae.z_dim), scale=torch.ones(vae.z_dim)).log_prob(self.latent_sample).sum(1)
@@ -161,12 +163,36 @@ class VaeKernel:
         categoricals = [Categorical(self.vae.decoder(z_i).exp()) for z_i in z]
         p_x_z_vec = torch.stack([cat.probs.log() for cat in categoricals])
         p_x_z = torch.stack([cat.log_prob(torch.Tensor(x)) for cat in categoricals])
-        p_x_not_i_lower_idx = torch.sum(p_x_z[:, :, :i]-(q_z_x/L)[:, :, np.newaxis], axis=-1)  # sum per sequence
-        p_x_not_i_higher_idx = torch.sum(p_x_z[:, :, (i+1):]-(q_z_x/L)[:, :, np.newaxis], axis=-1)
-        p_x_not_i = p_x_not_i_lower_idx + p_x_not_i_higher_idx
-        ll_x_i_x_not_i = torch.mean(p_x_z_vec[:, :, i] + p_x_not_i[:, :, np.newaxis] + p_z - (q_z_x/L)[:, :, np.newaxis], axis=0)
+        if self.marginal_p_x_not_i:
+            p_x_not_i = self.p_x_not_i_marginal(p_x_z, q_z_x, i, L)
+        else:
+            p_x_not_i = self.p_x_not_i_joint(p_x_z, q_z_x, i, L)
+        ll_x_i_x_not_i = torch.mean(p_x_z_vec[:, :, i] + p_x_not_i[:, :, np.newaxis] + p_z - (q_z_x/L)[:, :, np.newaxis],
+                                    axis=0)
         return ll_x_i_x_not_i
 
+    @torch.no_grad()
+    def p_x_not_i_joint(self, p_x_z: torch.Tensor, q_z_x: torch.Tensor, i: int, L: int) -> torch.Tensor:
+        """
+        As defined in equation, sum over log-likelihoods
+        => p(X_1=x_1, X_2=x_2, ... ,X_L=x_L) not inluding X_i
+        """
+        p_x_not_i_lower_idx = torch.sum(p_x_z[:, :, :i]-(q_z_x/L)[:, :, np.newaxis], axis=-1)  # sum per sequence
+        p_x_not_i_higher_idx = torch.sum(p_x_z[:, :, (i+1):]-(q_z_x/L)[:, :, np.newaxis], axis=-1)
+        return p_x_not_i_lower_idx + p_x_not_i_higher_idx
+
+    @torch.no_grad()
+    def p_x_not_i_marginal(self, p_x_z: torch.Tensor, q_z_x: torch.Tensor, i: int, L: int) -> torch.Tensor:
+        """
+        Sum over probabilities, to treat sequence likelihood as marginal
+        => sum_j p(X_j=x_j) with j!=i
+        Attempt to fix very small values
+        """
+        p_x_not_i_lower_idx = torch.sum(torch.exp(p_x_z[:, :, :i]-(q_z_x/L)[:, :, np.newaxis]), axis=-1)  # sum per sequence
+        p_x_not_i_higher_idx = torch.sum(torch.exp(p_x_z[:, :, (i+1):]-(q_z_x/L)[:, :, np.newaxis]), axis=-1)
+        return torch.log(p_x_not_i_lower_idx + p_x_not_i_higher_idx)
+
+    @torch.no_grad()
     def log_likelihood_idx(self, x: torch.Tensor, i: int):
         p_x = Categorical(self.vae.decoder(self.compute_encoder_dist(x).loc).exp()).log_prob(torch.Tensor(x))
         ll = self.log_likelihood(x, i)
@@ -191,8 +217,24 @@ class VaeKernel:
         z_dist = Normal(z_loc, z_scale)
         return z_dist
 
+    def compute_normalized_S(self, s):
+        return (s-self.s_min+1)/(self.s_max-self.s_min+1)
+
+    def set_min_max_S(self, x_p, x_q) -> None:
+        assert x_p.shape == x_q.shape
+        print("Computing min, max S-values...")
+        for idx in range(x_p.shape[1]):
+            s_mat = np.log(np.matmul(np.exp(self.k_vec(x_p, idx)), np.exp(self.k_vec(x_q, idx).T)))
+            self.s_min = np.min(s_mat) if np.min(s_mat) <= self.s_min else self.s_min
+            self.s_max = np.max(s_mat[s_mat!=np.inf]) if np.max(s_mat) >= self.s_max else self.s_max
+        return
+
+    def S_val(self, x_p, x_q, idx):
+        s_val = np.log(np.matmul(np.exp(self.k_vec(x_p, idx)), np.exp(self.k_vec(x_q, idx).T)))
+        return self.compute_normalized_S(s_val) if self.normalize_S else s_val
+
     @torch.no_grad()
-    def k(self, x_p, x_q=None, adjacencies: List[tuple] = None, normalize=True) -> torch.Tensor:
+    def k(self, x_p, x_q=None, adjacencies: List[tuple] = None, normalize_k=True, eigen=False) -> torch.Tensor:
         """
         Numerically stable implementation of the proposed kernel function.
         """
@@ -200,7 +242,10 @@ class VaeKernel:
         x_p = np.array(x_p)
         N = x_p.shape[0]
         k = np.zeros([N, N])
+        eig_values = []
         x_q = x_p if x_q is None else x_q
+        if self.s_min == self.s_max == 0. and self.normalize_S:
+            self.set_min_max_S(x_p, x_q)
         neighborhoods = np.array([contact for _, contact in adjacencies]) if isinstance(adjacencies[0], tuple) \
             else adjacencies
         neighborhood_iterator = tqdm(enumerate(neighborhoods))
@@ -208,15 +253,23 @@ class VaeKernel:
         for idx, neighbors in neighborhood_iterator:
             temp_k.fill(0.)
             for n in neighbors:
-                temp_k += np.log(np.matmul(np.exp(self.k_vec(x_p, n)), np.exp(self.k_vec(x_q, n).T)))
-            temp_k *= np.log(np.matmul(np.exp(self.k_vec(x_p, idx)), np.exp(self.k_vec(x_q, idx).T)))
+                s_val = self.S_val(x_p, x_q, n)
+                if eigen:
+                    s_val[s_val == np.inf] = 0
+                    eig_values.append(np.linalg.eigvals(s_val))
+                temp_k += s_val
+            s_val = self.S_val(x_p, x_q, idx)
+            if eigen:
+                s_val[s_val == np.inf] = 0
+                eig_values.append(np.linalg.eigvals(s_val))
+            temp_k *= s_val
             k += temp_k
         print("VECT KERNEL:")
         print(k)
-        if not normalize:
-            return torch.Tensor(k).to(torch.float64)
+        if not normalize_k:
+            return torch.Tensor(k).to(torch.float64), eig_values
         norm = np.sqrt(np.diag(k))
         k_hat = k / norm.dot(norm.T)
         print("VECT NORMALIZED")
         print(k_hat)
-        return torch.Tensor(k_hat).to(torch.float64)
+        return torch.Tensor(k_hat).to(torch.float64), eig_values
