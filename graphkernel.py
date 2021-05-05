@@ -103,7 +103,7 @@ class MatrixKernel:
 
 class VaeKernel:
     def __init__(self, vae, alphabet=IUPAC_SEQ2IDX, sample_size=100, block_size=1024, fixed_sample=False,
-                 normalize_S=False, marginal_not_i=False) -> None:
+                 normalize_S=False, marginal_not_i=False, eigen=False) -> None:
         """
         Kernel, which derives likelihoods from provided VAE, given an AA alphabet
         fixed sampling sets latent samples to 1 - FOR TESTING AND DEBUG ONLY!
@@ -120,6 +120,8 @@ class VaeKernel:
         self.s_max = 0.
         self.normalize_S = normalize_S
         self.marginal_p_x_not_i = marginal_not_i
+        self.eigen = eigen
+        self.eigen_values = []
         if fixed_sample:
             self.latent_sample = torch.ones((sample_size, self.latent_dim)).float()
         self.p_z = Normal(loc=torch.zeros(vae.z_dim), scale=torch.ones(vae.z_dim)).log_prob(self.latent_sample).sum(1)
@@ -231,10 +233,17 @@ class VaeKernel:
 
     def S_val(self, x_p, x_q, idx):
         s_val = np.log(np.matmul(np.exp(self.k_vec(x_p, idx)), np.exp(self.k_vec(x_q, idx).T)))
+        if self.eig:
+            self.compute_eigen_values(s_val)
         return self.compute_normalized_S(s_val) if self.normalize_S else s_val
 
+    def compute_eigen_values(self, s_val):
+        _s_val = s_val.deepcopy()
+        _s_val[_s_val == np.inf] = 0
+        self.eigen_values.append(np.linalg.eigvals(_s_val))
+
     @torch.no_grad()
-    def k(self, x_p, x_q=None, adjacencies: List[tuple] = None, normalize_k=True, eigen=False) -> torch.Tensor:
+    def k(self, x_p, x_q=None, adjacencies: List[tuple] = None, normalize_k=True) -> torch.Tensor:
         """
         Numerically stable implementation of the proposed kernel function.
         """
@@ -242,7 +251,6 @@ class VaeKernel:
         x_p = np.array(x_p)
         N = x_p.shape[0]
         k = np.zeros([N, N])
-        eig_values = []
         x_q = x_p if x_q is None else x_q
         if self.s_min == self.s_max == 0. and self.normalize_S:
             self.set_min_max_S(x_p, x_q)
@@ -254,22 +262,16 @@ class VaeKernel:
             temp_k.fill(0.)
             for n in neighbors:
                 s_val = self.S_val(x_p, x_q, n)
-                if eigen:
-                    s_val[s_val == np.inf] = 0
-                    eig_values.append(np.linalg.eigvals(s_val))
                 temp_k += s_val
             s_val = self.S_val(x_p, x_q, idx)
-            if eigen:
-                s_val[s_val == np.inf] = 0
-                eig_values.append(np.linalg.eigvals(s_val))
             temp_k *= s_val
             k += temp_k
         print("VECT KERNEL:")
         print(k)
         if not normalize_k:
-            return torch.Tensor(k).to(torch.float64), eig_values
+            return torch.Tensor(k).to(torch.float64)
         norm = np.sqrt(np.diag(k))
         k_hat = k / norm.dot(norm.T)
         print("VECT NORMALIZED")
         print(k_hat)
-        return torch.Tensor(k_hat).to(torch.float64), eig_values
+        return torch.Tensor(k_hat).to(torch.float64)
