@@ -453,3 +453,35 @@ def plot_mWDK(pcol, mWDK) -> None:
     ax.set_yticklabels(labels, rotation=0, rotation_mode="anchor", fontsize=10)
     plt.savefig("./fig/mWDK_matrix.png")
     plt.show()
+
+
+def plot_SVAE_matrix(mat, name_suffix="") -> None:
+    fig, ax = plt.subplots(1, 1, figsize=(9, 5))
+    sns.heatmap(mat.detach().numpy(), ax=ax[0], linewidths=.5, cmap="YlGnBu")
+    plt.suptitle(f"S Matrix {name_suffix}")
+    plt.savefig(f"./fig/kernel/S_mat_{name_suffix}.png")
+    plt.show()
+
+
+def plot_VAE_kernel_values(mat_train, mat_test, name_suffix="")-> None:
+    fig, ax = plt.subplots(1, 2, figsize=(9, 5))
+    sns.heatmap(mat_train.detach().numpy(), ax=ax[0])
+    sns.heatmap(mat_test.detach().numpy(), ax=ax[1])
+    plt.suptitle(f"Kernel Values {name_suffix.upper()} \n not normalized")
+    ax[0].set_title("MSA Sequences")
+    ax[1].set_title("SSL Sequences")
+    plt.savefig(f"./fig/kernel/variant_kernel_matrix_{name_suffix.upper()}.png")
+    plt.show()
+
+
+def plot_eigenvalues(eig_vals_real, eig_vals_imag, name_suffix="") -> None:
+    sns.histplot(eig_vals_real)
+    plt.title(f"Distribution of λ \n for S from {name_suffix.upper()}")
+    plt.savefig(f".fig/kernel/eigenvalues_histogram_{name_suffix.upper()}")
+    plt.show()
+
+    f1 = sns.scatterplot(x=eig_vals_real, y=eig_vals_imag)
+    f1.set(xscale="log")
+    plt.title(f"λ of S \n {name_suffix.upper()}")
+    plt.savefig(f"./fig/kernel/eigenvalues_scatter_{name_suffix.upper()}")
+    plt.show()

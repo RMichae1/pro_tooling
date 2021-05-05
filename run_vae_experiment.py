@@ -35,7 +35,7 @@ os.environ['KMP_DUPLICATE_LIB_OK'] = 'True'  # TODO figure out what caused OMP E
 logging.basicConfig(level=logging.WARN)
 logger = logging.getLogger(__name__)
 
-VAE_TYPES = ["blat", "sp400", "pga", "ubq"]
+VAE_TYPES = ["blat", "sp400", "pga", "ubq", "hexo"]
 
 if __name__ == "__main__":
     pyro.clear_param_store()
@@ -178,80 +178,6 @@ if __name__ == "__main__":
     delta_log_p = np.array([(l - wt_log_prob) for l in log_likelihoods], dtype=float)
     print(f"Corr. (Spearman) Δ ELBO and data: {spearmanr(delta_log_p, test_y)}")
 
-    ## TEST KERNEL
-    contact_map = ContactMapper(pdb_file=f"./pdb/1ubq.pdb", tri_dist=True)
-    ref_adj = contact_map.adjacency
-    # COMPUTE SUB-Matrix equivalent:
-    # # s_k = VaeKernel(vae)
-    # s_k = VaeKernel(vae, marginal_not_i=True)
-    # S_mat_fam = s_k.compute_S_matrix(family_seqs[:1000, :], normalize=False)
-    # S_mat_fam_norm = s_k.compute_S_matrix(family_seqs[:1000, :], normalize=True)
-    # fig, ax = plt.subplots(1, 2, figsize=(9, 5))
-    # sns.heatmap(S_mat_fam.detach().numpy(), ax=ax[0], linewidths=.5, cmap="YlGnBu")
-    # sns.heatmap(S_mat_fam_norm.detach().numpy(), ax=ax[1], linewidths=.5, cmap="YlGnBu")
-    # plt.suptitle("S Matrix UBQ")
-    # ax[0].set_title("S in log")
-    # ax[1].set_title("S in log \n min-max normalized")
-    # plt.savefig(f"./fig/S_mat_{args.type}.png")
-    # plt.show()
-
-    # RUN NOT NORMALIZED
-    v_k = VaeKernel(vae, normalize_S=False)
-    s_vae_val_fam = v_k.k(family_seqs[:10, :], adjacencies=ref_adj, normalize_k=False, eigen=True)
-    s_fam_eigen = v_k.eigen_values
-    v_k.eigen_values = []
-    fam_eigen_vec_real = np.stack([eig.real for eig in s_fam_eigen]).flatten()
-    fam_eigen_vec_imag = np.stack([eig.imag for eig in s_fam_eigen]).flatten()
-    s_vae_val_test = v_k.k(test_seqs[:10, :], adjacencies=ref_adj, normalize_k=False, eigen=True)
-    s_test_eigen = v_k.eigen_values
-    v_k.eigen_values = []
-    test_eigen_vec_real = np.stack([eig.real for eig in s_fam_eigen]).flatten()
-    test_eigen_vec_imag = np.stack([eig.imag for eig in s_fam_eigen]).flatten()
-    fig, ax = plt.subplots(1, 2, figsize=(9, 5))
-    f1 = sns.scatterplot(x=fam_eigen_vec_real, y=fam_eigen_vec_imag, ax=ax[0])
-    f2 = sns.scatterplot(x=test_eigen_vec_real, y=test_eigen_vec_imag, ax=ax[1])
-    f1.set(xscale="log")
-    f2.set(xscale="log")
-    plt.suptitle("Eigenvalues of S not normalized \n UBQ")
-    ax[0].set_title("MSA Sequences")
-    ax[1].set_title("SSL Sequences")
-    plt.show()
-    fig, ax = plt.subplots(1, 2, figsize=(9, 5))
-    sns.heatmap(s_vae_val_fam.detach().numpy(), ax=ax[0])
-    sns.heatmap(s_vae_val_test.detach().numpy(), ax=ax[1])
-    plt.suptitle("Kernel Values UBQ \n not normalized")
-    ax[0].set_title("MSA Sequences")
-    ax[1].set_title("SSL Sequences")
-    plt.show()
-
-    # RUN NORMALIZED
-    #v_k = VaeKernel(vae, normalize_S=True)
-    v_k = VaeKernel(vae, normalize_S=True, marginal_not_i=True)
-    s_vae_val_fam = v_k.k(family_seqs[:10, :], adjacencies=ref_adj, normalize_k=True, eigen=True)
-    s_fam_eigen = v_k.eigen_values
-    v_k.eigen_values = [] # reset eigen values
-    fam_eigen_vec_real = np.stack([eig.real for eig in s_fam_eigen]).flatten()
-    fam_eigen_vec_imag = np.stack([eig.imag for eig in s_fam_eigen]).flatten()
-    s_vae_val_test = v_k.k(test_seqs[:10, :], adjacencies=ref_adj, normalize_k=True, eigen=True)
-    s_test_eigen = v_k.eigen_values
-    test_eigen_vec_real = np.stack([eig.real for eig in s_fam_eigen]).flatten()
-    test_eigen_vec_imag = np.stack([eig.imag for eig in s_fam_eigen]).flatten()
-    fig, ax = plt.subplots(1, 2, figsize=(9, 5))
-    f1 = sns.scatterplot(x=fam_eigen_vec_real, y=fam_eigen_vec_imag, ax=ax[0])
-    f2 = sns.scatterplot(x=test_eigen_vec_real, y=test_eigen_vec_imag, ax=ax[1])
-    f1.set(xscale="log")
-    f2.set(xscale="log")
-    plt.suptitle("Eigenvalues of S \n UBQ")
-    ax[0].set_title("MSA Sequences")
-    ax[1].set_title("SSL Sequences")
-    plt.show()
-    fig, ax = plt.subplots(1, 2, figsize=(9, 5))
-    sns.heatmap(s_vae_val_fam.detach().numpy(), ax=ax[0])
-    sns.heatmap(s_vae_val_test.detach().numpy(), ax=ax[1])
-    plt.suptitle("Kernel Values UBQ \n normalized")
-    ax[0].set_title("MSA Sequences")
-    ax[1].set_title("SSL Sequences")
-    plt.show()
 
     if args.plot:
         samples = [vae.latent_sample(s.flatten(), n=1).reshape(-1).detach().numpy() for s, _, _ in seq_train]
