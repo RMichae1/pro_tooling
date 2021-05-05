@@ -169,15 +169,32 @@ def S(_vae, seq_x, seq_y, idx: int, n_samples=1, fixed_sample=False):
     return np.log(normalized_p_x_i_x_not_i * normalized_p_y_i_y_not_i)
 
 
-def naive_v_K(sequences: np.ndarray, adj: np.ndarray, vae: VAE, sample_size=1, stable=False, fixed_sample=False, norm_S=False) -> np.ndarray:
+def get_min_max_S_vals(sequences, vae, sample_size=1, fixed_sample=False):
+    n = sequences.shape[0]
+    s_min = 0.
+    s_max = 0.
+    for p in range(n):
+        for q in range(n):
+            for idx in range(sequences.shape[1]):
+                s_val = S(vae, seq_x=sequences[p], seq_y=sequences[q], idx=idx, n_samples=sample_size,
+                          fixed_sample=fixed_sample)
+                s_min = np.float(s_val) if s_val <= s_min else s_min
+                s_max = np.float(s_val) if s_val >= s_max else s_max
+    return s_min, s_max
+
+
+def min_max_normalize(s, s_min, s_max):
+    return (s-s_min+1)/(s_max-s_min+1)
+
+
+def naive_v_K(sequences: np.ndarray, adj: np.ndarray, vae: VAE, sample_size=1, stable=False, fixed_sample=False, normalize_S=False) -> np.ndarray:
     """
     Kernel as described in the paper
     """
     n = sequences.shape[0]
     K = np.zeros([n, n])
     temp_K = np.zeros([n, n])
-    s_min = 0.
-    s_max = 0.
+    s_min, s_max = get_min_max_S_vals(sequences, vae, sample_size, fixed_sample)
     for p in range(n):
         for q in range(n):
             for idx in range(sequences.shape[1]):
@@ -187,22 +204,14 @@ def naive_v_K(sequences: np.ndarray, adj: np.ndarray, vae: VAE, sample_size=1, s
                     s_val = S(vae, seq_x=sequences[p], seq_y=sequences[q], idx=l, n_samples=sample_size,
                                       fixed_sample=fixed_sample) if not stable else S_stable(
                         vae, sequences[p], sequences[q], idx=l, n_samples=sample_size, fixed_sample=fixed_sample)
-                    s_min = np.float(s_val) if s_val <= s_min else s_min
-                    s_max = np.float(s_val) if s_val >= s_max else s_max
-                    temp_K[p, q] += s_val
+                    temp_K[p, q] += min_max_normalize(s_val, s_min, s_max) if normalize_S else s_val
                 s_val = S(vae, seq_x=sequences[p], seq_y=sequences[q], idx=idx, n_samples=sample_size,
                                   fixed_sample=fixed_sample) if not stable else S_stable(
                     vae, sequences[p], sequences[q], idx=idx, n_samples=sample_size, fixed_sample=fixed_sample)
-                temp_K[p, q] *= s_val
-                s_min = np.float(s_val) if s_val <= s_min else s_min
-                s_max = np.float(s_val) if s_val >= s_max else s_max
+                temp_K[p, q] *= min_max_normalize(s_val, s_min, s_max) if normalize_S else s_val
                 K += temp_K
-    print("NAIVE KERNEL:")
+    print(f"NAIVE KERNEL (NORMALIZATION {normalize_S}):")
     print(K)
-    if norm_S:  # See Eq. 8 in mgpfusion paper
-        K = (K-s_min+1)/(s_max - s_min +1)
-        print("Apply max normalization")
-        print(K)
     return K
 
 
@@ -235,8 +244,8 @@ def test_naive_VAE_kernel():
 
 
 def test_naive_norm_VAE_kernel():
-    k_mat = naive_v_K(test_dummy_sequences[0][np.newaxis, :], adj, vae, fixed_sample=True, norm_S=True)
-    k_mat_stable = naive_v_K(test_dummy_sequences[0][np.newaxis, :], adj, vae, stable=True, fixed_sample=True, norm_S=True)
+    k_mat = naive_v_K(test_dummy_sequences[0][np.newaxis, :], adj, vae, fixed_sample=True, normalize=True)
+    k_mat_stable = naive_v_K(test_dummy_sequences[0][np.newaxis, :], adj, vae, stable=True, fixed_sample=True, normalize=True)
     np.testing.assert_almost_equal(k_mat, k_mat_stable, decimal=5)
 
 
@@ -258,13 +267,28 @@ def test_naive_VAE_kernel_sampling():
 def test_vectorized_VAE_kernel():
     sequences = test_dummy_sequences[:3]
     #naive_vae_val = naive_v_K(sequences, adj, vae, sample_size=10, stable=True, fixed_sample=True)
-    naive_vae_val = naive_v_K(sequences, adj, vae, sample_size=10, fixed_sample=True)
-    v_k = VaeKernel(vae, sample_size=10, fixed_sample=True)
-    s_vae_val = v_k.k(sequences, adjacencies=adj, normalize=False)
+    naive_vae_val = naive_v_K(sequences, adj, vae, sample_size=10, fixed_sample=True, normalize_S=False)
+    v_k = VaeKernel(vae, sample_size=10, fixed_sample=True, normalize_S=False)
+    s_vae_val, _ = v_k.k(sequences, adjacencies=adj, normalize_k=False)
     norm = np.sqrt(np.diag(s_vae_val))
     norm_s_vae_val = s_vae_val / norm.dot(norm.T)
     # TEST UNNORMALIZED
     np.testing.assert_almost_equal(naive_vae_val, s_vae_val, decimal=5)
+    # normalized_naive_vae_val = normalize_K(naive_vae_val)
+    # # TEST NORMALIZED
+    # np.testing.assert_almost_equal(normalized_naive_vae_val, norm_s_vae_val)
+
+
+def test_vectorized_normalized_VAE_kernel():
+    sequences = test_dummy_sequences[:3]
+    naive_vae_val = naive_v_K(sequences, adj, vae, sample_size=10, fixed_sample=True, normalize_S=True)
+    v_k = VaeKernel(vae, sample_size=10, fixed_sample=True, normalize_S=True)
+    s_vae_val = v_k.k(sequences, adjacencies=adj, normalize_k=False)
+    # manual normalization for better comparison
+    norm = np.sqrt(np.diag(s_vae_val))
+    norm_s_vae_val = s_vae_val / norm.dot(norm.T)
+    # TEST NOT NORMALIZED
+    np.testing.assert_almost_equal(naive_vae_val, s_vae_val, decimal=4)
     normalized_naive_vae_val = normalize_K(naive_vae_val)
     # TEST NORMALIZED
     np.testing.assert_almost_equal(normalized_naive_vae_val, norm_s_vae_val)
@@ -280,7 +304,7 @@ def test_vectorized_VAE_kernel_on_UBQ():
     s_vae_val = v_k.k(sequences, adjacencies=ref_adj, normalize=False)
     norm = np.sqrt(np.diag(s_vae_val))
     norm_s_vae_val = s_vae_val / norm.dot(norm.T)
-    # TEST UNNORMALIZED
+    # TEST NOT NORMALIZED
     # np.testing.assert_almost_equal(naive_vae_val, s_vae_val)
     # TEST NORMALIZED
     normalized_naive_vae_val = normalize_K(naive_vae_val)

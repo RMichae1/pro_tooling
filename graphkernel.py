@@ -233,7 +233,7 @@ class VaeKernel:
 
     def S_val(self, x_p, x_q, idx):
         s_val = np.log(np.matmul(np.exp(self.k_vec(x_p, idx)), np.exp(self.k_vec(x_q, idx).T)))
-        if self.eig:
+        if self.eigen:
             self.compute_eigen_values(s_val)
         return self.compute_normalized_S(s_val) if self.normalize_S else s_val
 
