@@ -15,6 +15,8 @@ from typing import List, Tuple
 from Bio.Seq import Seq
 from reference_alphabet import seq2idx
 import pickle
+from contact_mapper import ContactMapper
+from protein_representation import ProteinCollection
 
 
 #######
@@ -484,14 +486,6 @@ def parse_UBQ():
     test_seqs = np.array([seq2idx(seq) for seq in test_df.Sequence])
     test_y = test_df.selection_coefficient  # use DeepSequence reported values
     return family_seqs, test_seqs, test_y
-
-
-def derive_elements_matrix(k_mat, sequence, N=21):
-    elements, indices = np.unique(sequence, return_index=True)
-    matrix = np.zeros([N, N])
-    # TODO marginalize over residues for BLOSUM equivalent values
-    # TODO compute BLOSUM equivalent from matrix kernel
-    return matrix
 
 
 
