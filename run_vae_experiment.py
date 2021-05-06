@@ -10,13 +10,8 @@ import numpy as np
 from scipy.stats import spearmanr, pearsonr
 from utility import compute_ρ
 from utility import WeightedMSADataset, seq_collate 
-<<<<<<< HEAD:run_vae.py
-from utility import parse_mutations, parse_alignment
-from utility import convert_aa_sequence, filter_alignment
-=======
 from utility import parse_mutations, parse_alignment, filter_alignment
 from utility import convert_aa_sequence
->>>>>>> a81bdf892def3cc6ab409ef241bc0f6389cd95ff:run_vae_experiment.py
 from protein_representation import ProteinCollection
 from contact_mapper import ContactMapper
 from graphkernel import VaeKernel
@@ -40,69 +35,7 @@ os.environ['KMP_DUPLICATE_LIB_OK'] = 'True'  # TODO figure out what caused OMP E
 logging.basicConfig(level=logging.WARN)
 logger = logging.getLogger(__name__)
 
-<<<<<<< HEAD:run_vae.py
-VAE_TYPES = ["blat", "sp400", "pga", "ubq"]
-
-def parse_BLAT():
-    with open("./data/blat/BLAT_data_df.pkl", "rb") as infile:
-            blat_df = pickle.load(infile)
-    # stored values without assay entries are BLAT TEM1 ECOLX family data
-    family_df = blat_df[blat_df.assay.isna()]
-    test_blat_df = blat_df[~blat_df.assay.isna()]
-    # cast sequence labels to int
-    family_seqs = np.array([[int(elem) for elem in seq] for seq in family_df.seqs])
-    test_seqs = np.array([[int(elem) for elem in seq] for seq in test_blat_df.seqs])
-    test_y = np.array(test_blat_df.assay, dtype=float)
-    return family_seqs, test_seqs, test_y
-
-
-def parse_TLL(msa_filename):
-    fam_alignment_df = filter_alignment(msa_filename)
-    family_seqs = np.array([np.array(s) for s in fam_alignment_df.seq])
-    test_df = pd.read_excel("./data/tll/lipase_variants_tll_tm_tapo_20nov2020.xlsx")
-    test_df = test_df[["mut2wt_1ein_join", "TSA.Tm"]]
-    test_df = test_df.groupby("mut2wt_1ein_join").mean().reset_index()
-    test_df["mutations"] = test_df.mut2wt_1ein_join.str.replace(" ", "")
-    test_df["TSA"] = test_df["TSA.Tm"].astype(float)
-    exp_mutations = {"1TIB" : [(mut, y) for (mut, y) in zip(test_df.mutations, test_df.TSA)]}
-    contact_map = ContactMapper(pdb_file=f"./pdb/1tib.pdb", tri_dist=True)
-    protein = ProteinCollection(contact_map, pdb_ID="1TIB", mutations_exp=exp_mutations, TESTING=False)
-    test_seqs = convert_aa_sequence(protein.mut_S_exp) # TODO also run seq2idx and test for identity
-    test_y = test_df.TSA  # get y values
-    return family_seqs, test_seqs, test_y
-
-
-def parse_PGA():
-    test_df = pd.read_csv("./data/pga/Nisthal_Mayo_2019_updated_3xESLyS9.csv", delimiter=",")
-    #family_seqs = np.array([seq2idx(seq) for seq in pga_df.Sequence.unique()])
-    family_seqs = np.array([seq2idx(seq) for seq in pga_df.Sequence])
-    # build sequences from test_df
-    test_seqs = family_seqs  # TODO get test sequences
-    test_y = np.zeros(len(test_seqs))
-    return family_seqs, test_seqs, test_y
-
-
-def parse_UBQ():
-    ubq_df = parse_alignment("./data/ubq/P0CG48_ALL.a2m")
-    family_seqs = np.array([[int(elem) for elem in seq] for seq in ubq_df.seq])
-    # for testing combine protabank sequences with DeepSequence Bolon 2013 data
-    protabank_df = pd.read_csv("./data/ubq/RL401_Bolon2013_YHUnpqbw.csv", delimiter=",")
-    # drop SD values
-    protabank_df = protabank_df[~protabank_df["Assay/Protocol"].str.contains("SD ")]
-    deep_seq_df = pd.read_csv("./data/ubq/RL401_Bolon2013.csv", delimiter=";")
-    deep_seq_df = deep_seq_df[["mutant", "selection_coefficient"]].dropna()
-    test_df = deep_seq_df.merge(protabank_df[["Description", "Data", "Sequence"]], 
-                                "inner", left_on="mutant", right_on="Description")
-    test_df["Data"] = test_df.Data.astype(float)
-    test_df["selection_coefficient"] = test_df.selection_coefficient.str.replace(",", ".").astype(float)
-    #np.testing.assert_array_equal(test_df.selection_coefficient.values, test_df.Data.values)
-    test_seqs = np.array([seq2idx(seq) for seq in test_df.Sequence])
-    test_y = test_df.selection_coefficient  # use DeepSequence reported values
-    return family_seqs, test_seqs, test_y
-
-=======
 VAE_TYPES = ["blat", "sp400", "pga", "ubq", "hexo"]
->>>>>>> a81bdf892def3cc6ab409ef241bc0f6389cd95ff:run_vae_experiment.py
 
 if __name__ == "__main__":
     pyro.clear_param_store()
@@ -137,11 +70,7 @@ if __name__ == "__main__":
     if args.type == "blat":
         family_seqs, test_seqs, test_y = parse_BLAT()
     elif args.type == "sp400":
-<<<<<<< HEAD:run_vae.py
         family_seqs, test_seqs, test_y = parse_TLL(msa_filename="./data/lipase_v2/sp400family/SP400.nr.tree.aln")
-=======
-        family_seqs, test_seqs, test_y = parse_TLL()   # TODO
->>>>>>> a81bdf892def3cc6ab409ef241bc0f6389cd95ff:run_vae_experiment.py
     elif args.type == "pga":
         family_seqs, test_seqs, test_y = parse_PGA()
     elif args.type == "ubq":
@@ -152,11 +81,7 @@ if __name__ == "__main__":
 
     n, length = family_seqs.shape
     test_n = test_seqs.shape[0]
-<<<<<<< HEAD:run_vae.py
-    num_classes = np.unique(family_seqs).shape[0] +1 # TODO double check this.. PGA has 20 classes Error
-=======
     num_classes = np.unique(family_seqs).shape[0] + 2  # TODO double check this.. PGA has 20 classes Error
->>>>>>> a81bdf892def3cc6ab409ef241bc0f6389cd95ff:run_vae_experiment.py
     indices = list(range(n))
     random.shuffle(indices)
     test_size = int(args.test_split * n)
