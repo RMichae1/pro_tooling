@@ -233,12 +233,12 @@ class VaeKernel:
 
     def S_val(self, x_p, x_q, idx):
         s_val = np.log(np.matmul(np.exp(self.k_vec(x_p, idx)), np.exp(self.k_vec(x_q, idx).T)))
-        if self.eigen:
+        if self.eigen and len(self.eigen_values) <= 3000:
             self.compute_eigen_values(s_val)
         return self.compute_normalized_S(s_val) if self.normalize_S else s_val
 
     def compute_eigen_values(self, s_val):
-        _s_val = s_val.deepcopy()
+        _s_val = s_val.copy()
         _s_val[_s_val == np.inf] = 0
         self.eigen_values.append(np.linalg.eigvals(_s_val))
 

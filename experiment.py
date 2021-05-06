@@ -42,9 +42,12 @@ class Experiment:
         if vae_input or vae_kernel:
             self.family_seqs = self.prepare_family_sequences()
             self.vae_model_FILENAME = f"./models/VAE_t{experiment_type}_z55_h[1700, 1200]_e200_d0.065_wTrue.pt"
-            self.vae = self.prepare_vae(vae_params)
-        self.protein = ProteinCollection(self.contact_map, pdb_ID=pdb,
-                                         mutations_exp=self.experimental_data, vae=self.vae, TESTING=False)
+            self.vae = self.prepare_vae(**vae_params)
+        if vae_kernel:
+            self.protein = ProteinCollection(self.contact_map, pdb_ID=pdb, mutations_exp=self.experimental_data,
+                                             vae=self.vae, TESTING=False)
+        else:
+            self.protein = ProteinCollection(self.contact_map, pdb_ID=pdb, mutations_exp=self.experimental_data, TESTING=False)
         self.in_silico_data = self.prepare_in_silico_data() if self.fusion else {}
         self.X_wt, self.X_exp, self.X_is, self.y_wt, self.ΔΔg_exp, self.ΔΔg_is_scaled, self.scaler_σ, self.max_y, self.mean_y = self.init_experiment_run()
         if not self.fusion:
@@ -59,6 +62,8 @@ class Experiment:
             return self.prepare_tll_in_silico_data()
         elif self.experiment_type == "mgpf":
             return parse_matlab_mutation_file(self.is_data_filename, query="ddg_rosetta_single")
+        elif self.experiment_type == "ubq":
+            return self.prepare_ubq_in_silico_data()
         else:
             raise NotImplementedError("Specified In-Silico data configuration not available.")
 
@@ -103,11 +108,11 @@ class Experiment:
         return is_mutation_dict
 
     def prepare_vae(self, **vae_params):
-        num_classes = np.unique(self.family_seqs).shape[0]
+        num_classes = np.unique(self.family_seqs).shape[0] +2 # TODO check why two needs to be added
         WT = F.one_hot(torch.tensor(self.family_seqs[0], dtype=torch.int64),
                        num_classes=num_classes).flatten().float()
-        vae = VAE(z_dim=vae_params["latent_dim"], encoder_dim=list(vae_params["encoder_dim"]),
-                  decoder_dim=list(vae_params["decoder_dim"]),
+        vae = VAE(z_dim=vae_params["latent_dim"], encoder_dim=[vae_params["encoder_dim"]],
+                  decoder_dim=[vae_params["decoder_dim"]],
                   input_dims=WT.shape[0], use_cuda=vae_params["cuda"], wt=WT,
                   dropout=vae_params["dropout"], num_categories=num_classes)
         if os.path.exists(self.vae_model_FILENAME):
@@ -119,9 +124,7 @@ class Experiment:
     def derive_vae_mutations(self, sample_n=1):
         assert isinstance(self.vae, VAE)
         mut_S_exp, mut_adj_exp, ΔΔg_exp, mut_ids_exp = parse_mutations(
-            mutation_dict=self.experimental_data.get(self.pdb),
-            sequence=self.protein.sequence,
-            adjacency=self.ref_adj)
+            mutation_dict=self.experimental_data.get(self.pdb), sequence=self.protein.sequence, adjacency=self.ref_adj)
         X_exp = convert_aa_sequence(mut_S_exp)  # TODO also run seq2idx and test for identity
         sequence_dataset = WeightedMSADataset(X_exp, num_classes=self.vae.num_categories)
         self.vae.eval()
@@ -196,13 +199,23 @@ class Experiment:
         ubq_df = pd.read_csv(self.exp_data_filename, delimiter=";")
         ubq_df = ubq_df[["mutant", "selection_coefficient"]].dropna()
         ubq_df["growth"] = ubq_df["selection_coefficient"].str.replace(",", ".").astype(float)
-        clipped_mutations = list(filter(lambda x: int(x[0][1:-1]) <= 74, zip(ubq_df.mutant, ubq_df.growth)))
-        # WARNING: we clip mutations at position 74 - mutations go until 76, however pdb is only 74 (A chain) long
-        mutation_dict = {"1UBQ": clipped_mutations}
+        #clipped_mutations = list(filter(lambda x: int(x[0][1:-1]) <= 76, zip(ubq_df.mutant, ubq_df.growth)))
+        #mutation_dict = {"1UBQ": clipped_mutations}
+        mutation_dict = {"1UBQ": list(zip(ubq_df.mutant, ubq_df.growth))}
         if save_file:
             with open(save_file, "wb") as filehandle:
                 pickle.dump(mutation_dict, filehandle)
         return mutation_dict
+
+    def prepare_ubq_in_silico_data(self, load_existing=True):
+        if not self.vae:
+            raise NotImplementedError("Rosetta in silico data for UBQ is not implemented.")
+        if os.path.exists(self.is_data_filename) and load_existing:
+            with open(self.is_data_filename, "rb") as filehandle:
+                is_mutation_dict = pickle.load(filehandle)
+            return is_mutation_dict
+        else:
+            return self.generate_in_silico_mutations_from_vae()
 
     @staticmethod
     def prepare_blat_family_sequences():
