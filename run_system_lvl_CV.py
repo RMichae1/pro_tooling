@@ -165,9 +165,21 @@ def run_UBQ() -> None:
     create_mlflow_run_pos_lvl(pdb="1UBQ", cv="pos_lvl", optim=False, ref=False, vae_kernel=True, data="ubq")
 
 
+def run_PGA() -> None:
+    # TODO run experiments on PGA data
+    pass
+
+
+def run_HEX() -> None:
+    # TODO run - NZ specific!
+    pass
+
+
 if __name__ == "__main__":
     warnings.filterwarnings("ignore")
     # run_TLL()
     # run_MGPF()
     # run_BLAT()
     run_UBQ()
+    run_PGA()
+    run_HEX()
