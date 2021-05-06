@@ -13,7 +13,7 @@ from scipy.stats import spearmanr, pearsonr
 from utility import compute_ρ
 from utility import WeightedMSADataset, seq_collate 
 from utility import parse_mutations, parse_alignment
-from utility import convert_aa_sequence
+from utility import convert_aa_sequence, filter_alignment
 from protein_representation import ProteinCollection
 from contact_mapper import ContactMapper
 import torch
@@ -50,9 +50,9 @@ def parse_BLAT():
     return family_seqs, test_seqs, test_y
 
 
-def parse_TLL():
-    with open("./data/tll/seqs_in_int_nogaps_sp400_Mar14_data_all_jaks_Apr3_trimmed.pkl", "rb") as infile:
-        family_seqs = np.array(pickle.load(infile))
+def parse_TLL(msa_filename):
+    fam_alignment_df = filter_alignment(msa_filename)
+    family_seqs = np.array([np.array(s) for s in fam_alignment_df.seq])
     test_df = pd.read_excel("./data/tll/lipase_variants_tll_tm_tapo_20nov2020.xlsx")
     test_df = test_df[["mut2wt_1ein_join", "TSA.Tm"]]
     test_df = test_df.groupby("mut2wt_1ein_join").mean().reset_index()
@@ -129,9 +129,9 @@ if __name__ == "__main__":
     if args.type == "blat":
         family_seqs, test_seqs, test_y = parse_BLAT()
     elif args.type == "sp400":
-        family_seqs, test_seqs, test_y = parse_TLL() # TODO
+        family_seqs, test_seqs, test_y = parse_TLL(msa_filename="./data/lipase_v2/sp400family/SP400.nr.tree.aln")
     elif args.type == "pga":
-        family_seqs, test_seqs, test_y = parse_PGA() # TODO
+        family_seqs, test_seqs, test_y = parse_PGA()
     elif args.type == "ubq":
         family_seqs, test_seqs, test_y = parse_UBQ()
     else:
@@ -140,7 +140,7 @@ if __name__ == "__main__":
 
     n, length = family_seqs.shape
     test_n = test_seqs.shape[0]
-    num_classes = np.unique(family_seqs).shape[0]  # TODO double check this.. PGA has 20 classes Error
+    num_classes = np.unique(family_seqs).shape[0] +1 # TODO double check this.. PGA has 20 classes Error
     indices = list(range(n))
     random.shuffle(indices)
     test_size = int(args.test_split * n)

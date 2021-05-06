@@ -25,7 +25,7 @@ def get_positions(pdb: str) -> str:
 
 def run_sys_CV(pdb, idx, cv, experiment, run_id, data=None, ref=False, optim=True, no_fusion=False, verbose=False,
                ref_contact_map=False, vae_input=False, vae_kernel=False):
-    command_lst = ["c:/Users/rmich/miniconda3/envs/mgpfusion/python.exe", "c:/pro_tooling/run_experiments.py", "-p", f"{pdb}", "-i", f"{idx}",
+    command_lst = ["C:/Users/RCML/Anaconda3/envs/mgpfusion/python.exe", "//wsl$/Ubuntu/home/rcml/pro_tooling/run_experiments.py", "-p", f"{pdb}", "-i", f"{idx}",
                    "-r", f"{cv}", "--seed", "3032021", "--experiment", f"{experiment}", "--run_id", f"{run_id}",
                    "--data", data, "--experimental_data", f"{EXPERIMENTAL_DATA.get(data)}",
                    "--simulated_data", f"{IN_SILICO_DATA.get(data)}"]
@@ -155,7 +155,7 @@ def run_BLAT() -> None:
 
 if __name__ == "__main__":
     warnings.filterwarnings("ignore")
-    #run_TLL()
+    run_TLL()
     #run_MGPF()
-    run_BLAT()
+    #run_BLAT()
     
