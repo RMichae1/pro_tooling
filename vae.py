@@ -6,13 +6,15 @@ import torch
 from torch import nn
 from torch.distributions import kl_divergence
 from torch.nn.functional import nll_loss, relu
+
 pyro.enable_validation()
 
 
 class Encoder(nn.Module):
-    def __init__(self, z_dim, hidden_dims, input_dims):
+    def __init__(self, z_dim, hidden_dims, input_dims, num_categories):
         super().__init__()
         self.sequence_dims = input_dims
+        self.num_classes = num_categories
         encoding_layers = []
         current_dim = input_dims
         for hidden_dim in hidden_dims:
@@ -26,7 +28,7 @@ class Encoder(nn.Module):
     def forward(self, x):
         x = x.reshape(-1, self.sequence_dims)
         z_loc = self.mean(self.encoding_nn(x))
-        z_scale = torch.exp(self.log_var(self.encoding_nn(x))) # TODO multiply with 0.5?
+        z_scale = torch.exp(self.log_var(self.encoding_nn(x)))  # TODO multiply with 0.5?
         return z_loc, z_scale
 
 
@@ -57,14 +59,15 @@ class Decoder(nn.Module):
 
 
 class VAE(nn.Module):
-    def __init__(self, z_dim, encoder_dim, decoder_dim, input_dims, wt, num_categories, use_cuda=False, dropout=0.0):
+    def __init__(self, z_dim: int, encoder_dim: list, decoder_dim: list, input_dims: int, wt: np.ndarray,
+                 num_categories: int, use_cuda: bool = False, dropout: float = 0.0):
         super().__init__()
         self.input_dims = input_dims
         self.num_categories = num_categories
         self.sequence_length = int(input_dims / num_categories)
-        self.encoder = Encoder(z_dim, encoder_dim, input_dims)
-        self.decoder = Decoder(z_dim, decoder_dim, input_dims=input_dims, 
-                                num_categories=num_categories, dropout=dropout)
+        self.encoder = Encoder(z_dim, encoder_dim, input_dims, num_categories=num_categories)
+        self.decoder = Decoder(z_dim, decoder_dim, input_dims=input_dims, num_categories=num_categories,
+                               dropout=dropout)
         self.mse = nn.MSELoss()
         if use_cuda:
             self.cuda()
@@ -99,14 +102,15 @@ class VAE(nn.Module):
         reconstruction = self.representation(z_dist)
         return reconstruction
 
-    def log_p(self, x): 
+    def log_p(self, x):
         z_loc, z_scale = self.encoder(x)
         z_dist = dist.Normal(z_loc, z_scale)
         kld = self.kld_loss(z_dist)
         reconstruction = self.decoder(z_dist.loc)
         # nll loss input requires: (batch, categories, data)
-        log_p = nll_loss(reconstruction.permute(0, 2, 1), 
-                            x.view(self.sequence_length, self.num_categories).argmax(-1)[np.newaxis, :], reduction="none").mul(-1).sum(1)
+        log_p = nll_loss(reconstruction.permute(0, 2, 1),
+                         x.view(self.sequence_length, self.num_categories).argmax(-1)[np.newaxis, :],
+                         reduction="none").mul(-1).sum(1)
         # log_p = dist.Categorical(self.decoder(z_dist.loc).exp()).log_prob(x.argmax(-1)).sum(1) 
         elbo = log_p + kld
         return elbo, log_p, kld
@@ -152,4 +156,3 @@ def evaluate(svi, test_loader, use_cuda=False):
         test_loss += svi.evaluate_loss(x)
     total_epoch_loss_train = test_loss / len(test_loader.dataset)
     return total_epoch_loss_train
-

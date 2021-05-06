@@ -453,3 +453,35 @@ def plot_mWDK(pcol, mWDK) -> None:
     ax.set_yticklabels(labels, rotation=0, rotation_mode="anchor", fontsize=10)
     plt.savefig("./fig/mWDK_matrix.png")
     plt.show()
+
+
+def plot_SVAE_matrix(mat, name_suffix="", run_suffix="") -> None:
+    fig, ax = plt.subplots(1, 1, figsize=(9, 5))
+    sns.heatmap(mat.detach().numpy(), ax=ax, linewidths=.5, cmap="YlGnBu")
+    plt.suptitle(f"S Matrix {name_suffix}")
+    plt.savefig(f"./fig/kernel/S_mat_{name_suffix}_{run_suffix}.png".replace(' ', '_'))
+    plt.show()
+
+
+def plot_VAE_kernel_values(mat_train, mat_test, name_suffix="")-> None:
+    fig, ax = plt.subplots(1, 2, figsize=(9, 5))
+    sns.heatmap(mat_train.detach().numpy(), ax=ax[0])
+    sns.heatmap(mat_test.detach().numpy(), ax=ax[1])
+    plt.suptitle(f"Kernel Values \n {name_suffix.upper()}")
+    ax[0].set_title("MSA Sequences")
+    ax[1].set_title("SSL Sequences")
+    plt.savefig(f"./fig/kernel/variant_kernel_matrix_{name_suffix.upper().replace(' ', '_')}.png")
+    plt.show()
+
+
+def plot_eigenvalues(eig_vals_real, eig_vals_imag, name_suffix="", limit_n=2500) -> None:
+    # TODO fix hist plotting - currently mem error from allocating array
+    # plt.hist(eig_vals_real[:limit_n], 1000)
+    # plt.title(f"Distribution of λ \n for S from {name_suffix.upper()}")
+    # plt.savefig(f"./fig/kernel/eigenvalues_histogram_{name_suffix.upper()}")
+    # plt.show()
+    f1 = sns.scatterplot(x=eig_vals_real[:limit_n], y=eig_vals_imag[:limit_n])
+    f1.set(xscale="log")
+    plt.title(f"λ of S \n {name_suffix.upper().replace(' ', '_')}")
+    plt.savefig(f"./fig/kernel/eigenvalues_scatter_{name_suffix.upper().replace(' ', '_')}")
+    plt.show()

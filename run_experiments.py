@@ -193,7 +193,7 @@ def run_pos_lvl_CV_no_fusion(experiment: Experiment, write: bool = True) -> dict
 
 if __name__ == "__main__":
     cv_options = ["pos_lvl", "mut_lvl"]
-    data_options = ["tll", "blat", "mgpf"]
+    data_options = ["tll", "blat", "mgpf", "ubq"]
     parser = argparse.ArgumentParser(description="Experiment Module - run specific Regression calls.")
     parser.add_argument("-p", "--pdb", type=str, help="Identifier string of pdb file")
     parser.add_argument("-i", "--idx", type=int, help="Index of CV run")
