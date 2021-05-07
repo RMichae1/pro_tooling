@@ -7,7 +7,6 @@ import pickle
 from utility import convert_aa_sequence
 
 
-
 def parse_alignment(a2m_filename: str, drop_lowercase=True) -> pd.DataFrame:
     with open(a2m_filename, "r") as filehandle:
         alignment = filehandle.read().splitlines()
