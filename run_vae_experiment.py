@@ -25,7 +25,7 @@ import mlflow
 import seaborn as sns
 import matplotlib.pyplot as plt
 import random
-from utility import parse_BLAT, parse_UBQ, parse_PGA, parse_TLL
+from parse_data import parse_BLAT, parse_UBQ, parse_PGA, parse_TLL, parse_HEX
 from reference_alphabet import seq2idx
 from utility import derive_elements_matrix
 import os
@@ -75,6 +75,8 @@ if __name__ == "__main__":
         family_seqs, test_seqs, test_y = parse_PGA()
     elif args.type == "ubq":
         family_seqs, test_seqs, test_y = parse_UBQ()
+    elif args.type == "hexo":
+        family_seqs, test_seqs, test_y = parse_HEX()
     else:
         raise NotImplementedError(
             "Specified type not implemented. Please pick a VAE from the list of options. See help -h.")
@@ -99,7 +101,6 @@ if __name__ == "__main__":
                                                collate_fn=seq_collate)
     test_loader = torch.utils.data.DataLoader(seq_test, batch_size=args.batch_size, shuffle=True,
                                               collate_fn=seq_collate)
-
     WT = F.one_hot(torch.tensor(family_seqs[0], dtype=torch.int64),
                    num_classes=num_classes).flatten().float()
     print(WT.shape)
