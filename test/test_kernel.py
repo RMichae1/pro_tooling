@@ -67,7 +67,8 @@ def test_vectorized_kernel():
     k_ref = naive_K(seq=seqs, adj=adj, S=S)
     np.testing.assert_almost_equal(k, k_ref)
 
-### Load Reference
+
+# Load Reference
 ref_file = loadmat(os.path.join(os.path.dirname(__file__), os.path.join("data", "1PGAkernel_matrices.mat")))
 ref_K_list = ref_file["kernel_matrices"]
 matrices = ref_file["subMats"]
@@ -83,18 +84,18 @@ prot = ProteinCollection(cm, pdb_ID="1PGA", mutations_exp=mut_exp, mutations_sim
 
 
 def test_parsed_seq_against_ref():
-        """
-        is reference sequence equal to own parsed sequence
-        """
-        assert np.all([x == y for x,y in zip(prot.sequence, sequence_WT)])
+    """
+    is reference sequence equal to own parsed sequence
+    """
+    assert np.all([x == y for x,y in zip(prot.sequence, sequence_WT)])
 
 
 def test_adjacency_against_ref():
-        # TEST adjacencies
-        # THIS FAILS
-        contacts = np.array([contacts for res, contacts in cm.adjacency], dtype=object)
-        assert len(ref_contact_graph) == len(contacts)
-        # assert np.all([elem_ref == elem for elem_ref, elem in zip(ref_contact_graph, contacts)])
+    # TEST adjacencies
+    # THIS FAILS
+    contacts = np.array([contacts for res, contacts in cm.adjacency], dtype=object)
+    assert len(ref_contact_graph) == len(contacts)
+    # assert np.all([elem_ref == elem for elem_ref, elem in zip(ref_contact_graph, contacts)])
 
 
 ### PARSING MUTATIONS

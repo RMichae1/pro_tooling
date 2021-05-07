@@ -48,12 +48,21 @@ class Experiment:
                                              vae=self.vae, TESTING=False)
         else:
             self.protein = ProteinCollection(self.contact_map, pdb_ID=pdb, mutations_exp=self.experimental_data, TESTING=False)
+        self.assert_structure_to_experiment_integrity()
         self.in_silico_data = self.prepare_in_silico_data() if self.fusion else {}
         self.X_wt, self.X_exp, self.X_is, self.y_wt, self.ΔΔg_exp, self.ΔΔg_is_scaled, self.scaler_σ, self.max_y, self.mean_y = self.init_experiment_run()
         if not self.fusion:
             self.X_is = np.array([])
             self.scaler_σ = torch.Tensor([0.])
         self.gpr = self.init_mgp_regression()
+
+    def assert_structure_to_experiment_integrity(self):
+        mutations = {int(m[1:-1]): m[0] for m, _ in self.experimental_data.get(self.protein.pdb_ID)}
+        # test if len of sequence is max in experimental data
+        max_idx = max(mutations.keys())
+        assert len(self.contact_map.sequence) == max_idx
+        assert self.contact_map.sequence[0] == mutations.get(0)
+        assert self.contact_map.sequence[-1] == mutations.get(max_idx)
 
     def prepare_in_silico_data(self):
         if self.experiment_type == "blat":
@@ -141,12 +150,16 @@ class Experiment:
         return mutation_values
 
     def load_blat_experimental_mutations_from_csv(self, save_file="./data/blat/blat_exp_mutations.pkl"):
+        """
+        !!! WARN: EXPERIMENTAL INDEX IS OFF BY 24 W.R.T. PDB SEQUENCE !!!
+        """
         blat_df = pd.read_csv(self.exp_data_filename)
         blat_df["growth"] = blat_df["2500"]
-        clipped_mutations = list(filter(lambda x: int(x[0][1:-1]) <= 263,
-                                        zip(blat_df.mutant, blat_df.growth)))
+        blat_df["mutation_idx"] = blat_df.mutant.str[1:-1].astype(int) - 23
+        blat_df["mutant"] = blat_df.mutant.str[0] + blat_df.mutation_idx.str + blat_df.mutant.str[-1]
+        mutations = list(zip(blat_df.mutant, blat_df.growth))
         # WARNING: we clip mutations at position 263 - mutations go until 286, however pdb is only 263 (A chain) long
-        mutation_dict = {"1FQG": clipped_mutations}
+        mutation_dict = {"1FQG": mutations}
         if save_file:
             with open(save_file, "wb") as filehandle:
                 pickle.dump(mutation_dict, filehandle)
@@ -199,8 +212,6 @@ class Experiment:
         ubq_df = pd.read_csv(self.exp_data_filename, delimiter=";")
         ubq_df = ubq_df[["mutant", "selection_coefficient"]].dropna()
         ubq_df["growth"] = ubq_df["selection_coefficient"].str.replace(",", ".").astype(float)
-        #clipped_mutations = list(filter(lambda x: int(x[0][1:-1]) <= 76, zip(ubq_df.mutant, ubq_df.growth)))
-        #mutation_dict = {"1UBQ": clipped_mutations}
         mutation_dict = {"1UBQ": list(zip(ubq_df.mutant, ubq_df.growth))}
         if save_file:
             with open(save_file, "wb") as filehandle:

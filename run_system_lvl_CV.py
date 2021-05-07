@@ -12,7 +12,9 @@ EXPERIMENTAL_DATA = {"mgpf": "./data/mgp/ddg_protherm.mat",
                      "ubq": "./data/ubq/RL401_Bolon2013.csv"} # TODO add PGA
 
 IN_SILICO_DATA = {"mgpf": "./data/mgp/ddg_rosetta_single.mat",
-                  "tll": "./data/tll/TLL_IS_closed_results.xlsx"}
+                  "tll": "./data/tll/TLL_IS_closed_results.xlsx",
+                  "ubq": "./data/ubq/vae_ubq_IS_samples.pkl",
+                  "blat": "./data/blat/vae_blat_IS_samples.pkl"}
 
 
 def get_positions(pdb: str) -> str:
@@ -22,7 +24,8 @@ def get_positions(pdb: str) -> str:
 
 def run_sys_CV(pdb, idx, cv, experiment, run_id, data=None, ref=False, optim=True, no_fusion=False, verbose=False,
                ref_contact_map=False, vae_input=False, vae_kernel=False):
-    command_lst = ["C:/Users/RCML/Anaconda3/envs/mgpfusion/python.exe", "//wsl$/Ubuntu/home/rcml/pro_tooling/run_experiments.py", "-p", f"{pdb}", "-i", f"{idx}",
+    command_lst = ["/home/rimichael/.pyenv/shims/python", "/home/rimichael/pro_tooling/run_experiments.py", "-p",
+                   f"{pdb}", "-i", f"{idx}",
                    "-r", f"{cv}", "--seed", "3032021", "--experiment", f"{experiment}", "--run_id", f"{run_id}",
                    "--data", data, "--experimental_data", f"{EXPERIMENTAL_DATA.get(data)}",
                    "--simulated_data", f"{IN_SILICO_DATA.get(data)}"]
@@ -176,9 +179,9 @@ def run_HEX() -> None:
 
 if __name__ == "__main__":
     warnings.filterwarnings("ignore")
-    run_TLL()
+    # run_TLL()
     # run_MGPF()
-    # run_BLAT()
-    #run_UBQ()
-    #run_PGA()
-    run_HEX()
+    run_BLAT()
+    # run_UBQ()
+    # run_PGA()
+    # run_HEX()
