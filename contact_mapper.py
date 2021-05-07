@@ -10,9 +10,10 @@ import seaborn as sns
 from scipy.spatial.distance import squareform, pdist, euclidean
 from time import time
 from typing import List, Tuple
+from tqdm import tqdm
 
 class ContactMapper:
-    def __init__(self, pdb_file: str, pdb_ID: str=None, tri_dist: bool=False, angstrom_threshold: float=5., 
+    def __init__(self, pdb_file: str, pdb_ID: str=None, tri_dist: bool=True, angstrom_threshold: float=5., 
                 check_AA: bool=True):
         self.pdb_file = pdb_file
         self.pdb_ID = basename(self.pdb_file).split(".")[0].upper() if not pdb_ID else pdb_ID
@@ -70,7 +71,7 @@ class ContactMapper:
         t_coord_X = []
         coord_X = []
         skipped_res = 0
-        for res_X_pos, res_X in enumerate(chain_X):
+        for res_X_pos, res_X in tqdm(enumerate(chain_X)):
             self.sequence.append(seq1(res_X.get_resname()))
             if not Bio.PDB.is_aa(res_X) and self.check_AA:
                 skipped_res += 1

@@ -10,7 +10,7 @@ import numpy as np
 from scipy.stats import spearmanr, pearsonr
 from utility import compute_ρ
 from utility import WeightedMSADataset, seq_collate 
-from utility import parse_mutations, parse_alignment, filter_alignment
+from utility import parse_mutations
 from utility import convert_aa_sequence
 from protein_representation import ProteinCollection
 from contact_mapper import ContactMapper
@@ -25,9 +25,8 @@ import mlflow
 import seaborn as sns
 import matplotlib.pyplot as plt
 import random
-from parse_data import parse_BLAT, parse_UBQ, parse_PGA, parse_TLL, parse_HEX
+from parse_data import parse_BLAT, parse_UBQ, parse_PGA, parse_TLL, parse_HEX, parse_alignment, filter_alignment
 from reference_alphabet import seq2idx
-from utility import derive_elements_matrix
 import os
 
 os.environ['KMP_DUPLICATE_LIB_OK'] = 'True'  # TODO figure out what caused OMP Error #15

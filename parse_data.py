@@ -79,9 +79,15 @@ def parse_TLL():
 
 
 def parse_HEX():
+    """
+    !!! PROVIDED PDB AGAINST WT Sequence is off by the first position !!!
+    """
     test_df = pd.read_excel("./data/hex/Hexosaminidase_SSL_data_simple.xlsx")
     test_df = test_df[["Origin", "Target", "ddG (HIF)"]].dropna()
-    test_df["mutations"] = test_df.Origin + test_df.Target
+    # ADJUSTMENT BY ONE POSITION - FIX W.R.T. PDB PARSING
+    test_df["pdb_position"] = test_df.Origin.str[1:].astype(int) - 1
+    test_df['mutation_origin'] = test_df.Origin.str[0]
+    test_df["mutations"] = test_df.mutation_origin + test_df.pdb_position.astype(str) + test_df.Target
     exp_mutations = {"D45": [(mut, y) for (mut, y) in zip(test_df.mutations, test_df["ddG (HIF)"])]}
     contact_map = ContactMapper(pdb_file="./pdb/d45.pdb", tri_dist=True)
     protein = ProteinCollection(contact_map, pdb_ID="D45", mutations_exp=exp_mutations, TESTING=False)
