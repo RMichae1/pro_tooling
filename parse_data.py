@@ -83,13 +83,12 @@ def parse_HEX():
     """
     test_df = pd.read_excel("./data/hex/Hexosaminidase_SSL_data_simple.xlsx")
     test_df = test_df[["Origin", "Target", "ddG (HIF)"]].dropna()
-    # ADJUSTMENT BY ONE POSITION - FIX W.R.T. PDB PARSING
-    test_df["pdb_position"] = test_df.Origin.str[1:].astype(int) - 1
+    test_df["pdb_position"] = test_df.Origin.str[1:].astype(int)
     test_df['mutation_origin'] = test_df.Origin.str[0]
     test_df["mutations"] = test_df.mutation_origin + test_df.pdb_position.astype(str) + test_df.Target
     exp_mutations = {"D45": [(mut, y) for (mut, y) in zip(test_df.mutations, test_df["ddG (HIF)"])]}
     contact_map = ContactMapper(pdb_file="./pdb/d45.pdb", tri_dist=True)
-    # PDB file is missing first WT residue, prepend Q with same adjacencies as next residue: TODO fix this
+    # PDB file is missing first WT residue, prepend Q with same adjacencies as next residue: TODO fix this either in PDB or in general parsing
     contact_map.sequence = np.insert(contact_map.sequence, 0, "Q")
     contact_map.adjacency = [("Q", contact_map.adjacency[0][1])] + contact_map.adjacency
     protein = ProteinCollection(contact_map, pdb_ID="D45", mutations_exp=exp_mutations)
