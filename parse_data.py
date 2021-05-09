@@ -7,7 +7,6 @@ import pickle
 from utility import convert_aa_sequence
 
 
-
 def parse_alignment(a2m_filename: str, drop_lowercase=True) -> pd.DataFrame:
     with open(a2m_filename, "r") as filehandle:
         alignment = filehandle.read().splitlines()
@@ -90,10 +89,14 @@ def parse_HEX():
     test_df["mutations"] = test_df.mutation_origin + test_df.pdb_position.astype(str) + test_df.Target
     exp_mutations = {"D45": [(mut, y) for (mut, y) in zip(test_df.mutations, test_df["ddG (HIF)"])]}
     contact_map = ContactMapper(pdb_file="./pdb/d45.pdb", tri_dist=True)
+    # PDB file is missing first WT residue, prepend Q with same adjacencies as next residue: TODO fix this
+    contact_map.sequence = np.insert(contact_map.sequence, 0, "Q")
+    contact_map.adjacency = [("Q", contact_map.adjacency[0][1])] + contact_map.adjacency
     protein = ProteinCollection(contact_map, pdb_ID="D45", mutations_exp=exp_mutations, TESTING=False)
     test_seqs = convert_aa_sequence(protein.mut_S_exp)
     test_y = test_df["ddG (HIF)"]
     family_seqs = np.loadtxt("./data/hex/uniref90_MSA_.aln", dtype=str)
+    family_seqs = np.array([np.array([seq2idx(s) for s in seq]).flatten() for seq in family_seqs])
     return family_seqs, test_seqs, test_y
 
 
