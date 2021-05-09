@@ -1,7 +1,10 @@
 from collections import OrderedDict
 import torch
 
-IUPAC_IDX_AMINO_PAIRS_decoding = list(enumerate([
+
+### ONLY FOR REFERENCE PURPOSES
+
+IUPAC_IDX_AMINO_PAIRS_decoding_REFERENCE = list(enumerate([
     "A",
     "C",
     "D",
@@ -28,7 +31,7 @@ IUPAC_IDX_AMINO_PAIRS_decoding = list(enumerate([
     'B'
 ]))
 
-IUPAC_IDX_AMINO_PAIRS = list(enumerate([
+IUPAC_IDX_AMINO_PAIRS_REFERENCE = list(enumerate([
     "A",
     "C",
     "D",
@@ -54,19 +57,21 @@ IUPAC_IDX_AMINO_PAIRS = list(enumerate([
     "<mask>",
     'B'
 ]))
-IUPAC_AMINO_IDX_PAIRS = [(a, i) for (i, a) in IUPAC_IDX_AMINO_PAIRS]
+IUPAC_AMINO_IDX_PAIRS = [(a, i) for (i, a) in IUPAC_IDX_AMINO_PAIRS_REFERENCE]
 
 alphabet_size = len(IUPAC_AMINO_IDX_PAIRS)
 
 IUPAC_SEQ2IDX = OrderedDict(IUPAC_AMINO_IDX_PAIRS)
-IUPAC_IDX2SEQ = OrderedDict(IUPAC_IDX_AMINO_PAIRS)
+IUPAC_IDX2SEQ = OrderedDict(IUPAC_IDX_AMINO_PAIRS_REFERENCE)
 
 # Add gap tokens as the same as mask
 IUPAC_SEQ2IDX["-"] = IUPAC_SEQ2IDX["<mask>"]
 IUPAC_SEQ2IDX["."] = IUPAC_SEQ2IDX["<mask>"]
 
-IUPAC_IDX2SEQ_decoding = OrderedDict(IUPAC_IDX_AMINO_PAIRS_decoding)
+IUPAC_IDX2SEQ_decoding = OrderedDict(IUPAC_IDX_AMINO_PAIRS_decoding_REFERENCE)
 
+# !! WARNING: THIS IS FOR REFERENCE PURPOSES ONLY - THIS IS HOW THE BLAT DF WAS ENCODED - NOTE THAT FOR mGPf RUNS THE
+# ORDER OF THE RESIDUES MATTERS !!
 
-def seq2idx(seq, device = None):
-    return [IUPAC_SEQ2IDX[s.upper() if len(s) < 2 else s] for s in seq]
+# def seq2idx(seq, device = None):
+#     return [IUPAC_SEQ2IDX[s.upper() if len(s) < 2 else s] for s in seq]

@@ -2,7 +2,6 @@ import numpy as np
 import pandas as pd
 from protein_representation import ProteinCollection
 from contact_mapper import ContactMapper
-from utility import seq2idx
 import pickle
 from utility import convert_aa_sequence
 
@@ -25,7 +24,7 @@ def parse_alignment(a2m_filename: str, drop_lowercase=True) -> pd.DataFrame:
     wt_seq = ''.join(sequence[0])
     uppercase_idx = [idx for idx in range(len(wt_seq)) if wt_seq[idx].isupper()]
     # convert to string and encode
-    encoded_sequence = list(map(seq2idx, map(lambda x: "".join(x), sequence)))
+    encoded_sequence = np.array(convert_aa_sequence(list(map(lambda x: "".join(x), sequence))))
     if drop_lowercase:
         encoded_sequence = np.array([np.array(s) for s in encoded_sequence])
         encoded_sequence = list(encoded_sequence[:, uppercase_idx])
@@ -92,9 +91,9 @@ def parse_HEX():
     contact_map.sequence = np.insert(contact_map.sequence, 0, "Q")
     contact_map.adjacency = [("Q", contact_map.adjacency[0][1])] + contact_map.adjacency
     protein = ProteinCollection(contact_map, pdb_ID="D45", mutations_exp=exp_mutations)
-    test_seqs = np.array([seq2idx(s) for s in protein.mut_S_exp])
+    test_seqs = convert_aa_sequence(protein.mut_S_exp)
     family_seqs = np.loadtxt("./data/hex/uniref90_MSA_.aln", dtype=str)
-    family_seqs = np.array([np.array([seq2idx(s) for s in seq]).flatten() for seq in family_seqs])
+    family_seqs = convert_aa_sequence(family_seqs)
     test_y = test_df["ddG (HIF)"]
     return family_seqs, test_seqs, test_y
 
@@ -108,7 +107,7 @@ def parse_PGA():
     pga_df = filter_alignment("./data/pga/hmmer_PGA_msa_n42.a3m")
     family_seqs = np.array([s for s in pga_df.seq])
     # build sequences from test_df
-    test_seqs = np.array([seq2idx(seq) for seq in test_df.Sequence])
+    test_seqs = convert_aa_sequence(test_df.Sequence)
     test_y =test_df.Data.astype(float)
     return family_seqs, test_seqs, test_y
 
@@ -129,7 +128,6 @@ def parse_UBQ():
                                 "inner", left_on="mutant", right_on="Description")
     test_df["Data"] = test_df.Data.astype(float)
     test_df["selection_coefficient"] = test_df.selection_coefficient.str.replace(",", ".").astype(float)
-    #np.testing.assert_array_equal(test_df.selection_coefficient.values, test_df.Data.values)
-    test_seqs = np.array([seq2idx(seq) for seq in test_df.Sequence])
+    test_seqs = convert_aa_sequence(test_df.Sequence)
     test_y = test_df.selection_coefficient  # use DeepSequence reported values
     return family_seqs, test_seqs, test_y

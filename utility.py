@@ -13,9 +13,7 @@ from scipy import io
 import pandas as pd
 from typing import List, Tuple
 from Bio.Seq import Seq
-from reference_alphabet import seq2idx
 import pickle
-from contact_mapper import ContactMapper
 
 
 #######
@@ -51,7 +49,7 @@ def load_pdb_id_data(pdb_id: str, cutoff_distance=5.):
 def load_mutations(pdb_id: str, wild_type: Seq):
     data_dir = os.path.dirname(__file__)
 
-    x_wild_type = seq2int(str(wild_type))
+    x_wild_type = seq2int(str(wild_type)) # CORRECT aa2idx label-encoding
 
     wetlab_results_file = os.path.join("data/mgp", "ddg_protherm.mat")
     wetlab_mat = scipy.io.loadmat(os.path.join(data_dir, wetlab_results_file))['ddg_protherm']
@@ -275,9 +273,12 @@ def parse_mutations(sequence: str, adjacency: List[tuple], mutation_dict: dict) 
 
 
 def aa2index(aa):
-    aa_array = np.array(["A", "R", "N", "D", "C", "Q", "E", "G",
-                         "H", "I", "L", "K", "M", "F", "P", "S", "T", "W", "Y", "V", "-"])
-    return np.where(aa_array == aa)[0][0]
+    """
+    ORDER OF THE ALPHABET MATTERS !!
+    """
+    aa_lookup = {k: idx for idx, k in enumerate(["A", "R", "N", "D", "C", "Q", "E", "G",
+                                                 "H", "I", "L", "K", "M", "F", "P", "S", "T", "W", "Y", "V", "-"])}
+    return aa_lookup.get(aa, 21)  # default value is unknown
 
 
 def convert_aa_sequence(sequences: list):
@@ -361,7 +362,7 @@ class WeightedMSADataset(Dataset):
         # Calculate weights
         weights = []
         flat_one_hot = self.one_hot_sequence.flatten(1)
-        gap_code = seq2idx("-")[0]
+        gap_code = aa2index("-")  # CORRECT AA LOOKUP HERE
         for i in range(self.one_hot_sequence.size(0) // weight_batch_size + 1):
             x = flat_one_hot[i * weight_batch_size: (i + 1) * weight_batch_size]
             similarities = torch.mm(x, flat_one_hot.T)
