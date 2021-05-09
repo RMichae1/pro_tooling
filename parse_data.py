@@ -21,10 +21,11 @@ def parse_alignment(a2m_filename: str, drop_lowercase=True) -> pd.DataFrame:
             seq.append(line)
     sequence.append(seq)  # add last
     sequence = sequence[1:]  # eliminate first empty entry
-    wt_seq = ''.join(sequence[0])
+    joined_sequences = list(map(lambda x: "".join(x), sequence))
+    wt_seq = joined_sequences[0]
     uppercase_idx = [idx for idx in range(len(wt_seq)) if wt_seq[idx].isupper()]
     # convert to string and encode
-    encoded_sequence = np.array(convert_aa_sequence(list(map(lambda x: "".join(x), sequence))))
+    encoded_sequence = convert_aa_sequence(joined_sequences)
     if drop_lowercase:
         encoded_sequence = np.array([np.array(s) for s in encoded_sequence])
         encoded_sequence = list(encoded_sequence[:, uppercase_idx])
@@ -113,7 +114,7 @@ def parse_PGA():
 
 
 def parse_UBQ():
-    ubq_df = filter_alignment("/home/rimichael/pro_tooling/data/ubq/UBC_HUMAN_P0CG48_ubiquitin.a2m")
+    ubq_df = filter_alignment("./data/ubq/UBQ_combined_UBC_ISG15.a2m")
     family_seqs = np.array([[int(elem) for elem in seq] for seq in ubq_df.seq])
     # for testing combine protabank sequences with DeepSequence Bolon 2013 data
     protabank_df = pd.read_csv("/home/rimichael/pro_tooling/data/ubq/RL401_Bolon2013_YHUnpqbw.csv", delimiter=",")
