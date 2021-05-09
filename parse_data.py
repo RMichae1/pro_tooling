@@ -92,9 +92,11 @@ def parse_HEX():
     contact_map.sequence = np.insert(contact_map.sequence, 0, "Q")
     contact_map.adjacency = [("Q", contact_map.adjacency[0][1])] + contact_map.adjacency
     protein = ProteinCollection(contact_map, pdb_ID="D45", mutations_exp=exp_mutations)
-    test_seqs = convert_aa_sequence(protein.mut_S_exp)
+    test_seqs = np.array([seq2idx(s) for s in protein.mut_S_exp])
     family_seqs = np.loadtxt("./data/hex/uniref90_MSA_.aln", dtype=str)
     family_seqs = np.array([np.array([seq2idx(s) for s in seq]).flatten() for seq in family_seqs])
+    # TODO test diff of test_seq[0] != WT and is == K309 mutation
+    # TODO test if encoding is equal
     return family_seqs, test_seqs, test_y
 
 
