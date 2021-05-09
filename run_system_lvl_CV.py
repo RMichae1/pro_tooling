@@ -9,10 +9,12 @@ from utility import parse_matlab_mutation_file
 EXPERIMENTAL_DATA = {"mgpf": "./data/mgp/ddg_protherm.mat",
                      "tll": "./data/tll/lipase_variants_tll_tm_tapo_20nov2020.xlsx",
                      "blat": "./data/blat/BLAT_ECOLX_Ranganathan2015.csv",
-                     "ubq": "./data/ubq/RL401_Bolon2013.csv"} # TODO add PGA
+                     "ubq": "./data/ubq/RL401_Bolon2013.csv"}  # TODO add PGA
 
 IN_SILICO_DATA = {"mgpf": "./data/mgp/ddg_rosetta_single.mat",
-                  "tll": "./data/tll/TLL_IS_closed_results.xlsx"}
+                  "tll": "./data/tll/TLL_IS_closed_results.xlsx",
+                  "ubq": "./data/ubq/vae_ubq_IS_samples.pkl",
+                  "blat": "./data/blat/vae_blat_IS_samples.pkl"}
 
 
 def get_positions(pdb: str) -> str:
@@ -21,11 +23,12 @@ def get_positions(pdb: str) -> str:
 
 
 def run_sys_CV(pdb, idx, cv, experiment, run_id, data=None, ref=False, optim=True, no_fusion=False, verbose=False,
-               ref_contact_map=False, vae_input=False, vae_kernel=False):
-    command_lst = ["C:/Users/RCML/Anaconda3/envs/mgpfusion/python.exe", "//wsl$/Ubuntu/home/rcml/pro_tooling/run_experiments.py", "-p", f"{pdb}", "-i", f"{idx}",
+               ref_contact_map=False, vae_input=False, vae_kernel=False, frac=1.):
+    command_lst = ["/home/rimichael/.pyenv/shims/python", "/home/rimichael/pro_tooling/run_experiments.py", "-p",
+                   f"{pdb}", "-i", f"{idx}",
                    "-r", f"{cv}", "--seed", "3032021", "--experiment", f"{experiment}", "--run_id", f"{run_id}",
                    "--data", data, "--experimental_data", f"{EXPERIMENTAL_DATA.get(data)}",
-                   "--simulated_data", f"{IN_SILICO_DATA.get(data)}"]
+                   "--simulated_data", f"{IN_SILICO_DATA.get(data)}", "--fraction", f"{frac}"]
     if optim:
         command_lst += ["-o"]
     if ref:
@@ -44,19 +47,20 @@ def run_sys_CV(pdb, idx, cv, experiment, run_id, data=None, ref=False, optim=Tru
 
 
 def create_mlflow_run_pos_lvl(pdb: str, cv: str, optim: bool, ref: bool, no_fusion: bool = False, data: str = None,
-                              ref_contact_map: bool = False, vae_input: bool = False, vae_kernel: bool = False) -> None:
+                              ref_contact_map: bool = False, vae_input: bool = False, vae_kernel: bool = False,
+                              frac: float = 1.) -> None:
     sequence = get_positions(pdb)
     experiment_name = f"{pdb}: {cv}"
     experiment = mlflow.set_experiment(experiment_name)
     with mlflow.start_run(experiment_id=experiment) as run:
         exp_params = {"pdb": pdb, "cv": cv, "optimization": optim, "2σ": ref, "reference_contacts": ref_contact_map,
-                      "NO fusion": no_fusion, "vae_input": vae_input, "vae_kernel": vae_kernel}
+                      "NO fusion": no_fusion, "vae_input": vae_input, "vae_kernel": vae_kernel, "data_train": frac}
         mlflow.log_params(exp_params)
         for idx, _ in enumerate(sequence):
             # run position lvl no optimization
             run_sys_CV(pdb, idx, cv=cv, ref=ref, optim=optim, experiment=experiment_name, run_id=run.info.run_id,
                        no_fusion=no_fusion, data=data, verbose=True, ref_contact_map=ref_contact_map,
-                       vae_input=vae_input, vae_kernel=vae_kernel)
+                       vae_input=vae_input, vae_kernel=vae_kernel, frac=frac)
     mlflow.end_run()
     return None
 
@@ -132,27 +136,53 @@ def run_TLL() -> None:
 def run_BLAT() -> None:
     print(f"Tracking URI: {mlflow.get_tracking_uri()}")
     # create_mlflow_run_pos_lvl(pdb="1FQG", cv="pos_lvl", optim=False, ref=False,
-    #                           no_fusion=True, data="blat")
-    # create_mlflow_run_pos_lvl(pdb="1FQG", cv="pos_lvl", optim=True, ref=False,
-    #                           no_fusion=True, data="blat")
+    #                           no_fusion=True, data="blat", frac=0.3)
+    create_mlflow_run_pos_lvl(pdb="1FQG", cv="pos_lvl", optim=True, ref=False,
+                              no_fusion=True, data="blat", frac=0.3)
+    # create_mlflow_run_pos_lvl(pdb="1FQG", cv="pos_lvl", optim=False, ref=False,
+    #                           no_fusion=True, data="blat", frac=0.5)
+    create_mlflow_run_pos_lvl(pdb="1FQG", cv="pos_lvl", optim=True, ref=False,
+                              no_fusion=True, data="blat", frac=0.5)
+    # create_mlflow_run_pos_lvl(pdb="1FQG", cv="pos_lvl", optim=False, ref=False,
+    #                           no_fusion=True, data="blat", frac=0.9)
+    create_mlflow_run_pos_lvl(pdb="1FQG", cv="pos_lvl", optim=True, ref=False,
+                              no_fusion=True, data="blat", frac=0.9)
     # create_mlflow_run_pos_lvl(pdb="1FQG", cv="pos_lvl", optim=False, ref=True,
     #                           no_fusion=True, data="blat")
     # create_mlflow_run_pos_lvl(pdb="1FQG", cv="pos_lvl", optim=True, ref=True,
     #                           no_fusion=True, data="blat")
     # create_mlflow_run_pos_lvl(pdb="1FQG", cv="pos_lvl", optim=False, ref=False,
-    #                             vae_input=True, data="blat")
-    # create_mlflow_run_pos_lvl(pdb="1FQG", cv="pos_lvl", optim=True, ref=False,
-    #                             vae_input=True, data="blat")
-    create_mlflow_run_pos_lvl(pdb="1FQG", cv="pos_lvl", optim=False, ref=False,
-                              vae_kernel=True, data="blat")
+    #                           vae_input=True, data="blat", frac=0.3)
     create_mlflow_run_pos_lvl(pdb="1FQG", cv="pos_lvl", optim=True, ref=False,
-                              vae_kernel=True, data="blat")
-    create_mlflow_run_pos_lvl(pdb="1FQG", cv="pos_lvl", optim=False, ref=False,
-                              vae_input=True, vae_kernel=True,
-                              data="blat")
+                              vae_input=True, data="blat", frac=0.3)
+    # create_mlflow_run_pos_lvl(pdb="1FQG", cv="pos_lvl", optim=False, ref=False,
+    #                           vae_input=True, data="blat", frac=0.5)
+    create_mlflow_run_pos_lvl(pdb="1FQG", cv="pos_lvl", optim=True, ref=False,
+                              vae_input=True, data="blat", frac=0.5)
+    # create_mlflow_run_pos_lvl(pdb="1FQG", cv="pos_lvl", optim=False, ref=False,
+    #                           vae_input=True, data="blat", frac=0.9)
+    create_mlflow_run_pos_lvl(pdb="1FQG", cv="pos_lvl", optim=True, ref=False,
+                              vae_input=True, data="blat", frac=0.9)
+    # create_mlflow_run_pos_lvl(pdb="1FQG", cv="pos_lvl", optim=False, ref=False,
+    #                           vae_kernel=True, data="blat", frac=0.3)
+    create_mlflow_run_pos_lvl(pdb="1FQG", cv="pos_lvl", optim=True, ref=False,
+                              vae_kernel=True, data="blat", frac=0.3)
+    create_mlflow_run_pos_lvl(pdb="1FQG", cv="pos_lvl", optim=True, ref=False,
+                              vae_kernel=True, data="blat", frac=0.5)
+    create_mlflow_run_pos_lvl(pdb="1FQG", cv="pos_lvl", optim=True, ref=False,
+                              vae_kernel=True, data="blat", frac=0.9)
+    # create_mlflow_run_pos_lvl(pdb="1FQG", cv="pos_lvl", optim=False, ref=False,
+    #                           vae_input=True, vae_kernel=True,
+    #                           data="blat")
     create_mlflow_run_pos_lvl(pdb="1FQG", cv="pos_lvl", optim=True, ref=False,
                               vae_input=True, vae_kernel=True,
-                              data="blat")
+                              data="blat", frac=0.3)
+    create_mlflow_run_pos_lvl(pdb="1FQG", cv="pos_lvl", optim=True, ref=False,
+                              vae_input=True, vae_kernel=True,
+                              data="blat", frac=0.5)
+    create_mlflow_run_pos_lvl(pdb="1FQG", cv="pos_lvl", optim=True, ref=False,
+                              vae_input=True, vae_kernel=True,
+                              data="blat", frac=0.9)
 
 
 def run_UBQ() -> None:
@@ -176,9 +206,9 @@ def run_HEX() -> None:
 
 if __name__ == "__main__":
     warnings.filterwarnings("ignore")
-    run_TLL()
+    # run_TLL()
     # run_MGPF()
-    # run_BLAT()
-    #run_UBQ()
-    #run_PGA()
-    run_HEX()
+    run_BLAT()
+    # run_UBQ()
+    # run_PGA()
+    # run_HEX()

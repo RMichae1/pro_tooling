@@ -9,6 +9,7 @@ from utility import one_hot_encoding
 from reference_vae.diku_thesis.torch_vae import VAE as ReferenceVAE
 from vae import VAE, train, evaluate
 
+
 def test_vae():
     """
     Tests the VAE Pyro implementation against the reference PyTorch implementation.
@@ -41,8 +42,7 @@ one_seq = all_seqs.reshape(x*y, )
 one_hot_sequence = one_hot_encoding(one_seq).reshape(x, y, categories)
 
 # load and encode data set
-seq_dataset = torch.utils.data.TensorDataset(torch.tensor(one_hot_sequence,
-                                                              dtype=torch.float))
+seq_dataset = torch.utils.data.TensorDataset(torch.tensor(one_hot_sequence, dtype=torch.float))
 test_size = int(0.1 * x)
 seq_train, seq_test = torch.utils.data.random_split(seq_dataset, [ x - test_size, test_size])
 train_loader = torch.utils.data.DataLoader(seq_train)
@@ -63,8 +63,7 @@ ref_vae = ReferenceVAE(layer_sizes=INPUT_DIM, num_tokens=categories)
 optimizer =  Adam({"lr": LEARN_RATE})
 svi = SVI(vae.model, vae.guide, optimizer, loss=JitTrace_ELBO())
 
-### TRAIN MODELS
-
+# TRAIN MODELS
 def test_training():
     train_loss = []
     test_loss = []
