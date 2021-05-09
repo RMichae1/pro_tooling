@@ -93,8 +93,6 @@ def parse_HEX():
     contact_map.adjacency = [("Q", contact_map.adjacency[0][1])] + contact_map.adjacency
     protein = ProteinCollection(contact_map, pdb_ID="D45", mutations_exp=exp_mutations)
     test_seqs = convert_aa_sequence(protein.mut_S_exp)
-    # prepend WT=0. ddG
-    test_y = pd.concat([pd.Series([0.]), test_df["ddG (HIF)"]])
     family_seqs = np.loadtxt("./data/hex/uniref90_MSA_.aln", dtype=str)
     family_seqs = np.array([np.array([seq2idx(s) for s in seq]).flatten() for seq in family_seqs])
     return family_seqs, test_seqs, test_y
