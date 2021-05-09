@@ -55,8 +55,8 @@ def parse_BLAT():
     family_df = blat_df[blat_df.assay.isna()]
     test_blat_df = blat_df[~blat_df.assay.isna()]
     # cast sequence labels to int
-    family_seqs = np.array([[int(elem) for elem in seq] for seq in family_df.seqs])
-    test_seqs = np.array([[int(elem) for elem in seq] for seq in test_blat_df.seqs])
+    family_seqs = convert_aa_sequence(family_df.sequences)
+    test_seqs = convert_aa_sequence(test_blat_df.sequences)
     test_y = np.array(test_blat_df.assay, dtype=float)
     return family_seqs, test_seqs, test_y
 
@@ -105,11 +105,11 @@ def parse_PGA():
     test_df = test_df[test_df.Units == "kcal/mol"]
     test_df = test_df[test_df["Assay/Protocol"].str.contains("^ddG")]  # select only ddG values
     test_df = test_df[["Sequence", "Data", "Assay/Protocol"]].dropna()  # select relevant columns
-    pga_df = filter_alignment("./data/pga/hmmer_PGA_msa_n42.a3m")
+    pga_df = filter_alignment("./data/pga/FINAL_PGA_n1133.a3m")
     family_seqs = np.array([s for s in pga_df.seq])
     # build sequences from test_df
     test_seqs = convert_aa_sequence(test_df.Sequence)
-    test_y =test_df.Data.astype(float)
+    test_y = test_df.Data.astype(float)
     return family_seqs, test_seqs, test_y
 
 

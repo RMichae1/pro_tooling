@@ -75,3 +75,7 @@ IUPAC_IDX2SEQ_decoding = OrderedDict(IUPAC_IDX_AMINO_PAIRS_decoding_REFERENCE)
 
 # def seq2idx(seq, device = None):
 #     return [IUPAC_SEQ2IDX[s.upper() if len(s) < 2 else s] for s in seq]
+
+
+def idx2seq(seq):
+    return [IUPAC_IDX2SEQ[s] for s in seq]
