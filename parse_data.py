@@ -92,7 +92,7 @@ def parse_HEX():
     # PDB file is missing first WT residue, prepend Q with same adjacencies as next residue: TODO fix this
     contact_map.sequence = np.insert(contact_map.sequence, 0, "Q")
     contact_map.adjacency = [("Q", contact_map.adjacency[0][1])] + contact_map.adjacency
-    protein = ProteinCollection(contact_map, pdb_ID="D45", mutations_exp=exp_mutations, TESTING=False)
+    protein = ProteinCollection(contact_map, pdb_ID="D45", mutations_exp=exp_mutations)
     test_seqs = convert_aa_sequence(protein.mut_S_exp)
     test_y = test_df["ddG (HIF)"]
     family_seqs = np.loadtxt("./data/hex/uniref90_MSA_.aln", dtype=str)
