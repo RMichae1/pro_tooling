@@ -133,82 +133,71 @@ def run_TLL() -> None:
     create_mlflow_run_pos_lvl(pdb="1TIB", cv="mut_lvl", optim=True, ref=True, data="tll")
 
 
-def run_BLAT() -> None:
-    print(f"Tracking URI: {mlflow.get_tracking_uri()}")
-    # create_mlflow_run_pos_lvl(pdb="1FQG", cv="pos_lvl", optim=False, ref=False,
-    #                           no_fusion=True, data="blat", frac=0.3)
-    create_mlflow_run_pos_lvl(pdb="1FQG", cv="pos_lvl", optim=True, ref=False,
-                              no_fusion=True, data="blat", frac=0.3)
-    # create_mlflow_run_pos_lvl(pdb="1FQG", cv="pos_lvl", optim=False, ref=False,
-    #                           no_fusion=True, data="blat", frac=0.5)
-    create_mlflow_run_pos_lvl(pdb="1FQG", cv="pos_lvl", optim=True, ref=False,
-                              no_fusion=True, data="blat", frac=0.5)
-    # create_mlflow_run_pos_lvl(pdb="1FQG", cv="pos_lvl", optim=False, ref=False,
-    #                           no_fusion=True, data="blat", frac=0.9)
-    create_mlflow_run_pos_lvl(pdb="1FQG", cv="pos_lvl", optim=True, ref=False,
-                              no_fusion=True, data="blat", frac=0.9)
-    # create_mlflow_run_pos_lvl(pdb="1FQG", cv="pos_lvl", optim=False, ref=True,
-    #                           no_fusion=True, data="blat")
-    # create_mlflow_run_pos_lvl(pdb="1FQG", cv="pos_lvl", optim=True, ref=True,
-    #                           no_fusion=True, data="blat")
-    # create_mlflow_run_pos_lvl(pdb="1FQG", cv="pos_lvl", optim=False, ref=False,
-    #                           vae_input=True, data="blat", frac=0.3)
-    create_mlflow_run_pos_lvl(pdb="1FQG", cv="pos_lvl", optim=True, ref=False,
-                              vae_input=True, data="blat", frac=0.3)
-    # create_mlflow_run_pos_lvl(pdb="1FQG", cv="pos_lvl", optim=False, ref=False,
-    #                           vae_input=True, data="blat", frac=0.5)
-    create_mlflow_run_pos_lvl(pdb="1FQG", cv="pos_lvl", optim=True, ref=False,
-                              vae_input=True, data="blat", frac=0.5)
-    # create_mlflow_run_pos_lvl(pdb="1FQG", cv="pos_lvl", optim=False, ref=False,
-    #                           vae_input=True, data="blat", frac=0.9)
-    create_mlflow_run_pos_lvl(pdb="1FQG", cv="pos_lvl", optim=True, ref=False,
-                              vae_input=True, data="blat", frac=0.9)
-    # create_mlflow_run_pos_lvl(pdb="1FQG", cv="pos_lvl", optim=False, ref=False,
-    #                           vae_kernel=True, data="blat", frac=0.3)
-    create_mlflow_run_pos_lvl(pdb="1FQG", cv="pos_lvl", optim=True, ref=False,
-                              vae_kernel=True, data="blat", frac=0.3)
-    create_mlflow_run_pos_lvl(pdb="1FQG", cv="pos_lvl", optim=True, ref=False,
-                              vae_kernel=True, data="blat", frac=0.5)
-    create_mlflow_run_pos_lvl(pdb="1FQG", cv="pos_lvl", optim=True, ref=False,
-                              vae_kernel=True, data="blat", frac=0.9)
-    # create_mlflow_run_pos_lvl(pdb="1FQG", cv="pos_lvl", optim=False, ref=False,
+def run_mGP(pdb: str, data: str) -> None:
+    # create_mlflow_run_pos_lvl(pdb=pdb, cv="pos_lvl", optim=False, ref=False,
+    #                           no_fusion=True, data=data, frac=0.3)
+    create_mlflow_run_pos_lvl(pdb=pdb, cv="pos_lvl", optim=True, ref=False,
+                              no_fusion=True, data=data, frac=0.3)
+    # create_mlflow_run_pos_lvl(pdb=pdb, cv="pos_lvl", optim=False, ref=False,
+    #                           no_fusion=True, data=data, frac=0.5)
+    # create_mlflow_run_pos_lvl(pdb=pdb, cv="pos_lvl", optim=True, ref=False,
+    #                           no_fusion=True, data=data, frac=0.5)
+    # create_mlflow_run_pos_lvl(pdb=pdb, cv="pos_lvl", optim=False, ref=False,
+    #                           no_fusion=True, data=data, frac=0.9)
+    # create_mlflow_run_pos_lvl(pdb=pdb, cv="pos_lvl", optim=True, ref=False,
+    #                           no_fusion=True, data=data, frac=0.9)
+
+
+def run_DES_K(pdb: str, data: str) -> None:
+    create_mlflow_run_pos_lvl(pdb=pdb, cv="pos_lvl", optim=True, ref=False, vae_kernel=True, data=data, frac=0.3)
+    # create_mlflow_run_pos_lvl(pdb=pdb, cv="pos_lvl", optim=True, ref=False,
+    #                           vae_kernel=True, data=data, frac=0.5)
+    # create_mlflow_run_pos_lvl(pdb=pdb, cv="pos_lvl", optim=True, ref=False,
+    #                           vae_kernel=True, data=data, frac=0.9)
+    # create_mlflow_run_pos_lvl(pdb=pdb, cv="pos_lvl", optim=False, ref=False,
+    #                           vae_kernel=True, data=data, frac=0.3)
+    # create_mlflow_run_pos_lvl(pdb=pdb, cv="pos_lvl", optim=False, ref=False,
+    #                           vae_kernel=True, data=data, frac=0.5)
+    # create_mlflow_run_pos_lvl(pdb=pdb, cv="pos_lvl", optim=False, ref=False,
+    #                           vae_kernel=True, data=data, frac=0.9)
+
+
+def run_VAE_in_silico(pdb: str, data: str) -> None:
+    # create_mlflow_run_pos_lvl(pdb=pdb, cv="pos_lvl", optim=False, ref=False,
+    #                           vae_input=True, data=data, frac=0.3)
+    create_mlflow_run_pos_lvl(pdb=pdb, cv="pos_lvl", optim=True, ref=False, vae_input=True, data=data, frac=0.3)
+    # create_mlflow_run_pos_lvl(pdb=pdb, cv="pos_lvl", optim=False, ref=False,
+    #                           vae_input=True, data=data, frac=0.5)
+    # create_mlflow_run_pos_lvl(pdb=pdb, cv="pos_lvl", optim=True, ref=False,
+    #                           vae_input=True, data=data, frac=0.5)
+    # create_mlflow_run_pos_lvl(pdb=pdb, cv="pos_lvl", optim=False, ref=False,
+    #                           vae_input=True, data=data, frac=0.9)
+    # create_mlflow_run_pos_lvl(pdb=pdb, cv="pos_lvl", optim=True, ref=False,
+    #                           vae_input=True, data=data, frac=0.9)
+    # create_mlflow_run_pos_lvl(pdb=pdb, cv="pos_lvl", optim=False, ref=False,
     #                           vae_input=True, vae_kernel=True,
-    #                           data="blat")
-    create_mlflow_run_pos_lvl(pdb="1FQG", cv="pos_lvl", optim=True, ref=False,
-                              vae_input=True, vae_kernel=True,
-                              data="blat", frac=0.3)
-    create_mlflow_run_pos_lvl(pdb="1FQG", cv="pos_lvl", optim=True, ref=False,
-                              vae_input=True, vae_kernel=True,
-                              data="blat", frac=0.5)
-    create_mlflow_run_pos_lvl(pdb="1FQG", cv="pos_lvl", optim=True, ref=False,
-                              vae_input=True, vae_kernel=True,
-                              data="blat", frac=0.9)
+    #                           data=data)
 
 
-def run_UBQ() -> None:
-    print(f"Tracking URI: {mlflow.get_tracking_uri()}")
-    create_mlflow_run_pos_lvl(pdb="1UBQ", cv="pos_lvl", optim=False, ref=False, no_fusion=True, data="ubq")
-    create_mlflow_run_pos_lvl(pdb="1UBQ", cv="pos_lvl", optim=True, ref=False, no_fusion=True, data="ubq")
-    create_mlflow_run_pos_lvl(pdb="1UBQ", cv="pos_lvl", optim=False, ref=False, vae_input=True, data="ubq")
-    create_mlflow_run_pos_lvl(pdb="1UBQ", cv="pos_lvl", optim=True, ref=False, vae_input=True, data="ubq")
-    create_mlflow_run_pos_lvl(pdb="1UBQ", cv="pos_lvl", optim=False, ref=False, vae_kernel=True, data="ubq")
-
-
-def run_PGA() -> None:
-    # TODO run experiments on PGA data
-    pass
-
-
-def run_HEX() -> None:
-    # TODO run - NZ specific!
-    pass
+def run_VAE_in_silico_DES_K(pdb: str, data: str) -> None:
+    create_mlflow_run_pos_lvl(pdb=pdb, cv="pos_lvl", optim=True, ref=False, vae_input=True, vae_kernel=True,
+                              data=data, frac=0.3)
+    # create_mlflow_run_pos_lvl(pdb=pdb, cv="pos_lvl", optim=True, ref=False,
+    #                           vae_input=True, vae_kernel=True,
+    #                           data=data, frac=0.5)
+    # create_mlflow_run_pos_lvl(pdb=pdb, cv="pos_lvl", optim=True, ref=False,
+    #                           vae_input=True, vae_kernel=True,
+    #                           data=data, frac=0.9)
+    # TODO run without optimization
 
 
 if __name__ == "__main__":
     warnings.filterwarnings("ignore")
-    # run_TLL()
     # run_MGPF()
-    run_BLAT()
-    # run_UBQ()
-    # run_PGA()
-    # run_HEX()
+    pdbs = ["1FQG", "1UBQ", "1PGA", "D45"]
+    data = ["blat", "ubq", "pga", "hexo"]
+    for pdb, d in zip(pdbs, data):
+        # run_mGP(pdb=pdb, data=d)
+        run_DES_K(pdb=pdb, data=d)
+        run_VAE_in_silico(pdb=pdb, data=d)
+        run_VAE_in_silico_DES_K(pdb=pdb, data=d)
