@@ -26,7 +26,6 @@ import seaborn as sns
 import matplotlib.pyplot as plt
 import random
 from parse_data import parse_BLAT, parse_UBQ, parse_PGA, parse_TLL, parse_HEX, parse_alignment, filter_alignment
-from reference_alphabet import seq2idx
 import os
 
 os.environ['KMP_DUPLICATE_LIB_OK'] = 'True'  # TODO figure out what caused OMP Error #15
