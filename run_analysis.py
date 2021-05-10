@@ -15,9 +15,12 @@ from visualization import plot_pos_lvl_gpr_total, plot_pos_lvl_gpr_individual
 from visualization import plot_covariance_matrices, plot_mWDK
   
 
-def load_pkl_results(pdb: str, cv: str="pos_lvl", opt: str="False", ref: str="False", directory: str="./output"):
+def load_pkl_results(pdb: str, cv: str="pos_lvl", opt: str="False", ref: str="False", directory: str="./output", fusion: str = False):
     run_results = []
-    file_prefix = f"{pdb.upper()}_{cv}_opt_{opt}_ref_{ref}"
+    if not fusion:
+        file_prefix = f"{pdb.upper()}_NO_FUSION_{cv}_opt_{opt}_ref_{ref}"
+    else:
+        file_prefix = f"{pdb.upper()}_{cv}_opt_{opt}_ref_{ref}"
     file_list = [f for f in os.listdir(directory) if f.startswith(file_prefix)]
     for file in file_list:
         with open(os.path.join(directory, file), "rb") as pkl_file:
@@ -132,19 +135,20 @@ def plot_hyperparameters(hyper_df, weight_df):
     #plot_neg_ll(hyper_df)
 
 
-def load_regression_results(pdbs, optim, refs, cvs):
+def load_regression_results(pdbs, optim, refs, cvs, fusion):
     frames = []
     # TODO eliminate nested loops - use 
     for pdb in pdbs:
         for opt in optim:
             for ref in refs:
                 for cv in cvs:
-                    results = load_pkl_results(pdb, cv=cv, opt=opt, ref=ref)
-                    predictions = parse_prediction_results(results)
-                    if not predictions:
-                        continue
-                    pred_df = create_prediction_df(predictions, pdb, ref, opt, cv=cv)
-                    frames.append(pred_df) 
+                    for f in fusion:
+                        results = load_pkl_results(pdb, cv=cv, opt=opt, ref=ref, fusion=f)
+                        predictions = parse_prediction_results(results)
+                        if not predictions:
+                            continue
+                        pred_df = create_prediction_df(predictions, pdb, ref, opt, cv=cv)
+                        frames.append(pred_df)
     predictions_df = pd.concat(frames, ignore_index=True)
     return predictions_df
 
@@ -170,12 +174,13 @@ def load_hyperparameter_results(pdbs, optim, refs):
 
 if __name__ == "__main__":
     #pdbs = ["1BVC", "2LZM", "1PGA", "1CSP", "1BPI", "1RGG", "1RTB", "2RN2", "4LYZ"]# "1FQG"]
-    pdbs = ["1TIB"]
+    pdbs = ["1FQG"]
     optim = [False, True]
     refs = [False, True]
+    fusion = [False, True] # TODO clear this up
     cvs = ["pos_lvl", "mut_lvl"]
     
-    regression_df = load_regression_results(pdbs, optim, refs, cvs)
+    regression_df = load_regression_results(pdbs, optim, refs, cvs, fusion)
     plot_regression_results(regression_df)
     results_table(regression_df)
     weight_df, hyperparameters_df = load_hyperparameter_results(pdbs, optim, refs)
