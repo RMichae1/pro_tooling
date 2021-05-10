@@ -296,7 +296,8 @@ class Experiment:
     def init_mgp_regression(self):
         gpr = GPRegression(protein_representation=self.protein, X_wt=self.X_wt, X_exp=self.X_exp, X_is=self.X_is,
                            y_wt=self.y_wt, y_exp=self.ΔΔg_exp, y_is=self.ΔΔg_is_scaled, adjacencies=self.ref_adj,
-                           σ_T=self.scaler_σ, y_max=self.max_y, y_mean=self.mean_y, cached=True, fusion=self.fusion)
+                           σ_T=self.scaler_σ, y_max=self.max_y, y_mean=self.mean_y, cached=True, fusion=self.fusion,
+                           kernel_vae=self.vae_kernel)
         # TODO fix scaler sigma (to array of sigmas)
         return gpr
 

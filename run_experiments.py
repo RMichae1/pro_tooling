@@ -150,7 +150,7 @@ def run_pos_lvl_CV_no_fusion(experiment: Experiment, write: bool = True) -> dict
     n_mutations = np.array([len(mut) for mut in experimental_mutation_index if bool(experiment.idx in mut)])
     # split into train and test
     experiment.gpr.set_test_index(1 + test_mutation_idx)  # offset with WT
-    # combine WT + not selected + in silico for training data
+    # combine WT + not selected + in silico for training data # TODO take out IS, as this is a NO FUSION RUN
     train_index = np.concatenate([np.array([0]), 1 + not_test_mutation_idx,
                                   np.arange(start=len(experiment.gpr.X_exp) + 1,
                                             stop=experiment.gpr.X.shape[0])])  # all simulated data are training data

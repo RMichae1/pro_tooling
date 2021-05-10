@@ -22,7 +22,7 @@ class GPRegression:
     def __init__(self, protein_representation: ProteinCollection, X_wt: np.ndarray, 
                 X_exp: np.ndarray, X_is: np.ndarray, y_wt: np.ndarray, y_exp: np.ndarray, y_is: np.ndarray,
                 y_max: float, y_mean: float, adjacencies: np.ndarray, σ_T: float, n_optimization=15, 
-                fusion=True, sub_matrices=None, cached=False):
+                fusion=True, sub_matrices=None, cached=False, kernel_vae=None):
         self.X_wt = X_wt
         self.X_exp = X_exp
         self.X_is = X_is
@@ -63,9 +63,8 @@ class GPRegression:
 
         self.μ, self.cov, self.lml, self.p_sample = [], [], [], []
 
-        _kernels = KernelLoader(sub_matrices=sub_matrices)
-        self._kernel_ids = _kernels.sub_matrices_ids
-        self._kernels = _kernels.kernels
+        self._kernel_ids = protein_representation._kernels.sub_matrices_ids
+        self._kernels = protein_representation._kernels.kernels
         # init weights 
         self.init_w = (0.9/len(self._kernels)) * torch.ones([len(self._kernels), 1], dtype=torch.float64)
         self.weights = Variable(self.init_w, lower=0, upper=1) 
