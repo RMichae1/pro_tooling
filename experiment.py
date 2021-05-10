@@ -87,7 +87,7 @@ class Experiment:
         elif self.experiment_type == "ubq":
             return self.prepare_ubq_experimental_data()
         elif self.experiment_type == "pga":
-            raise NotImplementedError
+            return self.prepare_pga_experimental_data()
         elif self.experiment_type == "hexo":
             return self.prepare_hexo_experimental_data()
         else:
@@ -243,6 +243,25 @@ class Experiment:
             return is_mutation_dict
         else:
             return self.generate_in_silico_mutations_from_vae()
+
+    def prepare_pga_experimental_data(self, load_existing=True):
+        exp_mutations_filename = "./data/pga/pga_exp_mutations.pkl"
+        if os.path.exists(exp_mutations_filename) and load_existing:
+            with open(exp_mutations_filename, "rb") as filehandle:
+                mutation_dict = pickle.load(filehandle)
+            return mutation_dict
+        else:
+            return self.load_pga_experimental_data_from_csv()
+
+    def load_pga_experimental_data_from_csv(self, save_file="./data/pga/pga_exp_mutations.pkl"):
+        ubq_df = pd.read_csv(self.exp_data_filename, delimiter=";")
+        ubq_df = ubq_df[["mutant", "selection_coefficient"]].dropna()
+        ubq_df["growth"] = ubq_df["selection_coefficient"].str.replace(",", ".").astype(float)
+        mutation_dict = {"1PGA": list(zip(ubq_df.mutant, ubq_df.growth))}
+        if save_file:
+            with open(save_file, "wb") as filehandle:
+                pickle.dump(mutation_dict, filehandle)
+        return mutation_dict
 
     @staticmethod
     def prepare_tll_family_sequences():

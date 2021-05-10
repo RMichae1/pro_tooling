@@ -9,12 +9,14 @@ from utility import parse_matlab_mutation_file
 EXPERIMENTAL_DATA = {"mgpf": "./data/mgp/ddg_protherm.mat",
                      "tll": "./data/tll/lipase_variants_tll_tm_tapo_20nov2020.xlsx",
                      "blat": "./data/blat/BLAT_ECOLX_Ranganathan2015.csv",
-                     "ubq": "./data/ubq/RL401_Bolon2013.csv"}  # TODO add PGA
+                     "ubq": "./data/ubq/RL401_Bolon2013.csv",
+                     "pga": "./data/pga/Nisthal_Mayo_2019_updated_3xESLyS9.csv"}
 
 IN_SILICO_DATA = {"mgpf": "./data/mgp/ddg_rosetta_single.mat",
                   "tll": "./data/tll/TLL_IS_closed_results.xlsx",
                   "ubq": "./data/ubq/vae_ubq_IS_samples.pkl",
-                  "blat": "./data/blat/vae_blat_IS_samples.pkl"}
+                  "blat": "./data/blat/vae_blat_IS_samples.pkl",
+                  "pga": "./data/pga/vae_pga_IS_samples.pkl"}
 
 
 def get_positions(pdb: str) -> str:
@@ -22,7 +24,7 @@ def get_positions(pdb: str) -> str:
     return cm_tri.sequence
 
 
-def run_sys_CV(pdb, idx, cv, experiment, run_id, data=None, ref=False, optim=True, no_fusion=False, verbose=False,
+def run_sys_CV(pdb, idx, cv, experiment, run_id, data=None, ref=False, optim=True, fusion=False, verbose=False,
                ref_contact_map=False, vae_input=False, vae_kernel=False, frac=1.):
     command_lst = ["/home/rimichael/.pyenv/shims/python", "/home/rimichael/pro_tooling/run_experiments.py", "-p",
                    f"{pdb}", "-i", f"{idx}",
@@ -35,8 +37,8 @@ def run_sys_CV(pdb, idx, cv, experiment, run_id, data=None, ref=False, optim=Tru
         command_lst += ["-m"]
     if verbose:
         command_lst += ["-v"]
-    if no_fusion:
-        command_lst += ["--no_fusion"]
+    if fusion:
+        command_lst += ["--fusion"]
     if ref_contact_map:
         command_lst += ["--ref_contact"]
     if vae_input:
@@ -46,7 +48,7 @@ def run_sys_CV(pdb, idx, cv, experiment, run_id, data=None, ref=False, optim=Tru
     subprocess.run(command_lst)
 
 
-def create_mlflow_run_pos_lvl(pdb: str, cv: str, optim: bool, ref: bool, no_fusion: bool = False, data: str = None,
+def create_mlflow_run_pos_lvl(pdb: str, cv: str, optim: bool, ref: bool, fusion: bool = False, data: str = None,
                               ref_contact_map: bool = False, vae_input: bool = False, vae_kernel: bool = False,
                               frac: float = 1.) -> None:
     sequence = get_positions(pdb)
@@ -54,18 +56,18 @@ def create_mlflow_run_pos_lvl(pdb: str, cv: str, optim: bool, ref: bool, no_fusi
     experiment = mlflow.set_experiment(experiment_name)
     with mlflow.start_run(experiment_id=experiment) as run:
         exp_params = {"pdb": pdb, "cv": cv, "optimization": optim, "2σ": ref, "reference_contacts": ref_contact_map,
-                      "NO fusion": no_fusion, "vae_input": vae_input, "vae_kernel": vae_kernel, "data_train": frac}
+                      "fusion": fusion, "vae_input": vae_input, "vae_kernel": vae_kernel, "data_train": frac}
         mlflow.log_params(exp_params)
         for idx, _ in enumerate(sequence):
             # run position lvl no optimization
             run_sys_CV(pdb, idx, cv=cv, ref=ref, optim=optim, experiment=experiment_name, run_id=run.info.run_id,
-                       no_fusion=no_fusion, data=data, verbose=True, ref_contact_map=ref_contact_map,
+                       fusion=fusion, data=data, verbose=True, ref_contact_map=ref_contact_map,
                        vae_input=vae_input, vae_kernel=vae_kernel, frac=frac)
     mlflow.end_run()
     return None
 
 
-def create_mlflow_run_mut_lvl(pdb: str, cv: str, optim: bool, ref: str, no_fusion: bool = False, data: str = None,
+def create_mlflow_run_mut_lvl(pdb: str, cv: str, optim: bool, ref: str, fusion: bool = False, data: str = None,
                               ref_contact_map: bool = False) -> None:
     exp_mutations = parse_matlab_mutation_file(f"./data/mgp/ddg_protherm.mat",
                                                query="ddg_protherm").get(pdb)
@@ -77,7 +79,7 @@ def create_mlflow_run_mut_lvl(pdb: str, cv: str, optim: bool, ref: str, no_fusio
         for idx in range(1, len(exp_mutations) + 1):  # exclude WT zero round
             # run position lvl no optimization
             run_sys_CV(pdb, idx, cv=cv, ref=ref, optim=optim, experiment=experiment_name, run_id=run.info.run_id,
-                       no_fusion=no_fusion, data=data, verbose=True, ref_contact_map=ref_contact_map)
+                       fusion=fusion, data=data, verbose=True, ref_contact_map=ref_contact_map)
     mlflow.end_run()
     return None
 
@@ -90,12 +92,12 @@ def run_MGPF() -> None:
     for pdb in pdbs:
         # TODO rerun 1BVC position level - its overwritten with mutation level
         # create_mlflow_run_pos_lvl(pdb=pdb, cv="pos_lvl", optim=False, ref=False,
-        #                          no_fusion=True, data="mgpf")
+        #                          fusion=True, data="mgpf")
         # create_mlflow_run_pos_lvl(pdb=pdb, cv="pos_lvl", optim=True, ref=False,
-        #                        no_fusion=True, data="mgpf")
-        # create_mlflow_run_pos_lvl(pdb=pdb, cv="pos_lvl", optim=False, ref=False, no_fusion=True,
+        #                        fusion=True, data="mgpf")
+        # create_mlflow_run_pos_lvl(pdb=pdb, cv="pos_lvl", optim=False, ref=False, fusion=True,
         #                          ref_contact_map=True, data="mgpf")
-        # create_mlflow_run_pos_lvl(pdb=pdb, cv="pos_lvl", optim=True, ref=False, no_fusion=True,
+        # create_mlflow_run_pos_lvl(pdb=pdb, cv="pos_lvl", optim=True, ref=False, fusion=True,
         #                        ref_contact_map=True, data="mgpf")
         # create_mlflow_run_pos_lvl(pdb=pdb, cv="pos_lvl", optim=False, ref=False,
         #                           ref_contact_map=True, data="mgpf")
@@ -117,35 +119,19 @@ def run_MGPF() -> None:
     print(f"Done: {done}")
 
 
-def run_TLL() -> None:
-    print(f"Tracking URI: {mlflow.get_tracking_uri()}")
-    # create_mlflow_run_pos_lvl(pdb="1TIB", cv="pos_lvl", optim=False, ref=False, data="tll")
-    # create_mlflow_run_pos_lvl(pdb="1TIB", cv="pos_lvl", optim=True, ref=False, data="tll")
-    # create_mlflow_run_pos_lvl(pdb="1TIB", cv="pos_lvl", optim=False, ref=True, data="tll")
-    # create_mlflow_run_pos_lvl(pdb="1TIB", cv="pos_lvl", optim=True, ref=True, data="tll")
-    # create_mlflow_run_pos_lvl(pdb="1TIB", cv="pos_lvl", optim=False, ref=False, no_fusion=True, data="tll")
-    # create_mlflow_run_pos_lvl(pdb="1TIB", cv="pos_lvl", optim=True, ref=False, no_fusion=True, data="tll")
-    # create_mlflow_run_pos_lvl(pdb="1TIB", cv="pos_lvl", optim=False, ref=True, no_fusion=True, data="tll")
-    # create_mlflow_run_pos_lvl(pdb="1TIB", cv="pos_lvl", optim=True, ref=True, no_fusion=True, data="tll")
-    create_mlflow_run_pos_lvl(pdb="1TIB", cv="mut_lvl", optim=False, ref=False, data="tll")
-    create_mlflow_run_pos_lvl(pdb="1TIB", cv="mut_lvl", optim=True, ref=False, data="tll")
-    create_mlflow_run_pos_lvl(pdb="1TIB", cv="mut_lvl", optim=False, ref=True, data="tll")
-    create_mlflow_run_pos_lvl(pdb="1TIB", cv="mut_lvl", optim=True, ref=True, data="tll")
-
-
 def run_mGP(pdb: str, data: str) -> None:
     # create_mlflow_run_pos_lvl(pdb=pdb, cv="pos_lvl", optim=False, ref=False,
-    #                           no_fusion=True, data=data, frac=0.3)
+    #                           fusion=False, data=data, frac=0.3)
     create_mlflow_run_pos_lvl(pdb=pdb, cv="pos_lvl", optim=True, ref=False,
-                              no_fusion=True, data=data, frac=0.3)
+                              fusion=True, data=data, frac=0.3)
     # create_mlflow_run_pos_lvl(pdb=pdb, cv="pos_lvl", optim=False, ref=False,
-    #                           no_fusion=True, data=data, frac=0.5)
+    #                           fusion=False, data=data, frac=0.5)
     # create_mlflow_run_pos_lvl(pdb=pdb, cv="pos_lvl", optim=True, ref=False,
-    #                           no_fusion=True, data=data, frac=0.5)
+    #                           fusion=False, data=data, frac=0.5)
     # create_mlflow_run_pos_lvl(pdb=pdb, cv="pos_lvl", optim=False, ref=False,
-    #                           no_fusion=True, data=data, frac=0.9)
+    #                           fusion=False, data=data, frac=0.9)
     # create_mlflow_run_pos_lvl(pdb=pdb, cv="pos_lvl", optim=True, ref=False,
-    #                           no_fusion=True, data=data, frac=0.9)
+    #                           fusion=False, data=data, frac=0.9)
 
 
 def run_DES_K(pdb: str, data: str) -> None:
@@ -163,29 +149,29 @@ def run_DES_K(pdb: str, data: str) -> None:
 
 
 def run_VAE_in_silico(pdb: str, data: str) -> None:
-    # create_mlflow_run_pos_lvl(pdb=pdb, cv="pos_lvl", optim=False, ref=False,
+    # create_mlflow_run_pos_lvl(pdb=pdb, cv="pos_lvl", optim=False, ref=False, fusion=True,
     #                           vae_input=True, data=data, frac=0.3)
-    create_mlflow_run_pos_lvl(pdb=pdb, cv="pos_lvl", optim=True, ref=False, vae_input=True, data=data, frac=0.3)
-    # create_mlflow_run_pos_lvl(pdb=pdb, cv="pos_lvl", optim=False, ref=False,
+    create_mlflow_run_pos_lvl(pdb=pdb, cv="pos_lvl", optim=True, ref=False, fusion=True, vae_input=True, data=data, frac=0.3)
+    # create_mlflow_run_pos_lvl(pdb=pdb, cv="pos_lvl", optim=False, ref=False, fusion=True,
     #                           vae_input=True, data=data, frac=0.5)
-    # create_mlflow_run_pos_lvl(pdb=pdb, cv="pos_lvl", optim=True, ref=False,
+    # create_mlflow_run_pos_lvl(pdb=pdb, cv="pos_lvl", optim=True, ref=False, fusion=True,
     #                           vae_input=True, data=data, frac=0.5)
-    # create_mlflow_run_pos_lvl(pdb=pdb, cv="pos_lvl", optim=False, ref=False,
+    # create_mlflow_run_pos_lvl(pdb=pdb, cv="pos_lvl", optim=False, ref=False, fusion=True
     #                           vae_input=True, data=data, frac=0.9)
-    # create_mlflow_run_pos_lvl(pdb=pdb, cv="pos_lvl", optim=True, ref=False,
+    # create_mlflow_run_pos_lvl(pdb=pdb, cv="pos_lvl", optim=True, ref=False, fusion=True,
     #                           vae_input=True, data=data, frac=0.9)
-    # create_mlflow_run_pos_lvl(pdb=pdb, cv="pos_lvl", optim=False, ref=False,
+    # create_mlflow_run_pos_lvl(pdb=pdb, cv="pos_lvl", optim=False, ref=False, fusion=True
     #                           vae_input=True, vae_kernel=True,
     #                           data=data)
 
 
 def run_VAE_in_silico_DES_K(pdb: str, data: str) -> None:
-    create_mlflow_run_pos_lvl(pdb=pdb, cv="pos_lvl", optim=True, ref=False, vae_input=True, vae_kernel=True,
-                              data=data, frac=0.3)
-    # create_mlflow_run_pos_lvl(pdb=pdb, cv="pos_lvl", optim=True, ref=False,
+    create_mlflow_run_pos_lvl(pdb=pdb, cv="pos_lvl", optim=True, ref=False, fusion=True, vae_input=True,
+                              vae_kernel=True, data=data, frac=0.3)
+    # create_mlflow_run_pos_lvl(pdb=pdb, cv="pos_lvl", optim=True, ref=False, fusion=True,
     #                           vae_input=True, vae_kernel=True,
     #                           data=data, frac=0.5)
-    # create_mlflow_run_pos_lvl(pdb=pdb, cv="pos_lvl", optim=True, ref=False,
+    # create_mlflow_run_pos_lvl(pdb=pdb, cv="pos_lvl", optim=True, ref=False, fusion=True
     #                           vae_input=True, vae_kernel=True,
     #                           data=data, frac=0.9)
     # TODO run without optimization

@@ -219,8 +219,8 @@ if __name__ == "__main__":
     parser.add_argument("--seed", type=int, default=42, help="Randomness seed for replicability.")
     parser.add_argument("-e", "--experiment", type=str, help="Experiment ID for mlflow")
     parser.add_argument("--run_id", type=str, help="Run ID of mlflow run.")
-    parser.add_argument("--no_fusion", action="store_true",
-                        help="Run mGP instead of mGPfusion, disregard Rosetta simulations.")
+    parser.add_argument("-f", "--fusion", action="store_true",
+                        help="Run mGPfusion instead of mGP, include Rosetta or VAE simulations.")
     parser.add_argument("--data", type=str, choices=data_options, help="Select type of experiment run.")
     parser.add_argument("--ref_contact", action="store_true", help="Use reference contactmap from matlab.")
     parser.add_argument("--vae_input", action="store_true", help="Use VAE ELBO input for fusion.")
@@ -236,7 +236,7 @@ if __name__ == "__main__":
 
     vae_parameters = default_vae_parameters
     experiment = Experiment(pdb=args.pdb, experiment_type=args.data, idx=args.idx, optimization=args.optim,
-                            fusion=bool(not args.no_fusion), reference=args.mode, run_id=args.run_id,
+                            fusion=bool(args.fusion), reference=args.mode, run_id=args.run_id,
                             vae_kernel=args.vae_kernel, vae_input=args.vae_input,
                             exp_data_filename=args.experimental_data, is_data_filename=args.simulated_data,
                             fraction=args.fraction, **vae_parameters)
