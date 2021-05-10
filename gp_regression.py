@@ -151,13 +151,14 @@ class GPRegression:
                     ((σ_E + σ_S) / self.y_max) * torch.ones([len(self.X_is), 1], dtype=torch.float64) + t*(self.σ_T/self.y_max)))
         return torch.square(σ).type(torch.float64)
 
+    @torch.no_grad()
     def compute_matrices(self, X: torch.Tensor, adjacencies: List[tuple]) -> list:
         X = X.detach().numpy().astype(np.int64)
         n = X.shape[0]
         covariance_mats = []
         for i, (kernel, k_id) in tqdm(enumerate(zip(self._kernels, self._kernel_ids))):
             k = torch.zeros([n, n], dtype=torch.float64)
-            k += kernel.k(X, adjacencies)
+            k += kernel.k(x_p=X, adjacencies=adjacencies)
             if self.cached:
                 kernel_name = f"{self.protein.pdb_ID}_{k_id}.pt"
                 torch.save(k, os.path.join(self.cache_dir, kernel_name))
