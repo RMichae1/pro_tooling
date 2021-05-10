@@ -62,7 +62,7 @@ def setup_UBQ_VAE():
     num_classes = np.unique(family_seqs).shape[0] + 2
     WT = F.one_hot(torch.tensor(family_seqs[0], dtype=torch.int64),
                    num_classes=num_classes).flatten().float()
-    model_FILENAME = f"/home/rimichael/pro_tooling/models/VAE_tubq_z2_h[1700, 1200]_e200_d0.065_wTrue.pt"
+    model_FILENAME = f"/models/SEQ2IDX_models/VAE_tubq_z2_h[1700, 1200]_e200_d0.065_wTrue.pt"
     vae = VAE(z_dim=2, encoder_dim=[1700], decoder_dim=[1200], input_dims=WT.shape[0],
               use_cuda=False, wt=WT, dropout=0.065,
               num_categories=num_classes)
