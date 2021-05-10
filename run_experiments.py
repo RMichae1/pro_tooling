@@ -240,7 +240,7 @@ if __name__ == "__main__":
                             vae_kernel=args.vae_kernel, vae_input=args.vae_input,
                             exp_data_filename=args.experimental_data, is_data_filename=args.simulated_data,
                             fraction=args.fraction, **vae_parameters)
-    if args.run == "pos_lvl" and args.no_fusion:
+    if args.run == "pos_lvl" and not args.fusion:
         run_pos_lvl_CV_no_fusion(experiment)
     elif args.run == "pos_lvl":
         run_mgpfusion_experiment_pos_lvl(experiment)

@@ -74,6 +74,8 @@ class Experiment:
             return parse_matlab_mutation_file(self.is_data_filename, query="ddg_rosetta_single")
         elif self.experiment_type == "ubq":
             return self.prepare_ubq_in_silico_data()
+        elif self.experiment_type == "pga":
+            return self.prepare_pga_in_silico_data()
         else:
             raise NotImplementedError("Specified In-Silico data configuration not available.")
 
@@ -254,7 +256,7 @@ class Experiment:
             return self.load_pga_experimental_data_from_csv()
 
     def load_pga_experimental_data_from_csv(self, save_file="./data/pga/pga_exp_mutations.pkl"):
-        ubq_df = pd.read_csv(self.exp_data_filename, delimiter=";")
+        ubq_df = pd.read_csv(self.exp_data_filename, delimiter=";") # TODO fix this
         ubq_df = ubq_df[["mutant", "selection_coefficient"]].dropna()
         ubq_df["growth"] = ubq_df["selection_coefficient"].str.replace(",", ".").astype(float)
         mutation_dict = {"1PGA": list(zip(ubq_df.mutant, ubq_df.growth))}
@@ -262,6 +264,16 @@ class Experiment:
             with open(save_file, "wb") as filehandle:
                 pickle.dump(mutation_dict, filehandle)
         return mutation_dict
+
+    def prepare_pga_in_silico_data(self, load_existing=True):
+        if not self.vae:
+            raise NotImplementedError("Rosetta in silico data for PGA is not implemented.")
+        if os.path.exists(self.is_data_filename) and load_existing:
+            with open(self.is_data_filename, "rb") as filehandle:
+                is_mutation_dict = pickle.load(filehandle)
+            return is_mutation_dict
+        else:
+            return self.generate_in_silico_mutations_from_vae()
 
     @staticmethod
     def prepare_tll_family_sequences():
