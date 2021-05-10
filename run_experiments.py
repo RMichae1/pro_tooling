@@ -12,6 +12,7 @@ from experiment import Experiment
 import numpy as np
 import pandas as pd
 import pickle
+import json
 import mlflow
 from mlflow.tracking import MlflowClient
 
@@ -71,7 +72,7 @@ def run_mgpfusion_experiment_pos_lvl(experiment: Experiment, verbose=True, write
                       value=spearman_p, step=experiment.idx)
     client.log_metric(run_id=run.info.run_id, key="mse", value=mse,
                       step=experiment.idx)
-    filename = f"./output/{experiment.pdb}_pos_lvl_opt_{experiment.optimization}_ref_{experiment.two_sigma}_{experiment.idx}.pkl"
+    filename = f"./output/{experiment.pdb}_pos_lvl_opt_{experiment.optimization}_ref_{experiment.two_sigma}_{experiment.idx}_train{experiment.fraction}.pkl"
     if write and bool(opt_params):
         data_dict = {**opt_params, **fit_params, "idx": experiment.idx, "n_mut": n_mutations}
         with open(filename, "wb") as outfile:
@@ -127,7 +128,7 @@ def run_mgpfusion_experiment_mut_lvl(experiment: Experiment, verbose=False, writ
     client.log_metric(run_id=run.info.run_id, key="spearman r", value=spearman_r, step=experiment.idx)
     client.log_metric(run_id=run.info.run_id, key="spearman p", value=spearman_p, step=experiment.idx)
     client.log_metric(run_id=run.info.run_id, key="mse", value=mse, step=experiment.idx)
-    filename = f"./output/{experiment.pdb}_mut_lvl_opt_{experiment.optimization}_ref_{experiment.two_sigma}_{experiment.idx}.pkl"
+    filename = f"./output/{experiment.pdb}_mut_lvl_opt_{experiment.optimization}_ref_{experiment.two_sigma}_{experiment.idx}_train{experiment.fraction}.pkl"
     if write and bool(opt_params):
         data_dict = {**opt_params, **fit_params, "idx": experiment.idx, "n_mut": n_mutations}
         with open(filename, "wb") as outfile:
@@ -149,7 +150,7 @@ def run_pos_lvl_CV_no_fusion(experiment: Experiment, write: bool = True) -> dict
     n_mutations = np.array([len(mut) for mut in experimental_mutation_index if bool(experiment.idx in mut)])
     # split into train and test
     experiment.gpr.set_test_index(1 + test_mutation_idx)  # offset with WT
-    # combine WT + not selected + in silico for training data
+    # combine WT + not selected + in silico for training data # TODO take out IS, as this is a NO FUSION RUN
     train_index = np.concatenate([np.array([0]), 1 + not_test_mutation_idx,
                                   np.arange(start=len(experiment.gpr.X_exp) + 1,
                                             stop=experiment.gpr.X.shape[0])])  # all simulated data are training data
@@ -193,7 +194,7 @@ def run_pos_lvl_CV_no_fusion(experiment: Experiment, write: bool = True) -> dict
                "mutations": mutations,
                "spearman corr": (spearman_r, spearman_p),
                "mse": mse}
-    filename = f"./output/{experiment.pdb}_NO_FUSION_pos_lvl_opt_{experiment.optimization}_ref_{experiment.two_sigma}_{experiment.idx}.pkl"
+    filename = f"./output/{experiment.pdb}_NO_FUSION_pos_lvl_opt_{experiment.optimization}_ref_{experiment.two_sigma}_{experiment.idx}_train{experiment.fraction}.pkl"
     if write:
         with open(filename, "wb") as filehandle:
             pickle.dump(results, filehandle)
@@ -203,7 +204,11 @@ def run_pos_lvl_CV_no_fusion(experiment: Experiment, write: bool = True) -> dict
 
 if __name__ == "__main__":
     cv_options = ["pos_lvl", "mut_lvl"]
-    data_options = ["tll", "blat", "mgpf", "ubq"]
+    data_options = ["tll", "blat", "mgpf", "ubq", "hexo"]
+    default_vae_parameters = {"learning_rate": 0.000027, "cuda": False, "epochs": 200, "test_freq": 10, "latent_dim": 55,
+                              "encoder_dim": 1700, "decoder_dim": 1200, "test_split": 0.1, "batch_size": 128,
+                              "weight_decay": 0.0007, "dropout": 0.065, "sequence_weighting": True, "seed": 42}
+
     parser = argparse.ArgumentParser(description="Experiment Module - run specific Regression calls.")
     parser.add_argument("-p", "--pdb", type=str, help="Identifier string of pdb file")
     parser.add_argument("-i", "--idx", type=int, help="Index of CV run")
@@ -214,12 +219,13 @@ if __name__ == "__main__":
     parser.add_argument("--seed", type=int, default=42, help="Randomness seed for replicability.")
     parser.add_argument("-e", "--experiment", type=str, help="Experiment ID for mlflow")
     parser.add_argument("--run_id", type=str, help="Run ID of mlflow run.")
-    parser.add_argument("--no_fusion", action="store_true",
-                        help="Run mGP instead of mGPfusion, disregard Rosetta simulations.")
+    parser.add_argument("-f", "--fusion", action="store_true",
+                        help="Run mGPfusion instead of mGP, include Rosetta or VAE simulations.")
     parser.add_argument("--data", type=str, choices=data_options, help="Select type of experiment run.")
     parser.add_argument("--ref_contact", action="store_true", help="Use reference contactmap from matlab.")
     parser.add_argument("--vae_input", action="store_true", help="Use VAE ELBO input for fusion.")
     parser.add_argument("--vae_kernel", action="store_true", help="Use VAE derived substitution kernel")
+    #parser.add_argument("--vae_parameters", type=str, default=default_vae_parameters, help="VAE parameters as dictionary.")
     parser.add_argument("--experimental_data", type=str, help="Provide filename for experimental (csv) data.")
     parser.add_argument("--simulated_data", type=str, help="Provide filename for in silico (csv) data.")
     parser.add_argument("--fraction", type=float, help="Percentage of training data used for fitting.")
@@ -228,12 +234,13 @@ if __name__ == "__main__":
     np.random.seed(args.seed)
     torch.manual_seed(args.seed)
 
+    vae_parameters = default_vae_parameters
     experiment = Experiment(pdb=args.pdb, experiment_type=args.data, idx=args.idx, optimization=args.optim,
-                            fusion=bool(not args.no_fusion), reference=args.mode, run_id=args.run_id,
+                            fusion=bool(args.fusion), reference=args.mode, run_id=args.run_id,
                             vae_kernel=args.vae_kernel, vae_input=args.vae_input,
                             exp_data_filename=args.experimental_data, is_data_filename=args.simulated_data,
-                            fraction=args.fraction)
-    if args.run == "pos_lvl" and args.no_fusion:
+                            fraction=args.fraction, **vae_parameters)
+    if args.run == "pos_lvl" and not args.fusion:
         run_pos_lvl_CV_no_fusion(experiment)
     elif args.run == "pos_lvl":
         run_mgpfusion_experiment_pos_lvl(experiment)

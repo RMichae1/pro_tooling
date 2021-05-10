@@ -9,12 +9,7 @@ import pandas as pd
 import numpy as np
 from scipy.stats import spearmanr, pearsonr
 from utility import compute_ρ
-from utility import WeightedMSADataset, seq_collate 
-from utility import parse_mutations
-from utility import convert_aa_sequence
-from protein_representation import ProteinCollection
-from contact_mapper import ContactMapper
-from graphkernel import VaeKernel
+from utility import WeightedMSADataset, seq_collate
 import torch
 import torch.nn.functional as F
 from tqdm import tqdm
@@ -44,7 +39,7 @@ if __name__ == "__main__":
     parser.add_argument("-v", "--verbose", action='store_true', help="Verbosity boolean.")
     parser.add_argument("--seed", type=int, default=42, help="Random Seed for reproducability.")
     parser.add_argument("-e", "--epochs", type=int, default=200, help="Training epochs.")
-    parser.add_argument("--latent_dim", type=int, default=2, help="Dimensionality of hidden latent random variable.")
+    parser.add_argument("--latent_dim", type=int, default=55, help="Dimensionality of hidden latent random variable.")
     parser.add_argument("-s", "--save", type=str, help="Destination for models output.")
     parser.add_argument("--encoder_dim", nargs="+", type=int, default=[1700],
                         help="Hidden dimension(s) for VAE encoder module.")
@@ -58,7 +53,7 @@ if __name__ == "__main__":
     parser.add_argument("-d", "--dropout", type=float, default=0.065, help="Add Dropout layer with dropout probability.")
     parser.add_argument("-sw", "--sequence_weighting", action="store_false", # TODO reverse action
                         help="Weighing input sequences in the training procedure.")
-    parser.add_argument("-t", "--type", choices=VAE_TYPES, default="hexo", help="Type ID of MSA used to create VAE.")
+    parser.add_argument("-t", "--type", choices=VAE_TYPES, default="ubq", help="Type ID of MSA used to create VAE.")
     parser.add_argument("-p", "--plot", action="store_false", help="Plot low-latent-representation outputs and feature correlation.")
     parser.add_argument("--sample_vae", action="store_true", help="Prepare in-silico sample.")
     args = parser.parse_args()  # TODO change weighting to store_true
@@ -81,7 +76,7 @@ if __name__ == "__main__":
 
     n, length = family_seqs.shape
     test_n = test_seqs.shape[0]
-    num_classes = np.unique(family_seqs).shape[0] + 2  # TODO double check this.. PGA has 20 classes Error
+    num_classes = np.unique(family_seqs).shape[0] + 1
     indices = list(range(n))
     random.shuffle(indices)
     test_size = int(args.test_split * n)

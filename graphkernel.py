@@ -10,7 +10,6 @@ from torch.distributions.normal import Normal
 from torch.distributions.categorical import Categorical
 from tqdm import tqdm
 from scipy.io import loadmat
-from reference_alphabet import IUPAC_SEQ2IDX
 from vae import VAE
 from torch.nn.functional import one_hot
 
@@ -70,7 +69,7 @@ class MatrixKernel:
         self.matrix = matrix
         self.matrix_id = matrix_id
 
-    def k(self, sequences: np.ndarray, adjacencies: List[tuple]) -> np.ndarray:
+    def k(self, x_p: np.ndarray, adjacencies: List[tuple]) -> np.ndarray:
         """
         Eq. 7
         Compute kernel value w.r.t. neighborhood normalized.
@@ -81,7 +80,7 @@ class MatrixKernel:
 
         return NxN Matrix 
         """
-        N = sequences.shape[0]
+        N = x_p.shape[0]
         k = np.zeros([N, N])
         temp_k = np.zeros([N, N])
         neighborhoods = adjacencies
@@ -93,8 +92,8 @@ class MatrixKernel:
             temp_k.fill(0.)
             for n in neighbors:
                 # WARN: assumption is that neighborhood does NOT change
-                temp_k += self.matrix[sequences[:, n], :][:, sequences[:, n]]
-            temp_k *= self.matrix[sequences[:, idx], :][:, sequences[:, idx]]
+                temp_k += self.matrix[x_p[:, n], :][:, x_p[:, n]]
+            temp_k *= self.matrix[x_p[:, idx], :][:, x_p[:, idx]]
             k += temp_k
         norm = np.sqrt(np.diag(k))[:, np.newaxis]
         k_hat = k / norm.dot(norm.T)
@@ -102,17 +101,16 @@ class MatrixKernel:
 
 
 class VaeKernel:
-    def __init__(self, vae, alphabet=IUPAC_SEQ2IDX, sample_size=100, block_size=1024, fixed_sample=False,
-                 normalize_S=False, marginal_not_i=False, eigen=False) -> None:
+    def __init__(self, vae, sample_size=100, block_size=1024, fixed_sample=False,
+                 normalize_S=True, marginal_not_i=True, eigen=False) -> None:
         """
-        Kernel, which derives likelihoods from provided VAE, given an AA alphabet
+        Kernel, which derives likelihoods from provided VAE,
         fixed sampling sets latent samples to 1 - FOR TESTING AND DEBUG ONLY!
 
         To compute a Substitution Matrix equivalent, provide a sequence, or list of sequences for `S_mat_sequence`.
         """
         self.vae = vae
         self.latent_dim = vae.z_dim
-        self.alphabet = alphabet
         self.sample_size = sample_size
         self.block = block_size
         self.latent_sample = torch.normal(0, 1, size=(sample_size, self.latent_dim)).float()
@@ -266,12 +264,8 @@ class VaeKernel:
             s_val = self.S_val(x_p, x_q, idx)
             temp_k *= s_val
             k += temp_k
-        print("VECT KERNEL:")
-        print(k)
         if not normalize_k:
             return torch.Tensor(k).to(torch.float64)
         norm = np.sqrt(np.diag(k))
         k_hat = k / norm.dot(norm.T)
-        print("VECT NORMALIZED")
-        print(k_hat)
         return torch.Tensor(k_hat).to(torch.float64)
