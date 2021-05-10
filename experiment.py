@@ -184,8 +184,23 @@ class Experiment:
         else:
             return self.load_blat_experimental_mutations_from_csv()
 
+    def load_hexo_experimental_mutations_from_csv(self, save_file="./data/hex/hex_exp_mutations.pkl"):
+        """
+        Load experimental observations from file.
+        """
+        exp_df = pd.read_excel("./data/hex/Hexosaminidase_SSL_data_simple.xlsx")
+        exp_df = exp_df[["Origin", "Target", "ddG (HIF)"]].dropna()
+        exp_df["pdb_position"] = exp_df.Origin.str[1:].astype(int)
+        exp_df['mutation_origin'] = exp_df.Origin.str[0]
+        exp_df["mutations"] = exp_df.mutation_origin + exp_df.pdb_position.astype(str) + exp_df.Target
+        mutation_dict = {"D45": [(mut, y) for (mut, y) in zip(exp_df.mutations, exp_df["ddG (HIF)"])]}
+        if save_file:
+            with open(save_file, "wb") as filehandle:
+                pickle.dump(mutation_dict, filehandle)
+        return mutation_dict
+
     def prepare_hexo_experimental_data(self, load_existing=True) -> dict:
-        exp_mutations_filename = "./data/hexo/hexo_exp_mutations.pkl"
+        exp_mutations_filename = "./data/hex/hex_exp_mutations.pkl"
         if os.path.exists(exp_mutations_filename) and load_existing:
             with open(exp_mutations_filename, "rb") as filehandle:
                 mutation_dict = pickle.load(filehandle)
