@@ -30,7 +30,7 @@ class ProteinCollection:
         self.adjacency = contactmap.adjacency
         self.sequence = contactmap.sequence
         assert self.pdb_ID == self.contactmap.pdb_ID
-        self._kernels = KernelLoader(kernel_vae)
+        self._kernels = KernelLoader(vae=kernel_vae)
         self.mut_S_exp, self.mut_adj_exp, self.ΔΔg_exp, self.mut_ids_exp = parse_mutations(mutation_dict=mutations_exp.get(pdb_ID), 
                                                     sequence=self.sequence, adjacency=self.adjacency)
         self.mut_S_is, self.mut_adj_is, self.ΔΔg_is, self.mut_ids_is = parse_mutations(mutation_dict=mutations_sim.get(pdb_ID), 

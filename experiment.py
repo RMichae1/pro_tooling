@@ -11,7 +11,7 @@ from scipy.io import loadmat
 from utility import convert_graph_from_matlab_file, convert_aa_sequence
 from utility import parse_mutations, preprocess_observations
 from utility import WeightedMSADataset, parse_matlab_mutation_file
-from utility import filter_alignment
+from parse_data import filter_alignment, parse_BLAT, parse_TLL, parse_UBQ, parse_PGA, parse_HEX
 import torch
 import torch.nn.functional as F
 
@@ -22,13 +22,14 @@ class Experiment:
     """
 
     def __init__(self, pdb: str, experiment_type: str, idx: int, optimization: bool,
-                 fusion: bool, reference: bool, vae_input: bool, vae_kernel: bool,
+                 fusion: bool, reference: bool, vae_input: bool, vae_kernel: bool, fraction: float,
                  exp_data_filename: str, is_data_filename: str, run_id: str, **vae_params) -> None:
         self.pdb = pdb
         self.experiment_type = experiment_type
         self.idx = idx
         self.fusion = fusion
         self.optimization = optimization
+        self.fraction = fraction
         self.vae = None
         self.vae_input = vae_input
         self.vae_kernel = vae_kernel
@@ -45,9 +46,9 @@ class Experiment:
             self.vae = self.prepare_vae(**vae_params)
         if vae_kernel:
             self.protein = ProteinCollection(self.contact_map, pdb_ID=pdb, mutations_exp=self.experimental_data,
-                                             vae=self.vae, TESTING=False)
+                                             kernel_vae=self.vae)
         else:
-            self.protein = ProteinCollection(self.contact_map, pdb_ID=pdb, mutations_exp=self.experimental_data, TESTING=False)
+            self.protein = ProteinCollection(self.contact_map, pdb_ID=pdb, mutations_exp=self.experimental_data)
         self.assert_structure_to_experiment_integrity()
         self.in_silico_data = self.prepare_in_silico_data() if self.fusion else {}
         self.X_wt, self.X_exp, self.X_is, self.y_wt, self.ΔΔg_exp, self.ΔΔg_is_scaled, self.scaler_σ, self.max_y, self.mean_y = self.init_experiment_run()
@@ -61,7 +62,7 @@ class Experiment:
         # test if len of sequence is max in experimental data
         max_idx = max(mutations.keys())
         assert len(self.contact_map.sequence) == max_idx
-        assert self.contact_map.sequence[0] == mutations.get(0)
+        assert self.contact_map.sequence[0] == mutations.get(min(mutations.keys()))
         assert self.contact_map.sequence[-1] == mutations.get(max_idx)
 
     def prepare_in_silico_data(self):
@@ -85,18 +86,27 @@ class Experiment:
             return parse_matlab_mutation_file(self.exp_data_filename, query="ddg_protherm")
         elif self.experiment_type == "ubq":
             return self.prepare_ubq_experimental_data()
+        elif self.experiment_type == "pga":
+            raise NotImplementedError
+        elif self.experiment_type == "hexo":
+            return self.prepare_hexo_experimental_data()
         else:
             raise NotImplementedError("Specified experimental data configuration not available.")
 
     def prepare_family_sequences(self):
         if self.experiment_type == "blat":
-            return self.prepare_blat_family_sequences()
+            family_seq, _, _ = parse_BLAT()
         elif self.experiment_type == "tll":
-            return self.prepare_tll_family_sequences()
+            family_seq, _, _ = parse_TLL()
         elif self.experiment_type == "ubq":
-            return self.prepare_ubq_family_sequences()
+            family_seq, _, _ = parse_UBQ()
+        elif self.experiment_type == "hexo":
+            family_seq, _, _ = parse_HEX()
+        elif self.experiment_type == "pga":
+            family_seq, _, _ = parse_PGA()
         else:
             raise NotImplementedError(f"Specified experiment {self.experiment_type} has no family sequences available.")
+        return family_seq
 
     def prepare_blat_in_silico_data(self, load_existing=True):
         if not self.vae:
@@ -117,9 +127,8 @@ class Experiment:
         return is_mutation_dict
 
     def prepare_vae(self, **vae_params):
-        num_classes = np.unique(self.family_seqs).shape[0] +2 # TODO check why two needs to be added
-        WT = F.one_hot(torch.tensor(self.family_seqs[0], dtype=torch.int64),
-                       num_classes=num_classes).flatten().float()
+        num_classes = np.unique(self.family_seqs).shape[0] + 1
+        WT = F.one_hot(torch.tensor(self.family_seqs[0], dtype=torch.int64), num_classes=num_classes).flatten().float()
         vae = VAE(z_dim=vae_params["latent_dim"], encoder_dim=[vae_params["encoder_dim"]],
                   decoder_dim=[vae_params["decoder_dim"]],
                   input_dims=WT.shape[0], use_cuda=vae_params["cuda"], wt=WT,
@@ -142,7 +151,7 @@ class Experiment:
         samples = []
         for seq, _, _ in sequence_dataset:
             samples.append(self.vae.latent_sample(seq.flatten(), n=sample_n).reshape(
-                -1).detach().numpy())  # TODO why is there a sequence when sampling??
+                -1).detach().numpy())
             loss = self.vae.log_p(seq.flatten())
             log_likelihoods.append(loss[1].detach().numpy())
         delta_log_p = np.array([(l - wt_log_prob) for l in log_likelihoods], dtype=float)
@@ -156,9 +165,8 @@ class Experiment:
         blat_df = pd.read_csv(self.exp_data_filename)
         blat_df["growth"] = blat_df["2500"]
         blat_df["mutation_idx"] = blat_df.mutant.str[1:-1].astype(int) - 23
-        blat_df["mutant"] = blat_df.mutant.str[0] + blat_df.mutation_idx.str + blat_df.mutant.str[-1]
+        blat_df["mutant"] = blat_df.mutant.str[0] + blat_df.mutation_idx.astype(str) + blat_df.mutant.str[-1]
         mutations = list(zip(blat_df.mutant, blat_df.growth))
-        # WARNING: we clip mutations at position 263 - mutations go until 286, however pdb is only 263 (A chain) long
         mutation_dict = {"1FQG": mutations}
         if save_file:
             with open(save_file, "wb") as filehandle:
@@ -174,8 +182,16 @@ class Experiment:
         else:
             return self.load_blat_experimental_mutations_from_csv()
 
+    def prepare_hexo_experimental_data(self, load_existing=True) -> dict:
+        exp_mutations_filename = "./data/hexo/hexo_exp_mutations.pkl"
+        if os.path.exists(exp_mutations_filename) and load_existing:
+            with open(exp_mutations_filename, "rb") as filehandle:
+                mutation_dict = pickle.load(filehandle)
+            return mutation_dict
+        else:
+            return self.load_hexo_experimental_mutations_from_csv()
+
     def prepare_tll_in_silico_data(self):
-        # TODO load rosetta TLL data here
         assert os.path.exists(self.exp_data_filename)
         assert os.path.exists(self.is_data_filename)
         tll_df = pd.read_excel(self.exp_data_filename)
@@ -184,7 +200,7 @@ class Experiment:
                             right_on="TSA.sample")[["mut2wt_1ein_join", "ddG"]].dropna()
         is_df["mutations"] = is_df.mut2wt_1ein_join.str.replace(" ", "")
         is_df["ddG"] = is_df.ddG.astype(float)
-        is_mutations = [(mut, y) for (mut, y) in zip(is_df.mutations, is_df.ddG)]
+        is_mutations = list(zip(is_df.mutations, is_df.ddG))
         return {"1TIB": is_mutations}
 
     def prepare_tll_experimental_data(self):
@@ -229,14 +245,6 @@ class Experiment:
             return self.generate_in_silico_mutations_from_vae()
 
     @staticmethod
-    def prepare_blat_family_sequences():
-        with open("./data/blat/BLAT_data_df.pkl", "rb") as infile:
-            blat_df = pickle.load(infile)
-        family_df = blat_df[blat_df.assay.isna()]
-        family_seqs = np.array([[int(elem) for elem in seq] for seq in family_df.seqs])
-        return family_seqs
-
-    @staticmethod
     def prepare_tll_family_sequences():
         with open("./data/tll/seqs_in_int_nogaps_sp400_Mar14_data_all_jaks_Apr3_trimmed.pkl", "rb") as infile:
             family_seqs = np.array(pickle.load(infile))
@@ -244,13 +252,13 @@ class Experiment:
 
     @staticmethod
     def prepare_ubq_family_sequences():
-        ubq_df = filter_alignment("./data/ubq/UBC_HUMAN_P0CG48_ubiquitin.a2m")
+        ubq_df = filter_alignment("./data/ubq/UBQ_combined_UBC_ISG15.a2m")
         family_seqs = np.array([[int(elem) for elem in seq] for seq in ubq_df.seq])
         return family_seqs
 
     @staticmethod
     def prepare_pga_family_sequences():
-        pga_df = filter_alignment("./data/pga/hmmer_PGA_msa_n42.a3m")
+        pga_df = filter_alignment("./data/pga/FINAL_PGA_n1133.a3m")
         family_seqs = np.array([s for s in pga_df.seq])
         return family_seqs
 
