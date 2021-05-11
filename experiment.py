@@ -153,7 +153,7 @@ class Experiment:
         assert isinstance(self.vae, VAE)
         mut_S_exp, mut_adj_exp, ΔΔg_exp, mut_ids_exp = parse_mutations(
             mutation_dict=self.experimental_data.get(self.pdb), sequence=self.protein.sequence, adjacency=self.ref_adj)
-        X_exp = convert_aa_sequence(mut_S_exp)  # TODO also run seq2idx and test for identity
+        X_exp = convert_aa_sequence(mut_S_exp)
         sequence_dataset = WeightedMSADataset(X_exp, num_classes=self.vae.num_categories)
         self.vae.eval()
         wt_log_prob = self.vae.log_p(self.vae.wt)[1].detach().numpy()
@@ -343,7 +343,7 @@ class Experiment:
         X_exp, X_is = convert_aa_sequence(mut_S_exp), convert_aa_sequence(mut_S_is)
         y_wt = np.array([0])[:, np.newaxis]
         X_wt = convert_aa_sequence([self.protein.sequence])
-        # scale using Bayesian Scaling
+        # scale using Bayesian Regression
         if self.fusion:
             bs_rosetta = BayesScaler(is_mutations=mut_ids_is, ΔΔg=ΔΔg_is, exp_mutations=mut_ids_exp,
                                      experimentally_observed_ΔΔg=ΔΔg_exp, TESTING=False, pdb_ID=self.pdb, cached=True,

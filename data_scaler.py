@@ -1,4 +1,5 @@
 import numpy as np
+import random
 import pandas as pd
 import torch
 import pyro
@@ -23,6 +24,7 @@ class BayesScaler:
         pyro.clear_param_store()
         self.pdb_ID = pdb_ID
         self.cached = cached
+        self.vae = vae
         self.cached_filename = path.join("./cache/", f"{self.pdb_ID}_scaler_vae{vae}.pkl")
         self.samples_N = samples_N if not TESTING else 500
         self.warmup_N = warmup_N
@@ -105,7 +107,12 @@ class BayesScaler:
                 s_idx = np.where(simulated_mutations==mut)[0][0]
                 observed_ΔΔg.append(val)
                 simulated_ΔΔg.append(self.ΔΔg_is[s_idx])
-        return observed_ΔΔg, simulated_ΔΔg
+        # subsample intersection for VAEs, otherwise total overfit        
+        if self.vae and len(observed_ΔΔg) >= 0.5*len(self.experimentally_observed_ΔΔg): 
+            n_subsamples = int(0.2*len(self.experimentally_observed_ΔΔg))
+            subsample = random.sample(list(zip(observed_ΔΔg, simulated_ΔΔg)), k=n_subsamples)
+            observed_ΔΔg, simulated_ΔΔg = list(zip(*subsample))
+        return list(observed_ΔΔg), list(simulated_ΔΔg)
 
     def _model(self, sim_ΔΔg, obs_ΔΔg):
         a = pyro.sample('a', dist.Gamma(self.α_a, self.β_a))
