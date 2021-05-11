@@ -102,7 +102,7 @@ class MatrixKernel:
 
 class VaeKernel:
     def __init__(self, vae, sample_size=100, block_size=1024, fixed_sample=False,
-                 normalize_S=True, marginal_not_i=True, eigen=False) -> None:
+                 normalize_S=True, eigen=False) -> None:
         """
         Kernel, which derives likelihoods from provided VAE,
         fixed sampling sets latent samples to 1 - FOR TESTING AND DEBUG ONLY!
@@ -117,7 +117,6 @@ class VaeKernel:
         self.s_min = 0.
         self.s_max = 0.
         self.normalize_S = normalize_S
-        self.marginal_p_x_not_i = marginal_not_i
         self.eigen = eigen
         self.eigen_values = []
         if fixed_sample:
@@ -153,6 +152,7 @@ class VaeKernel:
         internal shape: N sequences x n samples x AA dims
         """
         N, L = x.shape
+        c = L*np.log(20)
         oh_x = self.convert_one_hot(x)
         # compute x and y likelihoods
         z_x_loc, z_x_scale = self.vae.encoder(oh_x)
@@ -163,39 +163,26 @@ class VaeKernel:
         categoricals = [Categorical(self.vae.decoder(z_i).exp()) for z_i in z]
         p_x_z_vec = torch.stack([cat.probs.log() for cat in categoricals])
         p_x_z = torch.stack([cat.log_prob(torch.Tensor(x)) for cat in categoricals])
-        if self.marginal_p_x_not_i:
-            p_x_not_i = self.p_x_not_i_marginal(p_x_z, q_z_x, i, L)
-        else:
-            p_x_not_i = self.p_x_not_i_joint(p_x_z, q_z_x, i, L)
-        ll_x_i_x_not_i = torch.mean(p_x_z_vec[:, :, i] + p_x_not_i[:, :, np.newaxis] + p_z - (q_z_x/L)[:, :, np.newaxis],
+        p_x_not_i = self.p_x_not_i(p_x_z=p_x_z, p_z=p_z, q_z_x=q_z_x, c=c, i=i, L=L)
+        ll_x_i_x_not_i = torch.mean(p_x_z_vec[:, :, i] + p_x_not_i[:, :, np.newaxis] - (q_z_x/L)[:, :, np.newaxis] - (c/L) + (p_z/L),
                                     axis=0)
         return ll_x_i_x_not_i
 
     @torch.no_grad()
-    def p_x_not_i_joint(self, p_x_z: torch.Tensor, q_z_x: torch.Tensor, i: int, L: int) -> torch.Tensor:
+    def p_x_not_i(self, p_x_z: torch.Tensor, p_z: torch.Tensor, q_z_x: torch.Tensor, c: float, i: int, L: int) -> torch.Tensor:
         """
         As defined in equation, sum over log-likelihoods
         => p(X_1=x_1, X_2=x_2, ... ,X_L=x_L) not inluding X_i
         """
-        p_x_not_i_lower_idx = torch.sum(p_x_z[:, :, :i]-(q_z_x/L)[:, :, np.newaxis], axis=-1)  # sum per sequence
-        p_x_not_i_higher_idx = torch.sum(p_x_z[:, :, (i+1):]-(q_z_x/L)[:, :, np.newaxis], axis=-1)
+        p_x_not_i_lower_idx = torch.sum(p_x_z[:, :, :i] + (p_z/L) - (q_z_x/L)[:, :, np.newaxis] - (c/L), axis=-1)  # sum per sequence
+        p_x_not_i_higher_idx = torch.sum(p_x_z[:, :, (i+1):] + (p_z/L) - (q_z_x/L)[:, :, np.newaxis] - (c/L), axis=-1)
         return p_x_not_i_lower_idx + p_x_not_i_higher_idx
 
     @torch.no_grad()
-    def p_x_not_i_marginal(self, p_x_z: torch.Tensor, q_z_x: torch.Tensor, i: int, L: int) -> torch.Tensor:
-        """
-        Sum over probabilities, to treat sequence likelihood as marginal
-        => sum_j p(X_j=x_j) with j!=i
-        Attempt to fix very small values
-        """
-        p_x_not_i_lower_idx = torch.sum(torch.exp(p_x_z[:, :, :i]-(q_z_x/L)[:, :, np.newaxis]), axis=-1)  # sum per sequence
-        p_x_not_i_higher_idx = torch.sum(torch.exp(p_x_z[:, :, (i+1):]-(q_z_x/L)[:, :, np.newaxis]), axis=-1)
-        return torch.log(p_x_not_i_lower_idx + p_x_not_i_higher_idx)
-
-    @torch.no_grad()
     def log_likelihood_idx(self, x: torch.Tensor, i: int):
+        c = x.shape[1]*np.log(20)
         p_x = Categorical(self.vae.decoder(self.compute_encoder_dist(x).loc).exp()).log_prob(torch.Tensor(x))
-        ll = self.log_likelihood(x, i)
+        ll = self.log_likelihood(x, i) - c
         p_x_not_i = torch.log(torch.sum(torch.exp(ll), axis=-1))
         normalized_p_x_i_x_not_i = torch.diag(ll[:, x[:, i]]) - p_x[:, i] - p_x_not_i
         return normalized_p_x_i_x_not_i.detach().numpy()[:, np.newaxis]

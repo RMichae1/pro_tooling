@@ -58,13 +58,13 @@ def setup_dummy_VAE():
 
 
 def setup_UBQ_VAE():
-    # LOAD AND TEST VAE ON 1 UBQ SEQUENCE
+    # LOAD AND TEST VAE ON 1UBQ SEQUENCE
     family_seqs, test_seqs, test_y = parse_UBQ()
-    num_classes = np.unique(family_seqs).shape[0] + 2
+    num_classes = np.unique(family_seqs).shape[0] + 1
     WT = F.one_hot(torch.tensor(family_seqs[0], dtype=torch.int64),
                    num_classes=num_classes).flatten().float()
-    model_FILENAME = f"/models/SEQ2IDX_models/VAE_tubq_z2_h[1700, 1200]_e200_d0.065_wTrue.pt"
-    vae = VAE(z_dim=2, encoder_dim=[1700], decoder_dim=[1200], input_dims=WT.shape[0],
+    model_FILENAME = f"/home/rimichael/pro_tooling/models/VAE_tubq_z55_h[1700, 1200]_e200_d0.065_wTrue.pt"
+    vae = VAE(z_dim=55, encoder_dim=[1700], decoder_dim=[1200], input_dims=WT.shape[0],
               use_cuda=False, wt=WT, dropout=0.065,
               num_categories=num_classes)
     vae.load_state_dict(torch.load(model_FILENAME))
@@ -81,7 +81,7 @@ def stable_likelihoods(_vae: VAE, seq: np.array, z_dist, idx: int, latent_sample
     idx is int position in sequence
     """
     L = len(seq)
-    c = np.log(20**L)
+    c = L*np.log(20)  # equal to log(20**L)
     z_loc, z_scale = z_dist
     # transform latent sample z' => z
     z = z_loc + torch.Tensor(latent_sample) * torch.sqrt(z_scale)
@@ -246,8 +246,10 @@ def test_naive_VAE_kernel():
 
 
 def test_naive_norm_VAE_kernel():
-    k_mat = naive_v_K(test_dummy_sequences[0][np.newaxis, :], adj, vae, fixed_sample=True, normalize=True)
-    k_mat_stable = naive_v_K(test_dummy_sequences[0][np.newaxis, :], adj, vae, stable=True, fixed_sample=True, normalize=True)
+    k_mat = naive_v_K(test_dummy_sequences[0][np.newaxis, :], adj, vae, fixed_sample=True)
+    k_mat = normalize_K(k_mat)
+    k_mat_stable = naive_v_K(test_dummy_sequences[0][np.newaxis, :], adj, vae, stable=True, fixed_sample=True)
+    k_mat_stable = normalize_K(k_mat_stable)
     np.testing.assert_almost_equal(k_mat, k_mat_stable, decimal=5)
 
 
@@ -268,10 +270,10 @@ def test_naive_VAE_kernel_sampling():
 
 def test_vectorized_VAE_kernel():
     sequences = test_dummy_sequences[:3]
-    #naive_vae_val = naive_v_K(sequences, adj, vae, sample_size=10, stable=True, fixed_sample=True)
     naive_vae_val = naive_v_K(sequences, adj, vae, sample_size=10, fixed_sample=True, normalize_S=False)
     v_k = VaeKernel(vae, sample_size=10, fixed_sample=True, normalize_S=False)
     s_vae_val = v_k.k(sequences, adjacencies=adj, normalize_k=False)
+    print(s_vae_val)
     norm = np.sqrt(np.diag(s_vae_val))
     norm_s_vae_val = s_vae_val / norm.dot(norm.T)
     # TEST UNNORMALIZED
