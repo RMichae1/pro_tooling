@@ -1,7 +1,8 @@
 import numpy as np
 from contact_mapper import ContactMapper
 from graphkernel import VaeKernel
-from utility import parse_UBQ, WeightedMSADataset, seq_collate
+from utility import WeightedMSADataset, seq_collate
+from parse_data import parse_UBQ
 import torch.nn.functional as F
 import torch
 from torch.distributions import Normal, Categorical
@@ -80,17 +81,17 @@ def stable_likelihoods(_vae: VAE, seq: np.array, z_dist, idx: int, latent_sample
     idx is int position in sequence
     """
     L = len(seq)
+    c = np.log(20**L)
     z_loc, z_scale = z_dist
     # transform latent sample z' => z
     z = z_loc + torch.Tensor(latent_sample) * torch.sqrt(z_scale)
     p_z = Normal(loc=torch.zeros(_vae.z_dim), scale=torch.ones(_vae.z_dim)).log_prob(z).sum(1).detach().numpy()
     q_z_x = Normal(z_loc, z_scale).log_prob(z).sum(-1).detach().numpy()
     cat_p = Categorical(_vae.decoder(z).exp()).probs.log()
-    ll_left_p_x_z = np.sum([cat_p[:, :idx][:, i, s] - q_z_x/L for i, s in enumerate(seq[:idx])])
-    ll_right_p_x_z = np.sum([cat_p[:, idx+1:][:, i, s] - q_z_x/L for i, s in enumerate(seq[idx+1:])])
+    ll_left_p_x_z = np.sum([cat_p[:, :idx][:, i, s] - q_z_x/L + p_z/L + c/L for i, s in enumerate(seq[:idx])])
+    ll_right_p_x_z = np.sum([cat_p[:, idx+1:][:, i, s] - q_z_x/L + p_z/L + c/L for i, s in enumerate(seq[idx+1:])])
     cat_log_prob_x_not_i = ll_left_p_x_z + ll_right_p_x_z
-    # TODO: pull p(z) into normalization as well
-    p_x_i_x_not_i = cat_p[:, idx] + cat_log_prob_x_not_i + p_z - q_z_x/L
+    p_x_i_x_not_i = cat_p[:, idx] + cat_log_prob_x_not_i + p_z/L + c/L - q_z_x/L
     return p_x_i_x_not_i
 
 
@@ -117,6 +118,7 @@ def S_stable(_vae, seq_x, seq_y, idx: int, n_samples=1, fixed_sample=False):
     latent_samples = torch.normal(0, 1, size=(n_samples, _vae.z_dim)).float()
     if fixed_sample:
         latent_samples = torch.ones((n_samples, _vae.z_dim)).float()
+    c = np.log(20**L)
     oh_x = F.one_hot(torch.Tensor(seq_x).to(torch.int64), num_classes=_vae.num_categories).float()
     oh_y = F.one_hot(torch.Tensor(seq_y).to(torch.int64), num_classes=_vae.num_categories).float()
     z_x_dist = _vae.encoder(oh_x)
@@ -131,8 +133,8 @@ def S_stable(_vae, seq_x, seq_y, idx: int, n_samples=1, fixed_sample=False):
         ll_x_i_x_not_i_vec.append(log_prob_x_i_x_not_i[0])
         log_prob_y_i_z_y_not_i = stable_likelihoods(_vae, seq_y, z_dist=z_y_dist, idx=idx, latent_sample=sample)
         ll_y_i_y_not_i_vec.append(log_prob_y_i_z_y_not_i[0])
-    ll_x_i_x_not_i_vec = torch.stack(ll_x_i_x_not_i_vec)
-    ll_y_i_y_not_i_vec = torch.stack(ll_y_i_y_not_i_vec)
+    ll_x_i_x_not_i_vec = torch.stack(ll_x_i_x_not_i_vec) - c
+    ll_y_i_y_not_i_vec = torch.stack(ll_y_i_y_not_i_vec) - c
     # SUM OF PROBABILITIES - hence exp operation
     ll_x_not_i = torch.log(torch.sum(torch.exp(torch.mean(ll_x_i_x_not_i_vec, axis=0))))
     ll_y_not_i = torch.log(torch.sum(torch.exp(torch.mean(ll_y_i_y_not_i_vec, axis=0))))
