@@ -49,7 +49,9 @@ class Experiment:
                                              kernel_vae=self.vae)
         else:
             self.protein = ProteinCollection(self.contact_map, pdb_ID=pdb, mutations_exp=self.experimental_data)
-        self.assert_structure_to_experiment_integrity()
+        if idx == 0:
+            print("Assertion Run:")
+            self.assert_structure_to_experiment_integrity()
         self.in_silico_data = self.prepare_in_silico_data() if self.fusion else {}
         self.X_wt, self.X_exp, self.X_is, self.y_wt, self.ΔΔg_exp, self.ΔΔg_is_scaled, self.scaler_σ, self.max_y, self.mean_y = self.init_experiment_run()
         if not self.fusion:
@@ -58,12 +60,14 @@ class Experiment:
         self.gpr = self.init_mgp_regression()
 
     def assert_structure_to_experiment_integrity(self):
-        mutations = {int(m[1:-1]): m[0] for m, _ in self.experimental_data.get(self.protein.pdb_ID)}
+        mutations = {int(m[1:-1])-1: m[0] for m, _ in self.experimental_data.get(self.protein.pdb_ID)} # idx adjust by one as done in the ProteinCollection parsing 
         # test if len of sequence is max in experimental data
         max_idx = max(mutations.keys())
-        assert len(self.contact_map.sequence) == max_idx
-        assert self.contact_map.sequence[0] == mutations.get(min(mutations.keys()))
-        assert self.contact_map.sequence[-1] == mutations.get(max_idx)
+        for idx, s_elem in enumerate(self.contact_map.sequence):
+            #print(f"S-elem: {s_elem} <=> {mutations.get(idx)}")
+            if mutations.get(idx) and s_elem != mutations.get(idx):
+                print(f"MISMATCH pos: {idx}")
+                #assert s_elem == mutations.get(idx)
 
     def prepare_in_silico_data(self):
         if self.experiment_type == "blat":

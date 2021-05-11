@@ -72,7 +72,7 @@ def run_mgpfusion_experiment_pos_lvl(experiment: Experiment, verbose=True, write
                       value=spearman_p, step=experiment.idx)
     client.log_metric(run_id=run.info.run_id, key="mse", value=mse,
                       step=experiment.idx)
-    filename = f"./output/{experiment.pdb}_pos_lvl_opt_{experiment.optimization}_ref_{experiment.two_sigma}_{experiment.idx}_train{experiment.fraction}.pkl"
+    filename = f"./output/{experiment.pdb}_pos_lvl_opt_{experiment.optimization}_ref_{experiment.two_sigma}_DESkernel_{experiment.vae_kernel}_VAE_{experiment.vae_input}_{experiment.idx}_train{experiment.fraction}.pkl"
     if write and bool(opt_params):
         data_dict = {**opt_params, **fit_params, "idx": experiment.idx, "n_mut": n_mutations}
         with open(filename, "wb") as outfile:
@@ -128,7 +128,7 @@ def run_mgpfusion_experiment_mut_lvl(experiment: Experiment, verbose=False, writ
     client.log_metric(run_id=run.info.run_id, key="spearman r", value=spearman_r, step=experiment.idx)
     client.log_metric(run_id=run.info.run_id, key="spearman p", value=spearman_p, step=experiment.idx)
     client.log_metric(run_id=run.info.run_id, key="mse", value=mse, step=experiment.idx)
-    filename = f"./output/{experiment.pdb}_mut_lvl_opt_{experiment.optimization}_ref_{experiment.two_sigma}_{experiment.idx}_train{experiment.fraction}.pkl"
+    filename = f"./output/{experiment.pdb}_mut_lvl_opt_{experiment.optimization}_ref_{experiment.two_sigma}_DESkernel_{experiment.vae_kernel}_VAE_{experiment.vae_input}_{experiment.idx}_train{experiment.fraction}.pkl"
     if write and bool(opt_params):
         data_dict = {**opt_params, **fit_params, "idx": experiment.idx, "n_mut": n_mutations}
         with open(filename, "wb") as outfile:
@@ -194,7 +194,7 @@ def run_pos_lvl_CV_no_fusion(experiment: Experiment, write: bool = True) -> dict
                "mutations": mutations,
                "spearman corr": (spearman_r, spearman_p),
                "mse": mse}
-    filename = f"./output/{experiment.pdb}_NO_FUSION_pos_lvl_opt_{experiment.optimization}_ref_{experiment.two_sigma}_{experiment.idx}_train{experiment.fraction}.pkl"
+    filename = f"./output/{experiment.pdb}_NO_FUSION_pos_lvl_opt_{experiment.optimization}_ref_{experiment.two_sigma}_DESkernel_{experiment.vae_kernel}_{experiment.idx}_train{experiment.fraction}.pkl"
     if write:
         with open(filename, "wb") as filehandle:
             pickle.dump(results, filehandle)
