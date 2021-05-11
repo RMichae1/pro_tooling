@@ -60,9 +60,13 @@ class Experiment:
         self.gpr = self.init_mgp_regression()
 
     def assert_structure_to_experiment_integrity(self):
-        mutations = {int(m[1:-1])-1: m[0] for m, _ in self.experimental_data.get(self.protein.pdb_ID)} # idx adjust by one as done in the ProteinCollection parsing 
-        # test if len of sequence is max in experimental data
-        max_idx = max(mutations.keys())
+        mutations = {}
+        for m, _ in self.experimental_data.get(self.protein.pdb_ID):
+            try:
+                location = int(str(m)[1:-1]) - 1  # adjust index as done in ProteinCollection parsing
+            except ValueError as e:  # hidden wild-type or unknown mutation notation
+                continue
+            mutations[location] = m[0]
         for idx, s_elem in enumerate(self.contact_map.sequence):
             #print(f"S-elem: {s_elem} <=> {mutations.get(idx)}")
             if mutations.get(idx) and s_elem != mutations.get(idx):
@@ -275,10 +279,12 @@ class Experiment:
             return self.load_pga_experimental_data_from_csv()
 
     def load_pga_experimental_data_from_csv(self, save_file="./data/pga/pga_exp_mutations.pkl"):
-        ubq_df = pd.read_csv(self.exp_data_filename, delimiter=";") # TODO fix this
-        ubq_df = ubq_df[["mutant", "selection_coefficient"]].dropna()
-        ubq_df["growth"] = ubq_df["selection_coefficient"].str.replace(",", ".").astype(float)
-        mutation_dict = {"1PGA": list(zip(ubq_df.mutant, ubq_df.growth))}
+        test_df = pd.read_csv("./data/pga/Nisthal_Mayo_2019_updated_3xESLyS9.csv", delimiter=",")
+        test_df = test_df[~test_df["Assay/Protocol"].str.contains("SD ")]  # exclude standard-deviation
+        test_df = test_df[test_df.Units == "kcal/mol"]
+        test_df = test_df[test_df["Assay/Protocol"].str.contains("^ddG")]  # select only ddG values
+        test_df = test_df[["Description", "Data", "Assay/Protocol"]].dropna()
+        mutation_dict = {"1PGA": list(zip(test_df.Description, test_df.Data))}
         if save_file:
             with open(save_file, "wb") as filehandle:
                 pickle.dump(mutation_dict, filehandle)

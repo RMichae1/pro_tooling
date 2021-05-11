@@ -204,7 +204,7 @@ def run_pos_lvl_CV_no_fusion(experiment: Experiment, write: bool = True) -> dict
 
 if __name__ == "__main__":
     cv_options = ["pos_lvl", "mut_lvl"]
-    data_options = ["tll", "blat", "mgpf", "ubq", "hexo"]
+    data_options = ["tll", "blat", "mgpf", "ubq", "hex", "pga"]
     default_vae_parameters = {"learning_rate": 0.000027, "cuda": False, "epochs": 200, "test_freq": 10, "latent_dim": 55,
                               "encoder_dim": 1700, "decoder_dim": 1200, "test_split": 0.1, "batch_size": 128,
                               "weight_decay": 0.0007, "dropout": 0.065, "sequence_weighting": True, "seed": 42}
