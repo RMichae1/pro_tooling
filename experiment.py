@@ -202,9 +202,6 @@ class Experiment:
         exp_df['mutation_origin'] = exp_df.Origin.str[0]
         exp_df["mutations"] = exp_df.mutation_origin + exp_df.pdb_position.astype(str) + exp_df.Target
         mutation_dict = {"D45": [(mut, y) for (mut, y) in zip(exp_df.mutations, exp_df["ddG (HIF)"])]}
-        # AUGMENT CONTACT MAP, MISSING FIRST Q
-        self.contact_map.sequence = np.insert(self.contact_map.sequence, 0, "Q")
-        self.contact_map.adjacency = [("Q", self.contact_map.adjacency[0][1])] + self.contact_map.adjacency
         if save_file:
             with open(save_file, "wb") as filehandle:
                 pickle.dump(mutation_dict, filehandle)
@@ -212,6 +209,9 @@ class Experiment:
 
     def prepare_hexo_experimental_data(self, load_existing=True) -> dict:
         exp_mutations_filename = "./data/hex/hex_exp_mutations.pkl"
+        # AUGMENT CONTACT MAP, MISSING FIRST Q
+        self.contact_map.sequence = np.insert(self.contact_map.sequence, 0, "Q")
+        self.contact_map.adjacency = [("Q", self.contact_map.adjacency[0][1])] + self.contact_map.adjacency
         if os.path.exists(exp_mutations_filename) and load_existing:
             with open(exp_mutations_filename, "rb") as filehandle:
                 mutation_dict = pickle.load(filehandle)
