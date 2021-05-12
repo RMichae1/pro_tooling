@@ -118,7 +118,7 @@ def S_stable(_vae, seq_x, seq_y, idx: int, n_samples=1, fixed_sample=False):
     latent_samples = torch.normal(0, 1, size=(n_samples, _vae.z_dim)).float()
     if fixed_sample:
         latent_samples = torch.ones((n_samples, _vae.z_dim)).float()
-    c = np.log(20**L)
+    c = L*np.log(20)
     oh_x = F.one_hot(torch.Tensor(seq_x).to(torch.int64), num_classes=_vae.num_categories).float()
     oh_y = F.one_hot(torch.Tensor(seq_y).to(torch.int64), num_classes=_vae.num_categories).float()
     z_x_dist = _vae.encoder(oh_x)
@@ -136,8 +136,8 @@ def S_stable(_vae, seq_x, seq_y, idx: int, n_samples=1, fixed_sample=False):
     ll_x_i_x_not_i_vec = torch.stack(ll_x_i_x_not_i_vec) - c
     ll_y_i_y_not_i_vec = torch.stack(ll_y_i_y_not_i_vec) - c
     # SUM OF PROBABILITIES - hence exp operation
-    ll_x_not_i = torch.log(torch.sum(torch.exp(torch.mean(ll_x_i_x_not_i_vec, axis=0))))
-    ll_y_not_i = torch.log(torch.sum(torch.exp(torch.mean(ll_y_i_y_not_i_vec, axis=0))))
+    ll_x_not_i = torch.log(torch.sum(torch.exp(torch.mean(ll_x_i_x_not_i_vec, axis=0).to(torch.float64))))
+    ll_y_not_i = torch.log(torch.sum(torch.exp(torch.mean(ll_y_i_y_not_i_vec, axis=0).to(torch.float64))))
     normalized_ll_x_i_x_not_i = torch.mean(ll_x_i_x_not_i_vec, axis=0)[seq_x[idx]] - p_x[:, idx] - ll_x_not_i
     normalized_ll_y_i_y_not_i = torch.mean(ll_y_i_y_not_i_vec, axis=0)[seq_y[idx]] - p_y[:, idx] - ll_y_not_i
     return normalized_ll_x_i_x_not_i + normalized_ll_y_i_y_not_i
@@ -178,7 +178,7 @@ def get_min_max_S_vals(sequences, vae, sample_size=1, fixed_sample=False):
     for p in range(n):
         for q in range(n):
             for idx in range(sequences.shape[1]):
-                s_val = S(vae, seq_x=sequences[p], seq_y=sequences[q], idx=idx, n_samples=sample_size,
+                s_val = S_stable(vae, seq_x=sequences[p], seq_y=sequences[q], idx=idx, n_samples=sample_size,
                           fixed_sample=fixed_sample)
                 s_min = np.float(s_val) if s_val <= s_min else s_min
                 s_max = np.float(s_val) if s_val >= s_max else s_max
@@ -274,13 +274,8 @@ def test_vectorized_VAE_kernel():
     v_k = VaeKernel(vae, sample_size=10, fixed_sample=True, normalize_S=False)
     s_vae_val = v_k.k(sequences, adjacencies=adj, normalize_k=False)
     print(s_vae_val)
-    norm = np.sqrt(np.diag(s_vae_val))
-    norm_s_vae_val = s_vae_val / norm.dot(norm.T)
     # TEST UNNORMALIZED
     np.testing.assert_almost_equal(naive_vae_val, s_vae_val, decimal=5)
-    # normalized_naive_vae_val = normalize_K(naive_vae_val)
-    # # TEST NORMALIZED
-    # np.testing.assert_almost_equal(normalized_naive_vae_val, norm_s_vae_val)
 
 
 def test_vectorized_normalized_VAE_kernel():
@@ -292,7 +287,7 @@ def test_vectorized_normalized_VAE_kernel():
     norm = np.sqrt(np.diag(s_vae_val))
     norm_s_vae_val = s_vae_val / norm.dot(norm.T)
     # TEST NOT NORMALIZED
-    np.testing.assert_almost_equal(naive_vae_val, s_vae_val, decimal=4)
+    np.testing.assert_almost_equal(naive_vae_val, s_vae_val, decimal=5)
     # normalized_naive_vae_val = normalize_K(naive_vae_val)
     # # TEST NORMALIZED
     # np.testing.assert_almost_equal(normalized_naive_vae_val, norm_s_vae_val)
@@ -303,13 +298,25 @@ def test_vectorized_VAE_kernel_on_UBQ():
     contact_map = ContactMapper(pdb_file=f"/home/rimichael/pro_tooling/pdb/1ubq.pdb", tri_dist=True)
     sequences = family_seqs[:3]
     ref_adj = [c for elem, c in contact_map.adjacency]
-    naive_vae_val = naive_v_K(sequences, ref_adj, vae, sample_size=10, stable=True, fixed_sample=True)
-    v_k = VaeKernel(vae, sample_size=10, fixed_sample=True)
-    s_vae_val = v_k.k(sequences, adjacencies=ref_adj, normalize=False)
+    naive_vae_val = naive_v_K(sequences, ref_adj, vae, sample_size=10, stable=True, fixed_sample=True, normalize_S=False)
+    v_k = VaeKernel(vae, sample_size=10, fixed_sample=True, normalize_S=False)
+    s_vae_val = v_k.k(sequences, adjacencies=ref_adj, normalize_k=False)
     norm = np.sqrt(np.diag(s_vae_val))
     norm_s_vae_val = s_vae_val / norm.dot(norm.T)
     # TEST NOT NORMALIZED
-    # np.testing.assert_almost_equal(naive_vae_val, s_vae_val)
-    # TEST NORMALIZED
-    normalized_naive_vae_val = normalize_K(naive_vae_val)
-    np.testing.assert_almost_equal(normalized_naive_vae_val, norm_s_vae_val)
+    np.testing.assert_almost_equal(naive_vae_val, s_vae_val, decimal=4)
+    # # TEST NORMALIZED
+    # normalized_naive_vae_val = normalize_K(naive_vae_val)
+    # np.testing.assert_almost_equal(normalized_naive_vae_val, norm_s_vae_val)
+
+
+def test_vectorized_VAE_kernel_normalized_on_UBQ():
+    family_seqs, vae = setup_UBQ_VAE()
+    contact_map = ContactMapper(pdb_file=f"/home/rimichael/pro_tooling/pdb/1ubq.pdb", tri_dist=True)
+    sequences = family_seqs[:2]
+    ref_adj = [c for elem, c in contact_map.adjacency]
+    naive_vae_val = naive_v_K(sequences, ref_adj, vae, sample_size=5, stable=True, fixed_sample=True, normalize_S=True)
+    v_k = VaeKernel(vae, sample_size=5, fixed_sample=True, normalize_S=True)
+    s_vae_val = v_k.k(sequences, adjacencies=ref_adj, normalize_k=False)
+    # TEST NOT NORMALIZED
+    np.testing.assert_almost_equal(naive_vae_val, s_vae_val, decimal=4)

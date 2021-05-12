@@ -114,16 +114,16 @@ def parse_PGA():
 
 
 def parse_UBQ():
-    ubq_df = filter_alignment("./data/ubq/UBQ_combined_UBC_ISG15.a2m")
+    ubq_df = filter_alignment("/home/rimichael/pro_tooling/data/ubq/UBQ_combined_UBC_ISG15.a2m")
     family_seqs = np.array([[int(elem) for elem in seq] for seq in ubq_df.seq])
     # for testing combine protabank sequences with DeepSequence Bolon 2013 data
-    protabank_df = pd.read_csv("./data/ubq/RL401_Bolon2013_YHUnpqbw.csv", delimiter=",")
+    protabank_df = pd.read_csv("/home/rimichael/pro_tooling/data/ubq/RL401_Bolon2013_YHUnpqbw.csv", delimiter=",")
     # drop SD values
     protabank_df = protabank_df[~protabank_df["Assay/Protocol"].str.contains("SD ")]
     # drop last two elements from sequence "...GG" and duplicate last residues
     protabank_df["Sequence"] = protabank_df.Sequence
     # measurements as used in DeepSequence paper
-    deep_seq_df = pd.read_csv("./data/ubq/RL401_Bolon2013.csv", delimiter=";")
+    deep_seq_df = pd.read_csv("/home/rimichael/pro_tooling/data/ubq/RL401_Bolon2013.csv", delimiter=";")
     deep_seq_df = deep_seq_df[["mutant", "selection_coefficient"]].dropna()
     test_df = deep_seq_df.merge(protabank_df[["Description", "Data", "Sequence"]],
                                 "inner", left_on="mutant", right_on="Description")

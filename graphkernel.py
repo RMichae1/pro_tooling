@@ -121,7 +121,7 @@ class VaeKernel:
         self.eigen_values = []
         if fixed_sample:
             self.latent_sample = torch.ones((sample_size, self.latent_dim)).float()
-        self.p_z = Normal(loc=torch.zeros(vae.z_dim), scale=torch.ones(vae.z_dim)).log_prob(self.latent_sample).sum(1)
+        self.p_z = Normal(loc=torch.zeros(vae.z_dim), scale=torch.ones(vae.z_dim)).log_prob(self.latent_sample).to(torch.float64).sum(1)
 
     def convert_one_hot(self, x):
         x = torch.Tensor(x).to(torch.int64)
@@ -134,9 +134,11 @@ class VaeKernel:
         AAs = 21
         N, L = sequences.shape
         s = torch.zeros([AAs])
+        p_x = Categorical(self.vae.decoder(self.compute_encoder_dist(sequences).loc).exp()).log_prob(torch.Tensor(sequences))
         # marginalize over residues
         for idx, _ in tqdm(enumerate(range(L))):
-            ll_S = np.exp(self.log_likelihood(sequences, idx))
+            # subtract normalizing constant
+            ll_S = np.exp(self.log_likelihood(sequences, idx).to(torch.float64) - p_x - sequences.shape[1]*np.log(20))
             # marginal - sum probs per AA across sequences
             s += ll_S.sum(0)[:AAs]
         s = np.log(s[:, np.newaxis] @ s[:, np.newaxis].T)
@@ -157,14 +159,14 @@ class VaeKernel:
         # compute x and y likelihoods
         z_x_loc, z_x_scale = self.vae.encoder(oh_x)
         z = z_x_loc + self.latent_sample[:, np.newaxis] * torch.sqrt(z_x_scale)
-        q_z_x = Normal(z_x_loc, z_x_scale).log_prob(z).sum(-1)
+        q_z_x = Normal(z_x_loc, z_x_scale).log_prob(z).to(torch.float64).sum(-1)
         p_z = torch.mean(self.p_z, axis=0)  # prior mean across samples
         # decoder can only evaluate one z at a time # TODO: refactor VAE to enable batched latent processing
         categoricals = [Categorical(self.vae.decoder(z_i).exp()) for z_i in z]
-        p_x_z_vec = torch.stack([cat.probs.log() for cat in categoricals])
-        p_x_z = torch.stack([cat.log_prob(torch.Tensor(x)) for cat in categoricals])
+        p_x_z_vec = torch.stack([cat.probs.log().to(torch.float64) for cat in categoricals])
+        p_x_z = torch.stack([cat.log_prob(torch.Tensor(x)).to(torch.float64) for cat in categoricals])
         p_x_not_i = self.p_x_not_i(p_x_z=p_x_z, p_z=p_z, q_z_x=q_z_x, c=c, i=i, L=L)
-        ll_x_i_x_not_i = torch.mean(p_x_z_vec[:, :, i] + p_x_not_i[:, :, np.newaxis] - (q_z_x/L)[:, :, np.newaxis] - (c/L) + (p_z/L),
+        ll_x_i_x_not_i = torch.mean(p_x_z_vec[:, :, i] + p_x_not_i[:, :, np.newaxis] - (q_z_x/L)[:, :, np.newaxis] + (c/L) + (p_z/L),
                                     axis=0)
         return ll_x_i_x_not_i
 
@@ -174,15 +176,15 @@ class VaeKernel:
         As defined in equation, sum over log-likelihoods
         => p(X_1=x_1, X_2=x_2, ... ,X_L=x_L) not inluding X_i
         """
-        p_x_not_i_lower_idx = torch.sum(p_x_z[:, :, :i] + (p_z/L) - (q_z_x/L)[:, :, np.newaxis] - (c/L), axis=-1)  # sum per sequence
-        p_x_not_i_higher_idx = torch.sum(p_x_z[:, :, (i+1):] + (p_z/L) - (q_z_x/L)[:, :, np.newaxis] - (c/L), axis=-1)
+        p_x_not_i_lower_idx = torch.sum(p_x_z[:, :, :i] + (p_z/L) - (q_z_x/L)[:, :, np.newaxis] + (c/L), axis=-1)  # sum per sequence
+        p_x_not_i_higher_idx = torch.sum(p_x_z[:, :, (i+1):] + (p_z/L) - (q_z_x/L)[:, :, np.newaxis] + (c/L), axis=-1)
         return p_x_not_i_lower_idx + p_x_not_i_higher_idx
 
     @torch.no_grad()
     def log_likelihood_idx(self, x: torch.Tensor, i: int):
         c = x.shape[1]*np.log(20)
         p_x = Categorical(self.vae.decoder(self.compute_encoder_dist(x).loc).exp()).log_prob(torch.Tensor(x))
-        ll = self.log_likelihood(x, i) - c
+        ll = self.log_likelihood(x, i).to(torch.float64) - c
         p_x_not_i = torch.log(torch.sum(torch.exp(ll), axis=-1))
         normalized_p_x_i_x_not_i = torch.diag(ll[:, x[:, i]]) - p_x[:, i] - p_x_not_i
         return normalized_p_x_i_x_not_i.detach().numpy()[:, np.newaxis]
@@ -210,7 +212,7 @@ class VaeKernel:
     def set_min_max_S(self, x_p, x_q) -> None:
         assert x_p.shape == x_q.shape
         print("Computing min, max S-values...")
-        for idx in range(x_p.shape[1]):
+        for idx in tqdm(range(x_p.shape[1])):
             s_mat = np.log(np.matmul(np.exp(self.k_vec(x_p, idx)), np.exp(self.k_vec(x_q, idx).T)))
             self.s_min = np.min(s_mat) if np.min(s_mat) <= self.s_min else self.s_min
             self.s_max = np.max(s_mat[s_mat!=np.inf]) if np.max(s_mat) >= self.s_max else self.s_max
