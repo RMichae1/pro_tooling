@@ -10,13 +10,15 @@ EXPERIMENTAL_DATA = {"mgpf": "./data/mgp/ddg_protherm.mat",
                      "tll": "./data/tll/lipase_variants_tll_tm_tapo_20nov2020.xlsx",
                      "blat": "./data/blat/BLAT_ECOLX_Ranganathan2015.csv",
                      "ubq": "./data/ubq/RL401_Bolon2013.csv",
-                     "pga": "./data/pga/Nisthal_Mayo_2019_updated_3xESLyS9.csv"}
+                     "pga": "./data/pga/Nisthal_Mayo_2019_updated_3xESLyS9.csv",
+                     "hex": "./data/hex/Hexosaminidase_SSL_data_simple.xlsx"}
 
 IN_SILICO_DATA = {"mgpf": "./data/mgp/ddg_rosetta_single.mat",
                   "tll": "./data/tll/TLL_IS_closed_results.xlsx",
                   "ubq": "./data/ubq/vae_ubq_IS_samples.pkl",
                   "blat": "./data/blat/vae_blat_IS_samples.pkl",
-                  "pga": "./data/pga/vae_pga_IS_samples.pkl"}
+                  "pga": "./data/pga/vae_pga_IS_samples.pkl",
+                  "hex": "./data/hex/vae_hex_IS_samples.pkl"}
 
 
 def get_positions(pdb: str) -> str:
@@ -182,8 +184,8 @@ if __name__ == "__main__":
     # run_MGPF()
     #pdbs = ["1FQG", "1UBQ", "1PGA", "D45"]
     #data = ["blat", "ubq", "pga", "hexo"]
-    pdbs = ["1UBQ", "1PGA"]
-    data = ["ubq", "pga"]
+    pdbs = ["D45"]
+    data = ["hex"]
     for pdb, d in zip(pdbs, data):
         run_mGP(pdb=pdb, data=d)
         # run_DES_K(pdb=pdb, data=d)

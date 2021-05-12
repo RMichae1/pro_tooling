@@ -37,8 +37,8 @@ class Experiment:
         self.is_data_filename = is_data_filename
         self.run_id = run_id
         self.two_sigma = reference
-        self.experimental_data = self.prepare_experimental_data()
         self.contact_map = ContactMapper(pdb_file=f"./pdb/{pdb.lower()}.pdb", tri_dist=True)
+        self.experimental_data = self.prepare_experimental_data()
         self.ref_adj = self.contact_map.adjacency
         if vae_input or vae_kernel:
             self.family_seqs = self.prepare_family_sequences()
@@ -98,7 +98,7 @@ class Experiment:
             return self.prepare_ubq_experimental_data()
         elif self.experiment_type == "pga":
             return self.prepare_pga_experimental_data()
-        elif self.experiment_type == "hexo":
+        elif self.experiment_type == "hex":
             return self.prepare_hexo_experimental_data()
         else:
             raise NotImplementedError("Specified experimental data configuration not available.")
@@ -110,7 +110,7 @@ class Experiment:
             family_seq, _, _ = parse_TLL()
         elif self.experiment_type == "ubq":
             family_seq, _, _ = parse_UBQ()
-        elif self.experiment_type == "hexo":
+        elif self.experiment_type == "hex":
             family_seq, _, _ = parse_HEX()
         elif self.experiment_type == "pga":
             family_seq, _, _ = parse_PGA()
@@ -202,6 +202,9 @@ class Experiment:
         exp_df['mutation_origin'] = exp_df.Origin.str[0]
         exp_df["mutations"] = exp_df.mutation_origin + exp_df.pdb_position.astype(str) + exp_df.Target
         mutation_dict = {"D45": [(mut, y) for (mut, y) in zip(exp_df.mutations, exp_df["ddG (HIF)"])]}
+        # AUGMENT CONTACT MAP, MISSING FIRST Q
+        self.contact_map.sequence = np.insert(self.contact_map.sequence, 0, "Q")
+        self.contact_map.adjacency = [("Q", self.contact_map.adjacency[0][1])] + self.contact_map.adjacency
         if save_file:
             with open(save_file, "wb") as filehandle:
                 pickle.dump(mutation_dict, filehandle)
