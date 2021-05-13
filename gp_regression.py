@@ -74,7 +74,7 @@ class GPRegression:
             except FileNotFoundError as e:
                 print(f"Error: Matrix not found! - {e}")
                 self.covariance_matrices = self.compute_matrices(X=self.X, adjacencies=self.adjacencies[:len(self.X)])
-            #except # out of bounds with fusion samples
+            # TODO exception for out of bounds with fusion samples
         else:
             self.covariance_matrices = self.compute_matrices(X=self.X, adjacencies=self.adjacencies[:len(self.X)])
         # trainable parameters for testing

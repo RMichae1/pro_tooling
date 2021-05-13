@@ -338,7 +338,7 @@ class Experiment:
         # TODO fix scaler sigma (to array of sigmas)
         return gpr
 
-    def init_experiment_run(self, load_reference_adjaciencies=True, holdout: float=0.1) -> tuple:
+    def init_experiment_run(self, load_reference_adjaciencies=False, holdout: float=0.1) -> tuple:
         assert self.experimental_data and bool(self.fusion == bool(self.in_silico_data))
         assert 0. < holdout < 1.
         ref_mat_file = os.path.join(os.path.dirname(__file__), os.path.join("data/mgp/", f"{self.pdb.upper()}.mat"))
