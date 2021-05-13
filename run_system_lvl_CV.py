@@ -124,7 +124,7 @@ def run_mGP(pdb: str, data: str) -> None:
     # create_mlflow_run_pos_lvl(pdb=pdb, cv="pos_lvl", optim=False, ref=False,
     #                           fusion=False, data=data, frac=0.3)
     create_mlflow_run_pos_lvl(pdb=pdb, cv="pos_lvl", optim=True, ref=False,
-                              fusion=False, data=data, frac=0.3)
+                              fusion=False, data=data, frac=0.25)
     # create_mlflow_run_pos_lvl(pdb=pdb, cv="pos_lvl", optim=False, ref=False,
     #                           fusion=False, data=data, frac=0.5)
     create_mlflow_run_pos_lvl(pdb=pdb, cv="pos_lvl", optim=True, ref=False,
@@ -132,7 +132,7 @@ def run_mGP(pdb: str, data: str) -> None:
     # create_mlflow_run_pos_lvl(pdb=pdb, cv="pos_lvl", optim=False, ref=False,
     #                           fusion=False, data=data, frac=0.9)
     create_mlflow_run_pos_lvl(pdb=pdb, cv="pos_lvl", optim=True, ref=False,
-                              fusion=False, data=data, frac=0.9)
+                              fusion=False, data=data, frac=1.)
 
 
 def run_DES_K(pdb: str, data: str) -> None:
@@ -140,7 +140,7 @@ def run_DES_K(pdb: str, data: str) -> None:
     create_mlflow_run_pos_lvl(pdb=pdb, cv="pos_lvl", optim=True, ref=False,
                               vae_kernel=True, data=data, frac=0.5)
     create_mlflow_run_pos_lvl(pdb=pdb, cv="pos_lvl", optim=True, ref=False,
-                              vae_kernel=True, data=data, frac=0.9)
+                              vae_kernel=True, data=data, frac=1.)
     # create_mlflow_run_pos_lvl(pdb=pdb, cv="pos_lvl", optim=False, ref=False,
     #                           vae_kernel=True, data=data, frac=0.3)
     # create_mlflow_run_pos_lvl(pdb=pdb, cv="pos_lvl", optim=False, ref=False,
