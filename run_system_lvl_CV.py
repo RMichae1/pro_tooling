@@ -188,6 +188,6 @@ if __name__ == "__main__":
     data = ["ubq", "pga", "hex"]
     for pdb, d in zip(pdbs, data):
         # run_mGP(pdb=pdb, data=d)
-        run_DES_K(pdb=pdb, data=d)
+        # run_DES_K(pdb=pdb, data=d)
         run_VAE_in_silico(pdb=pdb, data=d)
         # run_VAE_in_silico_DES_K(pdb=pdb, data=d)
