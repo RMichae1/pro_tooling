@@ -19,7 +19,7 @@ class BayesScaler:
     """
     def __init__(self, is_mutations: list, ΔΔg: np, exp_mutations, experimentally_observed_ΔΔg,
                     α_a=2., β_a=1.5, α_b=1.3, β_b=2., α_c=2, β_c=5., σ_d=0.15, σ_n=0.5,
-                    samples_N=10000, warmup_N=500, TESTING=False, pdb_ID=None, cached=False, vae=False):
+                    samples_N=10000, warmup_N=500, TESTING=False, pdb_ID=None, cached=False, vae=False, holdout_idx=None):
         pyro.set_rng_seed(42)
         pyro.clear_param_store()
         self.pdb_ID = pdb_ID
@@ -29,11 +29,12 @@ class BayesScaler:
         self.samples_N = samples_N if not TESTING else 500
         self.warmup_N = warmup_N
         self.chains_N = 1
-        self.x_range = (-10, 7)
+        self.x_range = (min(ΔΔg)-2, max(ΔΔg)+2)
         self.is_mutations = is_mutations
         self.exp_mutations = exp_mutations
         self.ΔΔg_is = ΔΔg
         self.experimentally_observed_ΔΔg = experimentally_observed_ΔΔg
+        self.holdout_idx = holdout_idx  # persist with which samples the transformation was fitted - Exclude downstream
 
         ΔΔg_exp, ΔΔg_is = self._check_observed()
 
@@ -173,8 +174,8 @@ class BayesScaler:
         #             label="σ values", ax=ax[1])
         ax.set_xlabel("ΔΔG original", fontsize=18)
         ax.set_ylabel("ΔΔG yE, yS", fontsize=18)
-        #ax.set_ylim((-12, 7))
-        #ax.set_xlim(self.x_range)
+        ax.set_ylim((min(y)-2, max(y)+2))
+        ax.set_xlim(self.x_range)
         plt.suptitle(f"Stability Transformation {self.pdb_ID}", fontsize=22)
         plt.tight_layout()
         plt.legend()
