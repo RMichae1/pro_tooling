@@ -28,10 +28,9 @@ def get_positions(pdb: str) -> str:
 
 def run_sys_CV(pdb, idx, cv, experiment, run_id, data=None, ref=False, optim=True, fusion=False, verbose=False,
                ref_contact_map=False, vae_input=False, vae_kernel=False, frac=1.):
-    command_lst = ["/z/home/rcml/anaconda3/bin/python", "/z/home/rcml/pro_tooling/run_experiments.py", "-p",
-                   f"{pdb}", "-i", f"{idx}",
-                   "-r", f"{cv}", "--seed", "3032021", "--experiment", f"{experiment}", "--run_id", f"{run_id}",
-                   "--data", data, "--experimental_data", f"{EXPERIMENTAL_DATA.get(data)}",
+    command_lst = ["/home/rimichael/.pyenv/versions/mgp/bin/python", "/home/rimichael/pro_tooling/run_experiments.py",
+                   "-p", f"{pdb}", "-i", f"{idx}", "-r", f"{cv}", "--seed", "3032021", "--experiment", f"{experiment}",
+                   "--run_id", f"{run_id}", "--data", data, "--experimental_data", f"{EXPERIMENTAL_DATA.get(data)}",
                    "--simulated_data", f"{IN_SILICO_DATA.get(data)}", "--fraction", f"{frac}"]
     if optim:
         command_lst += ["-o"]
@@ -137,7 +136,7 @@ def run_mGP(pdb: str, data: str) -> None:
 
 
 def run_DES_K(pdb: str, data: str) -> None:
-    create_mlflow_run_pos_lvl(pdb=pdb, cv="pos_lvl", optim=True, ref=False, vae_kernel=True, data=data, frac=0.3)
+    create_mlflow_run_pos_lvl(pdb=pdb, cv="pos_lvl", optim=True, ref=False, vae_kernel=True, data=data, frac=0.25)
     create_mlflow_run_pos_lvl(pdb=pdb, cv="pos_lvl", optim=True, ref=False,
                               vae_kernel=True, data=data, frac=0.5)
     create_mlflow_run_pos_lvl(pdb=pdb, cv="pos_lvl", optim=True, ref=False,
@@ -153,7 +152,7 @@ def run_DES_K(pdb: str, data: str) -> None:
 def run_VAE_in_silico(pdb: str, data: str) -> None:
     # create_mlflow_run_pos_lvl(pdb=pdb, cv="pos_lvl", optim=False, ref=False, fusion=True,
     #                           vae_input=True, data=data, frac=0.3)
-    create_mlflow_run_pos_lvl(pdb=pdb, cv="pos_lvl", optim=True, ref=False, fusion=True, vae_input=True, data=data, frac=0.3)
+    create_mlflow_run_pos_lvl(pdb=pdb, cv="pos_lvl", optim=True, ref=False, fusion=True, vae_input=True, data=data, frac=0.25)
     # create_mlflow_run_pos_lvl(pdb=pdb, cv="pos_lvl", optim=False, ref=False, fusion=True,
     #                           vae_input=True, data=data, frac=0.5)
     create_mlflow_run_pos_lvl(pdb=pdb, cv="pos_lvl", optim=True, ref=False, fusion=True,
@@ -161,7 +160,7 @@ def run_VAE_in_silico(pdb: str, data: str) -> None:
     # create_mlflow_run_pos_lvl(pdb=pdb, cv="pos_lvl", optim=False, ref=False, fusion=True
     #                           vae_input=True, data=data, frac=0.9)
     create_mlflow_run_pos_lvl(pdb=pdb, cv="pos_lvl", optim=True, ref=False, fusion=True,
-                              vae_input=True, data=data, frac=0.9)
+                              vae_input=True, data=data, frac=1.)
     # create_mlflow_run_pos_lvl(pdb=pdb, cv="pos_lvl", optim=False, ref=False, fusion=True
     #                           vae_input=True, vae_kernel=True,
     #                           data=data)
@@ -169,13 +168,13 @@ def run_VAE_in_silico(pdb: str, data: str) -> None:
 
 def run_VAE_in_silico_DES_K(pdb: str, data: str) -> None:
     create_mlflow_run_pos_lvl(pdb=pdb, cv="pos_lvl", optim=True, ref=False, fusion=True, vae_input=True,
-                              vae_kernel=True, data=data, frac=0.3)
+                              vae_kernel=True, data=data, frac=0.25)
     create_mlflow_run_pos_lvl(pdb=pdb, cv="pos_lvl", optim=True, ref=False, fusion=True,
                               vae_input=True, vae_kernel=True,
                               data=data, frac=0.5)
     create_mlflow_run_pos_lvl(pdb=pdb, cv="pos_lvl", optim=True, ref=False, fusion=True,
                               vae_input=True, vae_kernel=True,
-                              data=data, frac=0.9)
+                              data=data, frac=1.)
     # TODO run without optimization
 
 
@@ -184,10 +183,10 @@ if __name__ == "__main__":
     # run_MGPF()
     #pdbs = ["1FQG", "1UBQ", "1PGA", "D45"]
     #data = ["blat", "ubq", "pga", "hex"]
-    pdbs = ["1UBQ", "1PGA", "D45"]
-    data = ["ubq", "pga", "hex"]
+    pdbs = ["1FQG"]
+    data = ["blat"]
     for pdb, d in zip(pdbs, data):
         # run_mGP(pdb=pdb, data=d)
         run_DES_K(pdb=pdb, data=d)
-        # run_VAE_in_silico(pdb=pdb, data=d)
-        # run_VAE_in_silico_DES_K(pdb=pdb, data=d)
+        run_VAE_in_silico(pdb=pdb, data=d)
+        run_VAE_in_silico_DES_K(pdb=pdb, data=d)

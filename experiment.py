@@ -92,7 +92,9 @@ class Experiment:
 
     def prepare_experimental_data(self):
         if self.experiment_type == "blat":
-            return self.prepare_blat_experimental_data()
+            blat_exp_dict = self.prepare_blat_experimental_data()  # take subset from BLAT SSL n=1000
+            blat_exp_dict[self.pdb.upper()] = blat_exp_dict.get(self.pdb.upper())[:1000]
+            return blat_exp_dict
         elif self.experiment_type == "tll":
             return self.prepare_tll_experimental_data()
         elif self.experiment_type == "mgpf":
@@ -109,6 +111,7 @@ class Experiment:
     def prepare_family_sequences(self):
         if self.experiment_type == "blat":
             family_seq, exp_seq, _ = parse_BLAT()
+            exp_seq = exp_seq[:1000]
         elif self.experiment_type == "tll":
             family_seq, exp_seq, _ = parse_TLL()
         elif self.experiment_type == "ubq":
