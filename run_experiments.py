@@ -37,6 +37,11 @@ def run_mgpfusion_experiment_pos_lvl(experiment: Experiment, verbose=True, write
     train_index = np.concatenate([np.array([0]), 1 + not_test_mutation_idx,
                                   np.arange(start=len(experiment.gpr.X_exp) + 1,
                                             stop=experiment.gpr.X.shape[0])])  # all simulated data are training data
+    # REMOVE HOLDOUT FROM REGRESSION
+    holdout_idx = experiment.scaler_obj.holdout_idx
+    select_mask = np.ones(experiment.X_exp.shape[0], np.bool)
+    select_mask[holdout_idx] = 0
+    train_index = train_index[select_mask]
     # sample training data by experiment fraction
     train_index = np.random.choice(train_index, size=int(experiment.fraction*len(train_index)), replace=False)
     experiment.gpr.set_train_index(train_index)

@@ -73,11 +73,10 @@ class GPRegression:
                 self.covariance_matrices = self.load_cov_matrices()
             except FileNotFoundError as e:
                 print(f"Error: Matrix not found! - {e}")
-                self.covariance_matrices = self.compute_matrices(X=self.X, 
-                                                            adjacencies=self.adjacencies[:len(self.X)])
+                self.covariance_matrices = self.compute_matrices(X=self.X, adjacencies=self.adjacencies[:len(self.X)])
+            #except # out of bounds with fusion samples
         else:
-            self.covariance_matrices = self.compute_matrices(X=self.X, 
-                                                            adjacencies=self.adjacencies[:len(self.X)])
+            self.covariance_matrices = self.compute_matrices(X=self.X, adjacencies=self.adjacencies[:len(self.X)])
         # trainable parameters for testing
         self.trainable_parameters: list = [w for w in self.weights.get_value()] + [self.σ_E, self.σ_S, self.t]
         # DEFAULT: train set to complete data to compute neg-ll correctly while testing
@@ -87,7 +86,8 @@ class GPRegression:
     def load_cov_matrices(self) -> list:
         covariance_mats = []
         for k_id in tqdm(self._kernel_ids):
-            kernel_name = f"{self.protein.pdb_ID}_{k_id}.pt"
+            kernel_name = "{pdb}_{k_id}{fusion}.pt".format(pdb=self.protein.pdb_ID, k_id=k_id,
+                                                                         fusion="_fusion" if self.fusion_flag else "")
             k = torch.load(os.path.join(self.cache_dir, kernel_name))
             covariance_mats.append(k)
         return covariance_mats 
@@ -160,7 +160,8 @@ class GPRegression:
             k = torch.zeros([n, n], dtype=torch.float64)
             k += kernel.k(x_p=X, adjacencies=adjacencies)
             if self.cached:
-                kernel_name = f"{self.protein.pdb_ID}_{k_id}.pt"
+                kernel_name = "{pdb}_{k_id}{fusion}.pt".format(pdb=self.protein.pdb_ID, k_id=k_id, fusion="_fusion"
+                                                                    if self.fusion_flag else "")
                 torch.save(k, os.path.join(self.cache_dir, kernel_name))
             covariance_mats.append(k)
         return covariance_mats

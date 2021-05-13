@@ -14,6 +14,7 @@ from utility import WeightedMSADataset, parse_matlab_mutation_file
 from parse_data import filter_alignment, parse_BLAT, parse_TLL, parse_UBQ, parse_PGA, parse_HEX
 import torch
 import torch.nn.functional as F
+from random import sample
 
 
 class Experiment:
@@ -21,7 +22,7 @@ class Experiment:
     Wrapper Class that encapsulates experiment configurations
     """
 
-    def __init__(self, pdb: str, experiment_type: str, idx: int, optimization: bool,
+    def     __init__(self, pdb: str, experiment_type: str, idx: int, optimization: bool,
                  fusion: bool, reference: bool, vae_input: bool, vae_kernel: bool, fraction: float,
                  exp_data_filename: str, is_data_filename: str, run_id: str, **vae_params) -> None:
         self.pdb = pdb
@@ -31,6 +32,10 @@ class Experiment:
         self.optimization = optimization
         self.fraction = fraction
         self.vae = None
+        if vae_input or vae_kernel:
+            self.family_seqs, self.test_seqs = self.prepare_family_sequences()
+            self.vae_model_FILENAME = f"./models/VAE_t{experiment_type}_z55_h[1700, 1200]_e200_d0.065_wTrue.pt"
+            self.vae = self.prepare_vae(**vae_params)
         self.vae_input = vae_input
         self.vae_kernel = vae_kernel
         self.exp_data_filename = exp_data_filename
@@ -38,21 +43,19 @@ class Experiment:
         self.run_id = run_id
         self.two_sigma = reference
         self.contact_map = ContactMapper(pdb_file=f"./pdb/{pdb.lower()}.pdb", tri_dist=True)
-        self.experimental_data = self.prepare_experimental_data()
         self.ref_adj = self.contact_map.adjacency
-        if vae_input or vae_kernel:
-            self.family_seqs = self.prepare_family_sequences()
-            self.vae_model_FILENAME = f"./models/VAE_t{experiment_type}_z55_h[1700, 1200]_e200_d0.065_wTrue.pt"
-            self.vae = self.prepare_vae(**vae_params)
+        self.experimental_data = self.prepare_experimental_data()
+        self.in_silico_data = self.prepare_in_silico_data() if self.fusion else {}
         if vae_kernel:
             self.protein = ProteinCollection(self.contact_map, pdb_ID=pdb, mutations_exp=self.experimental_data,
-                                             kernel_vae=self.vae)
+                                             mutations_sim=self.in_silico_data, kernel_vae=self.vae)
         else:
-            self.protein = ProteinCollection(self.contact_map, pdb_ID=pdb, mutations_exp=self.experimental_data)
+            self.protein = ProteinCollection(self.contact_map, pdb_ID=pdb, mutations_exp=self.experimental_data,
+                                             mutations_sim=self.in_silico_data)
         if idx == 0:
             print("Assertion Run:")
             self.assert_structure_to_experiment_integrity()
-        self.in_silico_data = self.prepare_in_silico_data() if self.fusion else {}
+        self.scaler_obj = None
         self.X_wt, self.X_exp, self.X_is, self.y_wt, self.ΔΔg_exp, self.ΔΔg_is_scaled, self.scaler_σ, self.max_y, self.mean_y = self.init_experiment_run()
         if not self.fusion:
             self.X_is = np.array([])
@@ -105,18 +108,18 @@ class Experiment:
 
     def prepare_family_sequences(self):
         if self.experiment_type == "blat":
-            family_seq, _, _ = parse_BLAT()
+            family_seq, exp_seq, _ = parse_BLAT()
         elif self.experiment_type == "tll":
-            family_seq, _, _ = parse_TLL()
+            family_seq, exp_seq, _ = parse_TLL()
         elif self.experiment_type == "ubq":
-            family_seq, _, _ = parse_UBQ()
+            family_seq, exp_seq, _ = parse_UBQ()
         elif self.experiment_type == "hex":
-            family_seq, _, _ = parse_HEX()
+            family_seq, exp_seq, _ = parse_HEX()
         elif self.experiment_type == "pga":
-            family_seq, _, _ = parse_PGA()
+            family_seq, exp_seq, _ = parse_PGA()
         else:
             raise NotImplementedError(f"Specified experiment {self.experiment_type} has no family sequences available.")
-        return family_seq
+        return family_seq, exp_seq
 
     def prepare_blat_in_silico_data(self, load_existing=True):
         if not self.vae:
@@ -130,7 +133,7 @@ class Experiment:
 
     def generate_in_silico_mutations_from_vae(self, write_data=True):
         mutations_tuples = self.derive_vae_mutations()
-        is_mutation_dict = {self.protein.pdb_ID.upper(): mutations_tuples}
+        is_mutation_dict = {self.pdb.upper(): mutations_tuples}
         if write_data:
             with open(self.is_data_filename, "wb") as filehandle:
                 pickle.dump(is_mutation_dict, filehandle)
@@ -151,20 +154,17 @@ class Experiment:
 
     def derive_vae_mutations(self, sample_n=1):
         assert isinstance(self.vae, VAE)
-        mut_S_exp, mut_adj_exp, ΔΔg_exp, mut_ids_exp = parse_mutations(
-            mutation_dict=self.experimental_data.get(self.pdb), sequence=self.protein.sequence, adjacency=self.ref_adj)
-        X_exp = convert_aa_sequence(mut_S_exp)
-        sequence_dataset = WeightedMSADataset(X_exp, num_classes=self.vae.num_categories)
+        sequence_dataset = WeightedMSADataset(self.test_seqs, num_classes=self.vae.num_categories)
         self.vae.eval()
         wt_log_prob = self.vae.log_p(self.vae.wt)[1].detach().numpy()
         log_likelihoods = []
         samples = []
         for seq, _, _ in sequence_dataset:
-            samples.append(self.vae.latent_sample(seq.flatten(), n=sample_n).reshape(
-                -1).detach().numpy())
+            samples.append(self.vae.latent_sample(seq.flatten(), n=sample_n).reshape(-1).detach().numpy())
             loss = self.vae.log_p(seq.flatten())
             log_likelihoods.append(loss[1].detach().numpy())
         delta_log_p = np.array([(l - wt_log_prob) for l in log_likelihoods], dtype=float)
+        assert len(delta_log_p) == len(self.experimental_data.get(self.pdb))
         mutation_values = list(zip([m for m, _ in self.experimental_data.get(self.pdb)], delta_log_p))
         return mutation_values
 
@@ -253,10 +253,19 @@ class Experiment:
             return self.load_ubq_experimental_data_from_csv()
 
     def load_ubq_experimental_data_from_csv(self, save_file="./data/ubq/ubq_exp_mutations.pkl"):
-        ubq_df = pd.read_csv(self.exp_data_filename, delimiter=";")
-        ubq_df = ubq_df[["mutant", "selection_coefficient"]].dropna()
-        ubq_df["growth"] = ubq_df["selection_coefficient"].str.replace(",", ".").astype(float)
-        mutation_dict = {"1UBQ": list(zip(ubq_df.mutant, ubq_df.growth))}
+        protabank_df = pd.read_csv("./data/ubq/RL401_Bolon2013_YHUnpqbw.csv", delimiter=",")
+        # drop SD values
+        protabank_df = protabank_df[~protabank_df["Assay/Protocol"].str.contains("SD ")]
+        # drop last two elements from sequence "...GG" and duplicate last residues
+        protabank_df["Sequence"] = protabank_df.Sequence
+        # measurements as used in DeepSequence paper
+        deep_seq_df = pd.read_csv("./data/ubq/RL401_Bolon2013.csv", delimiter=";")
+        deep_seq_df = deep_seq_df[["mutant", "selection_coefficient"]].dropna()
+        test_df = deep_seq_df.merge(protabank_df[["Description", "Data", "Sequence"]],
+                                    "inner", left_on="mutant", right_on="Description")
+        test_df["Data"] = test_df.Data.astype(float)
+        test_df["selection_coefficient"] = test_df.selection_coefficient.str.replace(",", ".").astype(float)
+        mutation_dict = {"1UBQ": list(zip(test_df.mutant, test_df.selection_coefficient))}
         if save_file:
             with open(save_file, "wb") as filehandle:
                 pickle.dump(mutation_dict, filehandle)
@@ -329,8 +338,9 @@ class Experiment:
         # TODO fix scaler sigma (to array of sigmas)
         return gpr
 
-    def init_experiment_run(self, load_reference_adjaciencies=True) -> tuple:
+    def init_experiment_run(self, load_reference_adjaciencies=True, holdout: float=0.1) -> tuple:
         assert self.experimental_data and bool(self.fusion == bool(self.in_silico_data))
+        assert 0. < holdout < 1.
         ref_mat_file = os.path.join(os.path.dirname(__file__), os.path.join("data/mgp/", f"{self.pdb.upper()}.mat"))
         if os.path.isfile(ref_mat_file) and load_reference_adjaciencies:
             pga_file = loadmat(ref_mat_file)
@@ -348,13 +358,17 @@ class Experiment:
         X_wt = convert_aa_sequence([self.protein.sequence])
         # scale using Bayesian Regression
         if self.fusion:
-            bs_rosetta = BayesScaler(is_mutations=mut_ids_is, ΔΔg=ΔΔg_is, exp_mutations=mut_ids_exp,
-                                     experimentally_observed_ΔΔg=ΔΔg_exp, TESTING=False, pdb_ID=self.pdb, cached=True,
-                                     vae=self.vae_input)
-            bs_rosetta.plot_scaling()
+            # take subset of experimental ddG for fitting - use enumerate to get the index
+            experiment_sample = sample(list(enumerate(ΔΔg_exp)), k=int(holdout*len(ΔΔg_exp)))
+            holdout_idx = [idx for idx, _ in experiment_sample]
+            holdout_ΔΔg_exp = [val for _, val in experiment_sample]
+            self.scaler_obj = BayesScaler(is_mutations=mut_ids_is, ΔΔg=ΔΔg_is, exp_mutations=np.array(mut_ids_exp)[holdout_idx],
+                                     experimentally_observed_ΔΔg=holdout_ΔΔg_exp, TESTING=False, pdb_ID=self.pdb, cached=True,
+                                     vae=self.vae_input, holdout_idx=holdout_idx)
+            self.scaler_obj.plot_scaling()
 
-        ΔΔg_is_scaled = bs_rosetta.transform(ΔΔg_is)[:, np.newaxis] if self.fusion else ΔΔg_is[:, np.newaxis]
-        sigma_T = bs_rosetta.σ_T if self.fusion else torch.Tensor([0.])
+        ΔΔg_is_scaled = self.scaler_obj.transform(ΔΔg_is)[:, np.newaxis] if self.fusion else ΔΔg_is[:, np.newaxis]
+        sigma_T = self.scaler_obj.σ_T if self.fusion else torch.Tensor([0.])
         ΔΔg_exp = ΔΔg_exp[:, np.newaxis]
 
         # Scale y-values as done in the implementation by normalizing with mean and max
