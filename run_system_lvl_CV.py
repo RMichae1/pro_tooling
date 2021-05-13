@@ -183,9 +183,9 @@ if __name__ == "__main__":
     warnings.filterwarnings("ignore")
     # run_MGPF()
     #pdbs = ["1FQG", "1UBQ", "1PGA", "D45"]
-    #data = ["blat", "ubq", "pga", "hexo"]
-    pdbs = ["1UBQ", "1PGA"]
-    data = ["ubq", "pga"]
+    #data = ["blat", "ubq", "pga", "hex"]
+    pdbs = ["1UBQ", "1PGA", "D45"]
+    data = ["ubq", "pga", "hex"]
     for pdb, d in zip(pdbs, data):
         # run_mGP(pdb=pdb, data=d)
         run_DES_K(pdb=pdb, data=d)
