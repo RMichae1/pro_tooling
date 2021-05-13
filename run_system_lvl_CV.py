@@ -184,10 +184,10 @@ if __name__ == "__main__":
     # run_MGPF()
     #pdbs = ["1FQG", "1UBQ", "1PGA", "D45"]
     #data = ["blat", "ubq", "pga", "hex"]
-    pdbs = ["1UBQ", "1PGA", "D45"]
-    data = ["ubq", "pga", "hex"]
+    pdbs = ["D45"]
+    data = ["hex"]
     for pdb, d in zip(pdbs, data):
-        # run_mGP(pdb=pdb, data=d)
-        # run_DES_K(pdb=pdb, data=d)
+        run_mGP(pdb=pdb, data=d)
+        run_DES_K(pdb=pdb, data=d)
         run_VAE_in_silico(pdb=pdb, data=d)
         # run_VAE_in_silico_DES_K(pdb=pdb, data=d)

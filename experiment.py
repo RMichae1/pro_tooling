@@ -22,7 +22,7 @@ class Experiment:
     Wrapper Class that encapsulates experiment configurations
     """
 
-    def     __init__(self, pdb: str, experiment_type: str, idx: int, optimization: bool,
+    def __init__(self, pdb: str, experiment_type: str, idx: int, optimization: bool,
                  fusion: bool, reference: bool, vae_input: bool, vae_kernel: bool, fraction: float,
                  exp_data_filename: str, is_data_filename: str, run_id: str, **vae_params) -> None:
         self.pdb = pdb
@@ -35,6 +35,8 @@ class Experiment:
         if vae_input or vae_kernel:
             self.family_seqs, self.test_seqs = self.prepare_family_sequences()
             self.vae_model_FILENAME = f"./models/VAE_t{experiment_type}_z55_h[1700, 1200]_e200_d0.065_wTrue.pt"
+            if experiment_type == "hex":
+                self.vae_model_FILENAME = "./models/VAE_thex_z86_h[1300, 1700]_e200_d0.089_wTrue.pt"
             self.vae = self.prepare_vae(**vae_params)
         self.vae_input = vae_input
         self.vae_kernel = vae_kernel
@@ -42,8 +44,7 @@ class Experiment:
         self.is_data_filename = is_data_filename
         self.run_id = run_id
         self.two_sigma = reference
-        self.contact_map = ContactMapper(pdb_file=f"./pdb/{pdb.lower()}.pdb", tri_dist=True)
-        self.ref_adj = self.contact_map.adjacency
+        self.contact_map = self.load_contact_map()
         self.experimental_data = self.prepare_experimental_data()
         self.in_silico_data = self.prepare_in_silico_data() if self.fusion else {}
         if vae_kernel:
@@ -61,6 +62,17 @@ class Experiment:
             self.X_is = np.array([])
             self.scaler_σ = torch.Tensor([0.])
         self.gpr = self.init_mgp_regression()
+
+    def load_contact_map(self):
+        cm_filename = f"./cache/{self.pdb.lower()}_contactmap.pkl"
+        if os.path.exists(cm_filename):
+            with open(cm_filename, "rb") as filehandle:
+                contact_map = pickle.load(filehandle)
+        else:
+            contact_map = ContactMapper(pdb_file=f"./pdb/{self.pdb.lower()}.pdb", tri_dist=True)
+            with open(cm_filename, "wb") as filehandle:
+                pickle.dump(contact_map, filehandle)
+        return contact_map
 
     def assert_structure_to_experiment_integrity(self):
         mutations = {}
@@ -332,7 +344,7 @@ class Experiment:
 
     def init_mgp_regression(self):
         gpr = GPRegression(protein_representation=self.protein, X_wt=self.X_wt, X_exp=self.X_exp, X_is=self.X_is,
-                           y_wt=self.y_wt, y_exp=self.ΔΔg_exp, y_is=self.ΔΔg_is_scaled, adjacencies=self.ref_adj,
+                           y_wt=self.y_wt, y_exp=self.ΔΔg_exp, y_is=self.ΔΔg_is_scaled, adjacencies=self.contact_map.adjacency,
                            σ_T=self.scaler_σ, y_max=self.max_y, y_mean=self.mean_y, cached=True, fusion=self.fusion,
                            kernel_vae=self.vae_kernel)
         # TODO fix scaler sigma (to array of sigmas)
@@ -344,15 +356,14 @@ class Experiment:
         ref_mat_file = os.path.join(os.path.dirname(__file__), os.path.join("data/mgp/", f"{self.pdb.upper()}.mat"))
         if os.path.isfile(ref_mat_file) and load_reference_adjaciencies:
             pga_file = loadmat(ref_mat_file)
-            self.ref_adj = convert_graph_from_matlab_file(
+            self.contact_map.adjacency = convert_graph_from_matlab_file(
                 pga_file["contact_map"])  # in case precalculated contacts exist
-            self.contact_map.adjacency = self.ref_adj  # propagate contactmap to all dependencies
         mut_S_exp, _, ΔΔg_exp, mut_ids_exp = parse_mutations(mutation_dict=self.experimental_data.get(self.pdb),
                                                              sequence=self.protein.sequence,
-                                                             adjacency=self.ref_adj)
+                                                             adjacency=self.contact_map.adjacency)
         mut_S_is, _, ΔΔg_is, mut_ids_is = parse_mutations(mutation_dict=self.in_silico_data.get(self.pdb),
                                                           sequence=self.protein.sequence,
-                                                          adjacency=self.ref_adj)
+                                                          adjacency=self.contact_map.adjacency)
         X_exp, X_is = convert_aa_sequence(mut_S_exp), convert_aa_sequence(mut_S_is)
         y_wt = np.array([0])[:, np.newaxis]
         X_wt = convert_aa_sequence([self.protein.sequence])
