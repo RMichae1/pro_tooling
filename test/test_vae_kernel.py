@@ -245,6 +245,35 @@ def test_naive_VAE_kernel():
     np.testing.assert_almost_equal(k_mat, k_mat_stable, decimal=5)
 
 
+def test_naive_S_properties():
+    seqs = test_dummy_sequences[0]
+    seq_x = seqs
+    seq_y = seqs
+    n_samples = 1
+    for i in range(len(seq_x)):
+        latent_samples = torch.normal(0, 1, size=(n_samples, vae.z_dim)).float()
+        oh_x = F.one_hot(torch.Tensor(seq_x).to(torch.int64), num_classes=vae.num_categories).float()
+        oh_y = F.one_hot(torch.Tensor(seq_y).to(torch.int64), num_classes=vae.num_categories).float()
+        z_x_dist = vae.encoder(oh_x)
+        z_y_dist = vae.encoder(oh_y)
+        # Normal(z_x_dist[0], z_x_dist[1]).loc == z_x_dist[0]
+        p_x = Categorical(vae.decoder(z_x_dist[0]).exp()).log_prob(torch.Tensor(seq_x)).exp()
+        p_y = Categorical(vae.decoder(z_y_dist[0]).exp()).log_prob(torch.Tensor(seq_y)).exp()
+        p_x_i_x_not_i_vec = []
+        p_y_i_y_not_i_vec = []
+        for sample in latent_samples:
+            p_x_i_x_not_i = likelihoods(vae, seq_x, z_dist=z_x_dist, idx=i, latent_sample=sample)
+            p_x_i_x_not_i_vec.append(p_x_i_x_not_i[0])
+            p_y_i_y_not_i = likelihoods(vae, seq_y, z_dist=z_y_dist, idx=i, latent_sample=sample)
+            p_y_i_y_not_i_vec.append(p_y_i_y_not_i[0])
+        p_x_i_x_not_i_vec = torch.stack(p_x_i_x_not_i_vec)
+        p_y_i_y_not_i_vec = torch.stack(p_y_i_y_not_i_vec)
+        p_x_not_i = torch.sum(torch.mean(p_x_i_x_not_i_vec, axis=0))
+        p_y_not_i = torch.sum(torch.mean(p_y_i_y_not_i_vec, axis=0))
+        np.testing.assert_almost_equal(torch.sum(torch.mean(p_x_i_x_not_i_vec, axis=0)/p_x_not_i).numpy(), 1)
+        np.testing.assert_almost_equal(torch.sum(torch.mean(p_y_i_y_not_i_vec, axis=0)/p_y_not_i).numpy(), 1)
+
+
 def test_naive_norm_VAE_kernel():
     k_mat = naive_v_K(test_dummy_sequences[0][np.newaxis, :], adj, vae, fixed_sample=True)
     k_mat = normalize_K(k_mat)
