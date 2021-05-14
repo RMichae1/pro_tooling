@@ -10,7 +10,7 @@ import seaborn as sns
 from graphkernel import KernelLoader
 from protein_representation import ProteinCollection
 from typing import Tuple
-from utility import get_mutation_idx
+from utility import get_mutation_idx, index2aa
 from scipy.stats import norm, spearmanr
 from sklearn.metrics import mean_squared_error
 from utility import compute_rmse, compute_ρ
@@ -458,7 +458,10 @@ def plot_mWDK(pcol, mWDK) -> None:
 
 def plot_SVAE_matrix(mat, name_suffix="", run_suffix="") -> None:
     fig, ax = plt.subplots(1, 1, figsize=(9, 5))
+    aas = [index2aa(i) for i in range(21)]
     sns.heatmap(mat.detach().numpy(), ax=ax, linewidths=.5, cmap="YlGnBu")
+    ax.set_xticklabels(aas)
+    ax.set_yticklabels(aas)
     plt.suptitle(f"S Matrix {name_suffix}")
     plt.savefig(f"./fig/kernel/S_mat_{name_suffix}_{run_suffix}.png".replace(' ', '_'))
     plt.show()
