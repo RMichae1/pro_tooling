@@ -134,14 +134,18 @@ class VaeKernel:
         AAs = 21
         N, L = sequences.shape
         s = torch.zeros([AAs])
+        c = L*np.log(20)
         p_x = Categorical(self.vae.decoder(self.compute_encoder_dist(sequences).loc).exp()).log_prob(torch.Tensor(sequences))
         # marginalize over residues
         for idx, _ in tqdm(enumerate(range(L))):
             # subtract normalizing constant
-            ll_S = np.exp(self.log_likelihood(sequences, idx).to(torch.float64) - p_x - sequences.shape[1]*np.log(20))
+            ll = self.log_likelihood(sequences, idx).to(torch.float64) - c
+            p_x_not_i = torch.log(torch.sum(torch.exp(ll), axis=-1))
             # marginal - sum probs per AA across sequences
-            s += ll_S.sum(0)[:AAs]
+            norm_p_x_not_i = ll - p_x[:, idx][:, np.newaxis] - p_x_not_i[:, np.newaxis]
+            s += norm_p_x_not_i.mean(0)[:AAs] # average over samples
         s = np.log(s[:, np.newaxis] @ s[:, np.newaxis].T)
+        print(s)
         if normalize:
             s = (s-torch.min(s)+1)/(torch.max(s)-torch.min(s)+1)
         return s
