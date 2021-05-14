@@ -14,6 +14,7 @@ from utility import get_mutation_idx
 from scipy.stats import norm, spearmanr
 from sklearn.metrics import mean_squared_error
 from utility import compute_rmse, compute_ρ
+from parse_data import parse_BLAT, parse_UBQ, parse_PGA
 
 colormap = ["grey", "black", "yellow", "blue", "red", "pink", "orange", "lightblue", "green", "darkred"]
 legend_circles = [Line2D([0], [0], marker="o", markersize=15, color=c, label=str(m)) for c, m in zip(colormap, np.arange(1,11,1))]
@@ -484,4 +485,47 @@ def plot_eigenvalues(eig_vals_real, eig_vals_imag, name_suffix="", limit_n=2500)
     f1.set(xscale="log")
     plt.title(f"λ of S \n {name_suffix.upper().replace(' ', '_')}")
     plt.savefig(f"./fig/kernel/eigenvalues_scatter_{name_suffix.upper().replace(' ', '_')}")
+    plt.show()
+
+
+def plot_data_set():
+    fam_blat, exp_blat, _ = parse_BLAT()
+    fam_ubq, exp_ubq, _ = parse_UBQ()
+    fam_pga, exp_pga, _ = parse_PGA()
+    names = [f"β-Lactamase\nL={exp_blat.shape[1]}", 
+            f"β-Lactamase\nL={exp_blat.shape[1]}", 
+            f"Ubiquitin\nL={exp_ubq.shape[1]}", 
+            f"Ubiquitin\nL={exp_ubq.shape[1]}", 
+            f"Protein-G\nL={exp_pga.shape[1]}", 
+            f"Protein-G\nL={exp_pga.shape[1]}"]
+    counts = [fam_blat.shape[0], exp_blat.shape[0],
+            fam_ubq.shape[0], exp_ubq.shape[0],
+            fam_pga.shape[0], exp_pga.shape[0]]
+    ratio = [fam_blat.shape[0]/fam_blat.shape[1], 
+            exp_blat.shape[0]/exp_blat.shape[1],
+            fam_ubq.shape[0]/fam_ubq.shape[1], 
+            exp_ubq.shape[0]/exp_ubq.shape[1],
+            fam_pga.shape[0]/fam_pga.shape[1], 
+            exp_pga.shape[0]/exp_pga.shape[1]]
+    data_type = ["MSA", "SSL",
+                "MSA", "SSL",
+                "MSA", "SSL"]
+    plot_df = pd.DataFrame({"name": names, "counts": counts, "ratio": ratio,
+                "type": data_type})
+    fig, ax = plt.subplots(2, 1, figsize=(12, 5))
+    sns.barplot(data=plot_df, x="name", y="counts", hue="type",
+    saturation=0.7, palette="Accent_r", ax=ax[0])
+    sns.barplot(data=plot_df, x="name", y="ratio", hue="type",
+    saturation=0.7, palette="Accent_r", ax=ax[1])
+    plt.suptitle("Data Overview", fontsize=25)
+    plt.setp(ax[0].get_yticklabels(), fontsize=20)
+    plt.setp(ax[1].get_yticklabels(), fontsize=20)
+    plt.setp(ax[1].get_xticklabels(), fontsize=15)
+    ax[0].set_xlabel(" ")
+    ax[0].set_xticklabels([])
+    ax[0].set_ylabel("n", fontsize=23)
+    ax[1].set_ylabel("ratio", fontsize=23)
+    plt.xlabel(" ")
+    plt.tight_layout()
+    plt.savefig(f"./fig/overview_data.png", bbox_inches = 'tight')
     plt.show()
