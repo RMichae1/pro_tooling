@@ -116,6 +116,7 @@ class VaeKernel:
         self.latent_sample = torch.normal(0, 1, size=(sample_size, self.latent_dim)).float()
         self.s_min = 0.
         self.s_max = 0.
+        self.epsilon = 0.0001
         self.normalize_S = normalize_S
         self.eigen = eigen
         self.eigen_values = []
@@ -260,4 +261,11 @@ class VaeKernel:
             return torch.Tensor(k).to(torch.float64)
         norm = np.sqrt(np.diag(k))[:, np.newaxis]
         k_hat = k / norm.dot(norm.T)
+        if torch.max(k_hat) > torch.max(torch.diag(k_hat)):
+            corrected_k = torch.zeros(k_hat.shape)
+            psd_diagonal = torch.max(torch.diag(k_hat)) + (torch.max(k_hat) - torch.max(torch.diag(k_hat))) + self.epsilon
+            corrected_k.fill_diagonal_(psd_diagonal)
+            corrected_k += torch.triu(k_hat, 1)  # enforce symmetry
+            corrected_k += torch.triu(k_hat, 1).T
+            return torch.Tensor(corrected_k).to(torch.float64)
         return torch.Tensor(k_hat).to(torch.float64)
