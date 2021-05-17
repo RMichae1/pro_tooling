@@ -272,6 +272,11 @@ def parse_mutations(sequence: str, adjacency: List[tuple], mutation_dict: dict) 
     return mutated_sequences, mutated_adjacencies, np.array(ΔΔg), mutation_ids
 
 
+def index2aa(idx):
+    aa_lookup = {k: idx for idx, k in enumerate(["A", "R", "N", "D", "C", "Q", "E", "G",
+                                                 "H", "I", "L", "K", "M", "F", "P", "S", "T", "W", "Y", "V", "-"])}
+    return list(aa_lookup)[idx]
+
 def aa2index(aa):
     """
     ORDER OF THE ALPHABET MATTERS !!

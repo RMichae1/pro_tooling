@@ -165,7 +165,7 @@ class VaeKernel:
         q_z_x = Normal(z_x_loc, z_x_scale).log_prob(z).to(torch.float64).sum(-1)
         p_z = torch.mean(self.p_z, axis=0)  # prior mean across samples
         # decoder can only evaluate one z at a time # TODO: refactor VAE to enable batched latent processing
-        categoricals = [Categorical(self.vae.decoder(z_i).exp()) for z_i in z]
+        categoricals = [Categorical(self.vae.decoder(z_i).to(torch.float64).exp()) for z_i in z]
         p_x_z_vec = torch.stack([cat.probs.log().to(torch.float64) for cat in categoricals])
         p_x_z = torch.stack([cat.log_prob(torch.Tensor(x)).to(torch.float64) for cat in categoricals])
         p_x_not_i = self.p_x_not_i(p_x_z=p_x_z, p_z=p_z, q_z_x=q_z_x, c=c, i=i, L=L)
@@ -258,6 +258,6 @@ class VaeKernel:
             k += temp_k
         if not normalize_k:
             return torch.Tensor(k).to(torch.float64)
-        norm = np.sqrt(np.diag(k))
+        norm = np.sqrt(np.diag(k))[:, np.newaxis]
         k_hat = k / norm.dot(norm.T)
         return torch.Tensor(k_hat).to(torch.float64)
