@@ -143,8 +143,9 @@ class VaeKernel:
             p_x_not_i = torch.log(torch.sum(torch.exp(ll), axis=-1))
             # marginal - sum probs per AA across sequences
             norm_p_x_not_i = ll - p_x[:, idx][:, np.newaxis] - p_x_not_i[:, np.newaxis]
-            s += norm_p_x_not_i.mean(0)[:AAs] # average over samples
-        s = np.log(s[:, np.newaxis] @ s[:, np.newaxis].T)
+            s += norm_p_x_not_i.to(torch.float64).mean(0)[:AAs] # average over samples
+        s = s / L # average over sequence
+        s = np.log(torch.exp(s)[:, np.newaxis] @ torch.exp(s)[:, np.newaxis].T)
         print(s)
         if normalize:
             s = (s-torch.min(s)+1)/(torch.max(s)-torch.min(s)+1)
