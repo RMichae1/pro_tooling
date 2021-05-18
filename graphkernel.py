@@ -264,11 +264,11 @@ class VaeKernel:
             return torch.Tensor(k).to(torch.float64)
         norm = np.sqrt(np.diag(k))[:, np.newaxis]
         k_hat = k / norm.dot(norm.T)
-        if torch.max(k_hat) > torch.max(torch.diag(k_hat)):
+        if torch.max(torch.tensor(k_hat)) > torch.max(torch.diag(torch.tensor(k_hat))):
             corrected_k = torch.zeros(k_hat.shape)
-            psd_diagonal = torch.max(torch.diag(k_hat)) + (torch.max(k_hat) - torch.max(torch.diag(k_hat))) + self.epsilon
+            psd_diagonal = torch.max(torch.diag(torch.tensor(k_hat))) + (torch.max(torch.tensor(k_hat)) - torch.max(torch.diag(torch.tensor(k_hat)))) + self.epsilon
             corrected_k.fill_diagonal_(psd_diagonal)
-            corrected_k += torch.triu(k_hat, 1)  # enforce symmetry
-            corrected_k += torch.triu(k_hat, 1).T
-            return torch.Tensor(corrected_k).to(torch.float64)
+            corrected_k += torch.triu(torch.tensor(k_hat), 1)  # enforce symmetry
+            corrected_k += torch.triu(torch.tensor(k_hat), 1).T
+            return corrected_k.to(torch.float64)
         return torch.Tensor(k_hat).to(torch.float64)
