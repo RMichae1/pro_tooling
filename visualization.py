@@ -1,6 +1,7 @@
 import pickle
 import os
 import numpy as np
+import torch
 from numpy.core.shape_base import atleast_1d
 from scipy.io import loadmat
 import pandas as pd
@@ -467,7 +468,7 @@ def plot_SVAE_matrix(mat, name_suffix="", run_suffix="") -> None:
     plt.show()
 
 
-def plot_VAE_kernel_values(mat_train, mat_test, name_suffix="")-> None:
+def plot_VAE_kernel_values_MSA_SSL(mat_train, mat_test, name_suffix="")-> None:
     fig, ax = plt.subplots(1, 2, figsize=(9, 5))
     sns.heatmap(mat_train.detach().numpy(), ax=ax[0])
     sns.heatmap(mat_test.detach().numpy(), ax=ax[1])
@@ -475,6 +476,37 @@ def plot_VAE_kernel_values(mat_train, mat_test, name_suffix="")-> None:
     ax[0].set_title("MSA Sequences")
     ax[1].set_title("SSL Sequences")
     plt.savefig(f"./fig/kernel/variant_kernel_matrix_{name_suffix.upper().replace(' ', '_')}.png")
+    plt.show()
+
+
+def plot_VAE_kernel_values(mat: torch.Tensor, name_suffix="", subset_n=None)-> None:
+    fig, ax = plt.subplots(1, 1, figsize=(6, 5))
+    x = mat.detach().numpy()
+    if not subset_n:
+        subset_n = x.shape[0]
+    sns.heatmap(x[:subset_n, :subset_n], ax=ax)
+    plt.title(f"Kernel Values \n {name_suffix.upper()}")
+    plt.savefig(f"./fig/kernel/variant_kernel_matrix_{name_suffix.upper().replace(' ', '_')}.png")
+    plt.show()
+
+
+def plot_cov_value_distribution(mat: torch.Tensor, name_suffix=""):
+    x = mat.detach().numpy()
+    fig, ax = plt.subplots(1, 1, figsize=(6, 5))
+    sns.distplot(x.flatten())
+    plt.title(f"Distribution of kernel values \n {name_suffix}")
+    plt.savefig(f"./fig/kernel/variant_kernel_distribution{name_suffix.upper()}.png")
+    plt.show()
+
+
+def plot_random_normal_vector_matrix():
+    vec = torch.abs(torch.randn(21))
+    mat = vec[:, np.newaxis] @ vec[:, np.newaxis].T
+    l_mat = torch.log(mat)
+    fig, ax = plt.subplots(1, 1, figsize=(9, 5))
+    sns.heatmap(l_mat, ax=ax, linewidths=.5, cmap="YlGnBu")
+    plt.title("Random Normal Matrix")
+    plt.savefig(f"./fig/kernel/random_normal_Smat.png")
     plt.show()
 
 
@@ -515,6 +547,7 @@ def plot_data_set():
                 "MSA", "SSL"]
     plot_df = pd.DataFrame({"name": names, "counts": counts, "ratio": ratio,
                 "type": data_type})
+    print(plot_df)
     fig, ax = plt.subplots(2, 1, figsize=(12, 5))
     sns.barplot(data=plot_df, x="name", y="counts", hue="type",
     saturation=0.7, palette="Accent_r", ax=ax[0])
