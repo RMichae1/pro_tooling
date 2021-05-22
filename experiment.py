@@ -47,6 +47,10 @@ class Experiment:
         self.contact_map = self.load_contact_map()
         self.experimental_data = self.prepare_experimental_data()
         self.in_silico_data = self.prepare_in_silico_data() if self.fusion else {}
+        # DEBUG
+        with open("./DEBUG_IS_samples.pkl", "wb") as outfile:
+            pickle.dump(self.in_silico_data, outfile)
+        # END DEBUG
         if vae_kernel:
             self.protein = ProteinCollection(self.contact_map, pdb_ID=pdb, mutations_exp=self.experimental_data,
                                              mutations_sim=self.in_silico_data, kernel_vae=self.vae)
@@ -58,6 +62,12 @@ class Experiment:
             self.assert_structure_to_experiment_integrity()
         self.scaler_obj = None
         self.X_wt, self.X_exp, self.X_is, self.y_wt, self.ΔΔg_exp, self.ΔΔg_is_scaled, self.scaler_σ, self.max_y, self.mean_y = self.init_experiment_run()
+        # DEBUG
+        with open("./DEBUG_scaled_samples.pkl", "wb") as outfile:
+            pickle.dump(self.ΔΔg_is_scaled, outfile)
+        with open("./DEBUG_experimental.pkl", "wb") as outfile:
+            pickle.dump(self.ΔΔg_exp, outfile)
+        # END DEBUG
         if not self.fusion:
             self.X_is = np.array([])
             self.scaler_σ = torch.Tensor([0.])
@@ -104,8 +114,8 @@ class Experiment:
 
     def prepare_experimental_data(self):
         if self.experiment_type == "blat":
-            blat_exp_dict = self.prepare_blat_experimental_data()  # take subset from BLAT SSL n=1000
-            blat_exp_dict[self.pdb.upper()] = blat_exp_dict.get(self.pdb.upper())[:1000]
+            blat_exp_dict = self.prepare_blat_experimental_data()
+            blat_exp_dict[self.pdb.upper()] = blat_exp_dict.get(self.pdb.upper())[:1000]  # take subset from BLAT SSL n=1000
             return blat_exp_dict
         elif self.experiment_type == "tll":
             return self.prepare_tll_experimental_data()
@@ -188,7 +198,7 @@ class Experiment:
         !!! WARN: EXPERIMENTAL INDEX IS OFF BY 24 W.R.T. PDB SEQUENCE !!!
         """
         blat_df = pd.read_csv(self.exp_data_filename)
-        blat_df["growth"] = blat_df["2500"]
+        blat_df["growth"] = blat_df["2500"].astype(float)
         blat_df["mutation_idx"] = blat_df.mutant.str[1:-1].astype(int) - 23
         blat_df["mutant"] = blat_df.mutant.str[0] + blat_df.mutation_idx.astype(str) + blat_df.mutant.str[-1]
         mutations = list(zip(blat_df.mutant, blat_df.growth))

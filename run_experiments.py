@@ -100,6 +100,11 @@ def run_mgpfusion_experiment_mut_lvl(experiment: Experiment, verbose=False, writ
         return
     # set train and testing indices
     train_index = np.delete(np.arange(0, experiment.gpr.X.shape[0]), experiment.idx)
+    if experiment.fusion:  # eliminate Bayesian Regression training elements
+        holdout_idx = np.array(experiment.scaler_obj.holdout_idx) + 1  # offset for WT
+        select_mask = np.ones(train_index.shape[0], np.bool)
+        select_mask[holdout_idx] = 0
+        train_index = train_index[select_mask]
     # sample training data by experiment fraction
     train_index = np.random.choice(train_index, size=int(experiment.fraction*len(train_index)), replace=False)
     experiment.gpr.set_train_index(train_index)

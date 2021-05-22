@@ -5,6 +5,7 @@ import subprocess
 import mlflow
 from contact_mapper import ContactMapper
 from utility import parse_matlab_mutation_file
+from parse_data import parse_PGA, parse_UBQ, parse_BLAT
 
 EXPERIMENTAL_DATA = {"mgpf": "./data/mgp/ddg_protherm.mat",
                      "tll": "./data/tll/lipase_variants_tll_tm_tapo_20nov2020.xlsx",
@@ -69,18 +70,29 @@ def create_mlflow_run_pos_lvl(pdb: str, cv: str, optim: bool, ref: bool, fusion:
 
 
 def create_mlflow_run_mut_lvl(pdb: str, cv: str, optim: bool, ref: str, fusion: bool = False, data: str = None,
-                              ref_contact_map: bool = False) -> None:
-    exp_mutations = parse_matlab_mutation_file(f"./data/mgp/ddg_protherm.mat",
-                                               query="ddg_protherm").get(pdb)
+                              ref_contact_map: bool = False, vae_input: bool = False, vae_kernel: bool = False,
+                              frac: float = 1.) -> None:
+    #exp_mutations = parse_matlab_mutation_file(f"./data/mgp/ddg_protherm.mat",
+    #                                          query="ddg_protherm").get(pdb)
+    if pdb.lower() == "1pga":
+        _, exp_mutations, _ = parse_PGA()
+    elif pdb.lower() == "1ubq":
+        _, exp_mutations, _ = parse_UBQ()
+    elif pdb.lower() == "1fqg":
+        _, exp_mutations, _ = parse_BLAT()
+    else:
+        raise NotImplementedError("Available pdb not found in parsing lib.")
     experiment_name = f"{pdb}: {cv}"
     experiment = mlflow.set_experiment(experiment_name)
     with mlflow.start_run(experiment_id=experiment) as run:
-        exp_params = {"pdb": pdb, "cv": cv, "optimization": optim, "2σ": ref, "reference_contacts": ref_contact_map}
+        exp_params = {"pdb": pdb, "cv": cv, "optimization": optim, "2σ": ref, "reference_contacts": ref_contact_map,
+                      "fusion": fusion, "vae_input": vae_input, "vae_kernel": vae_kernel, "data_train": frac}
         mlflow.log_params(exp_params)
         for idx in range(1, len(exp_mutations) + 1):  # exclude WT zero round
             # run position lvl no optimization
             run_sys_CV(pdb, idx, cv=cv, ref=ref, optim=optim, experiment=experiment_name, run_id=run.info.run_id,
-                       fusion=fusion, data=data, verbose=True, ref_contact_map=ref_contact_map)
+                       fusion=fusion, data=data, verbose=True, ref_contact_map=ref_contact_map,
+                       vae_input=vae_input, vae_kernel=vae_kernel, frac=frac)
     mlflow.end_run()
     return None
 
@@ -121,58 +133,67 @@ def run_MGPF() -> None:
 
 
 def run_mGP(pdb: str, data: str) -> None:
-    # create_mlflow_run_pos_lvl(pdb=pdb, cv="pos_lvl", optim=False, ref=False,
-    #                           fusion=False, data=data, frac=0.3)
-    create_mlflow_run_pos_lvl(pdb=pdb, cv="pos_lvl", optim=True, ref=False,
-                              fusion=False, data=data, frac=0.25)
-    # create_mlflow_run_pos_lvl(pdb=pdb, cv="pos_lvl", optim=False, ref=False,
+    # POS LVL
+    # create_mlflow_run_pos_lvl(pdb=pdb, cv="pos_lvl", optim=True, ref=False,
+    #                           fusion=False, data=data, frac=0.25)
+    # create_mlflow_run_pos_lvl(pdb=pdb, cv="pos_lvl", optim=True, ref=False,
     #                           fusion=False, data=data, frac=0.5)
-    create_mlflow_run_pos_lvl(pdb=pdb, cv="pos_lvl", optim=True, ref=False,
-                              fusion=False, data=data, frac=0.5)
-    # create_mlflow_run_pos_lvl(pdb=pdb, cv="pos_lvl", optim=False, ref=False,
-    #                           fusion=False, data=data, frac=0.9)
-    create_mlflow_run_pos_lvl(pdb=pdb, cv="pos_lvl", optim=True, ref=False,
+    # create_mlflow_run_pos_lvl(pdb=pdb, cv="pos_lvl", optim=True, ref=False,
+    #                           fusion=False, data=data, frac=1.)
+    # MUT LVL
+    # create_mlflow_run_mut_lvl(pdb=pdb, cv="mut_lvl", optim=True, ref=False,
+    #                           fusion=False, data=data, frac=0.25)
+    # create_mlflow_run_mut_lvl(pdb=pdb, cv="mut_lvl", optim=True, ref=False,
+    #                           fusion=False, data=data, frac=0.5)
+    create_mlflow_run_mut_lvl(pdb=pdb, cv="mut_lvl", optim=True, ref=False,
                               fusion=False, data=data, frac=1.)
 
 
 def run_DES_K(pdb: str, data: str) -> None:
-    create_mlflow_run_pos_lvl(pdb=pdb, cv="pos_lvl", optim=True, ref=False, vae_kernel=True, data=data, frac=0.25)
-    create_mlflow_run_pos_lvl(pdb=pdb, cv="pos_lvl", optim=True, ref=False,
-                              vae_kernel=True, data=data, frac=0.5)
-    create_mlflow_run_pos_lvl(pdb=pdb, cv="pos_lvl", optim=True, ref=False,
-                              vae_kernel=True, data=data, frac=1.)
-    # create_mlflow_run_pos_lvl(pdb=pdb, cv="pos_lvl", optim=False, ref=False,
-    #                           vae_kernel=True, data=data, frac=0.3)
-    # create_mlflow_run_pos_lvl(pdb=pdb, cv="pos_lvl", optim=False, ref=False,
+    # pos lvl
+    # create_mlflow_run_pos_lvl(pdb=pdb, cv="pos_lvl", optim=True, ref=False, vae_kernel=True, data=data, frac=0.25)
+    # create_mlflow_run_pos_lvl(pdb=pdb, cv="pos_lvl", optim=True, ref=False,
     #                           vae_kernel=True, data=data, frac=0.5)
-    # create_mlflow_run_pos_lvl(pdb=pdb, cv="pos_lvl", optim=False, ref=False,
-    #                           vae_kernel=True, data=data, frac=0.9)
+    # create_mlflow_run_pos_lvl(pdb=pdb, cv="pos_lvl", optim=True, ref=False,
+    #                           vae_kernel=True, data=data, frac=1.)
+    # mut lvl
+    # create_mlflow_run_mut_lvl(pdb=pdb, cv="mut_lvl", optim=True, ref=False, vae_kernel=True, data=data, frac=0.25)
+    # create_mlflow_run_mut_lvl(pdb=pdb, cv="mut_lvl", optim=True, ref=False,
+    #                           vae_kernel=True, data=data, frac=0.5)
+    create_mlflow_run_mut_lvl(pdb=pdb, cv="mut_lvl", optim=True, ref=False,
+                              vae_kernel=True, data=data, frac=1.)
 
 
 def run_VAE_in_silico(pdb: str, data: str) -> None:
-    # create_mlflow_run_pos_lvl(pdb=pdb, cv="pos_lvl", optim=False, ref=False, fusion=True,
-    #                           vae_input=True, data=data, frac=0.3)
-    create_mlflow_run_pos_lvl(pdb=pdb, cv="pos_lvl", optim=True, ref=False, fusion=True, vae_input=True, data=data, frac=0.25)
-    # create_mlflow_run_pos_lvl(pdb=pdb, cv="pos_lvl", optim=False, ref=False, fusion=True,
+    # pos lvl
+    # create_mlflow_run_pos_lvl(pdb=pdb, cv="pos_lvl", optim=True, ref=False, fusion=True, vae_input=True, data=data, frac=0.25)
+    # create_mlflow_run_pos_lvl(pdb=pdb, cv="pos_lvl", optim=True, ref=False, fusion=True,
     #                           vae_input=True, data=data, frac=0.5)
-    create_mlflow_run_pos_lvl(pdb=pdb, cv="pos_lvl", optim=True, ref=False, fusion=True,
-                              vae_input=True, data=data, frac=0.5)
-    # create_mlflow_run_pos_lvl(pdb=pdb, cv="pos_lvl", optim=False, ref=False, fusion=True
-    #                           vae_input=True, data=data, frac=0.9)
-    create_mlflow_run_pos_lvl(pdb=pdb, cv="pos_lvl", optim=True, ref=False, fusion=True,
+    # create_mlflow_run_pos_lvl(pdb=pdb, cv="pos_lvl", optim=True, ref=False, fusion=True,
+    #                           vae_input=True, data=data, frac=1.)
+    # mut lvl
+    # create_mlflow_run_mut_lvl(pdb=pdb, cv="mut_lvl", optim=True, ref=False, fusion=True, vae_input=True, data=data, frac=0.25)
+    # create_mlflow_run_mut_lvl(pdb=pdb, cv="mut_lvl", optim=True, ref=False, fusion=True,
+    #                           vae_input=True, data=data, frac=0.5)
+    create_mlflow_run_mut_lvl(pdb=pdb, cv="mut_lvl", optim=True, ref=False, fusion=True,
                               vae_input=True, data=data, frac=1.)
-    # create_mlflow_run_pos_lvl(pdb=pdb, cv="pos_lvl", optim=False, ref=False, fusion=True
-    #                           vae_input=True, vae_kernel=True,
-    #                           data=data)
 
 
 def run_VAE_in_silico_DES_K(pdb: str, data: str) -> None:
-    create_mlflow_run_pos_lvl(pdb=pdb, cv="pos_lvl", optim=True, ref=False, fusion=True, vae_input=True,
-                              vae_kernel=True, data=data, frac=0.25)
-    create_mlflow_run_pos_lvl(pdb=pdb, cv="pos_lvl", optim=True, ref=False, fusion=True,
-                              vae_input=True, vae_kernel=True,
-                              data=data, frac=0.5)
-    create_mlflow_run_pos_lvl(pdb=pdb, cv="pos_lvl", optim=True, ref=False, fusion=True,
+    # create_mlflow_run_pos_lvl(pdb=pdb, cv="pos_lvl", optim=True, ref=False, fusion=True, vae_input=True,
+    #                           vae_kernel=True, data=data, frac=0.25)
+    # create_mlflow_run_pos_lvl(pdb=pdb, cv="pos_lvl", optim=True, ref=False, fusion=True,
+    #                           vae_input=True, vae_kernel=True,
+    #                           data=data, frac=0.5)
+    # create_mlflow_run_pos_lvl(pdb=pdb, cv="pos_lvl", optim=True, ref=False, fusion=True,
+    #                           vae_input=True, vae_kernel=True,
+    #                           data=data, frac=1.)
+    # create_mlflow_run_mut_lvl(pdb=pdb, cv="mut_lvl", optim=True, ref=False, fusion=True, vae_input=True,
+    #                           vae_kernel=True, data=data, frac=0.25)
+    # create_mlflow_run_mut_lvl(pdb=pdb, cv="mut_lvl", optim=True, ref=False, fusion=True,
+    #                           vae_input=True, vae_kernel=True,
+    #                           data=data, frac=0.5)
+    create_mlflow_run_mut_lvl(pdb=pdb, cv="mut_lvl", optim=True, ref=False, fusion=True,
                               vae_input=True, vae_kernel=True,
                               data=data, frac=1.)
     # TODO run without optimization
@@ -183,10 +204,10 @@ if __name__ == "__main__":
     # run_MGPF()
     #pdbs = ["1FQG", "1UBQ", "1PGA", "D45"]
     #data = ["blat", "ubq", "pga", "hex"]
-    pdbs = ["1FQG"]
-    data = ["blat"]
+    pdbs = ["1UBQ", "1PGA", "1FQG"]
+    data = ["ubq", "pga", "blat"]
     for pdb, d in zip(pdbs, data):
-        # run_mGP(pdb=pdb, data=d)
+        run_mGP(pdb=pdb, data=d)
         run_DES_K(pdb=pdb, data=d)
         run_VAE_in_silico(pdb=pdb, data=d)
-        run_VAE_in_silico_DES_K(pdb=pdb, data=d)
+        # run_VAE_in_silico_DES_K(pdb=pdb, data=d)
