@@ -5,6 +5,7 @@ import pyro
 from pyro.infer import SVI, JitTrace_ELBO
 from pyro.optim import Adam, ClippedAdam
 import matplotlib.pyplot as plt
+from matplotlib.ticker import NullFormatter
 import pandas as pd
 import numpy as np
 from scipy.stats import spearmanr, pearsonr
@@ -53,7 +54,7 @@ if __name__ == "__main__":
     parser.add_argument("-d", "--dropout", type=float, default=0.065, help="Add Dropout layer with dropout probability.")
     parser.add_argument("-sw", "--sequence_weighting", action="store_false", # TODO reverse action
                         help="Weighing input sequences in the training procedure.")
-    parser.add_argument("-t", "--type", choices=VAE_TYPES, default="ubq", help="Type ID of MSA used to create VAE.")
+    parser.add_argument("-t", "--type", choices=VAE_TYPES, default="pga", help="Type ID of MSA used to create VAE.")
     parser.add_argument("-p", "--plot", action="store_false", help="Plot low-latent-representation outputs and feature correlation.")
     parser.add_argument("--sample_vae", action="store_true", help="Prepare in-silico sample.")
     args = parser.parse_args()  # TODO change weighting to store_true
@@ -128,9 +129,9 @@ if __name__ == "__main__":
     optimizer = Adam({"lr": param_dict["LEARNING_RATE"], "weight_decay": param_dict["weight_decay"]})
     svi = SVI(vae.model, vae.guide, optimizer, loss=JitTrace_ELBO())
 
-    if os.path.exists(model_FILENAME) and os.path.exists(optimizer_FILENAME):
+    if os.path.exists(model_FILENAME):
         vae.load_state_dict(torch.load(model_FILENAME))
-        optimizer.load(optimizer_FILENAME)
+        # optimizer.load(optimizer_FILENAME)
     else:
         mlflow.start_run()
         mlflow.log_params(param_dict)
@@ -170,24 +171,64 @@ if __name__ == "__main__":
         kld_values.append(loss[2].detach().numpy())
 
     delta_log_p = np.array([(l - wt_log_prob) for l in log_likelihoods], dtype=float)
-    print(f"Corr. (Spearman) Δ ELBO and data: {spearmanr(delta_log_p, test_y)}")
+    spearman_r = spearmanr(delta_log_p, test_y).correlation
+    print(f"Corr. (spearman) Δ ELBO and data: {spearman_r}")
 
 
     if args.plot:
-        samples = [vae.latent_sample(s.flatten(), n=1).reshape(-1).detach().numpy() for s, _, _ in seq_train]
-        samples = np.array(samples)
-        plt.scatter(samples[:, 0], samples[:, 1], alpha=0.25, s=1.5)
-        plt.title(f"VAE z={args.latent_dim} latent representation of training data in 2D \n {args.type}")
-        plt.savefig(f"./fig/vae_z{args.latent_dim}_2d_{args.type}.png")
-        plt.show()
-        
-        fig, ax = plt.subplots(1, 1)
-        sns.regplot(delta_log_p, test_y, ax=ax, color="grey", 
-                    scatter_kws={"alpha": 0.125}, line_kws={"color": "darkred"})
-        ax.set_ylabel("measured effect")
-        ax.set_xlabel("delta log likelihood")
-        plt.suptitle("VAE loss to measured values")
-        plt.savefig(f"./fig/vae_z{args.latent_dim}_correlation_{args.type}.png")
+        # samples = [vae.latent_sample(s.flatten(), n=1).reshape(-1).detach().numpy() for s, _, _ in seq_train]
+        # samples = np.array(samples)
+        # plt.scatter(samples[:, 0], samples[:, 1], alpha=0.25, s=1.5)
+        # plt.title(f"VAE z={args.latent_dim} latent representation of training data in 2D \n {args.type}")
+        # plt.savefig(f"./fig/vae_z{args.latent_dim}_2d_{args.type}.png")
+        # plt.show()
+
+        nullfmt = NullFormatter() # no labels for histograms
+        # coord for the axes
+        left, width = 0.1, 0.65
+        bottom, height = 0.1, 0.65
+        bottom_h = left_h = left + width + 0.02
+
+        rect_scatter = [left, bottom, width, height]
+        rect_histx = [left, bottom_h, width, 0.2]
+        rect_histy = [left_h, bottom, 0.2, height]
+        # rectangular Figure
+        plt.figure(1, figsize=(8, 8))
+
+        axScatter = plt.axes(rect_scatter)
+        axHistx = plt.axes(rect_histx)
+        axHisty = plt.axes(rect_histy)
+        # no labels
+        axHistx.xaxis.set_major_formatter(nullfmt)
+        axHisty.yaxis.set_major_formatter(nullfmt)
+
+        # the scatter plot:
+        axScatter.scatter(delta_log_p, test_y, alpha=0.125)
+        xx = np.linspace(-15, 10, 1000)
+        # draw corr-coeff into plot - as 1degree polynomial
+        y = np.poly1d(np.polyfit(delta_log_p.flatten(), np.array(test_y), 1))(xx)
+        axScatter.plot(xx, y, "r--")
+        axScatter.annotate(f"r={np.round(spearman_r, 4)}", xy=(0, 0), 
+                            xycoords='data')
+        axScatter.set_xlabel("ΔELBO")
+        axScatter.set_ylabel("ΔΔG")
+        # now determine nice limits by hand:
+        binwidth = 0.25
+        xymax = np.max([np.max(np.fabs(delta_log_p)), np.max(np.fabs(test_y))])
+        lim = (int(xymax/binwidth) + 1) * binwidth
+        axScatter.set_xlim((-lim, lim/4))
+        axScatter.set_ylim((-lim/2, lim/2))
+
+        bins = np.arange(-lim, lim + binwidth, binwidth)
+        axHistx.hist(delta_log_p, bins=bins, alpha=0.75)
+        axHisty.hist(test_y, bins=bins, orientation='horizontal', alpha=0.75)
+
+        axHistx.set_xlim(axScatter.get_xlim())
+        axHisty.set_ylim(axScatter.get_ylim())
+        axHistx.set_title(f"VAE ΔELBO to measurements - {args.type.upper()}")
+        plt.tight_layout()
+        plt.savefig(f"./fig/vae_z{args.latent_dim}_correlation_{args.type}.png",
+                        bbox="tight")
         plt.show()
     
     # if args.sample_vae:
