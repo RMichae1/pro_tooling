@@ -54,7 +54,7 @@ if __name__ == "__main__":
     parser.add_argument("-d", "--dropout", type=float, default=0.065, help="Add Dropout layer with dropout probability.")
     parser.add_argument("-sw", "--sequence_weighting", action="store_false", # TODO reverse action
                         help="Weighing input sequences in the training procedure.")
-    parser.add_argument("-t", "--type", choices=VAE_TYPES, default="pga", help="Type ID of MSA used to create VAE.")
+    parser.add_argument("-t", "--type", choices=VAE_TYPES, default="blat", help="Type ID of MSA used to create VAE.")
     parser.add_argument("-p", "--plot", action="store_false", help="Plot low-latent-representation outputs and feature correlation.")
     parser.add_argument("--sample_vae", action="store_true", help="Prepare in-silico sample.")
     args = parser.parse_args()  # TODO change weighting to store_true
@@ -208,16 +208,16 @@ if __name__ == "__main__":
         # draw corr-coeff into plot - as 1degree polynomial
         y = np.poly1d(np.polyfit(delta_log_p.flatten(), np.array(test_y), 1))(xx)
         axScatter.plot(xx, y, "r--")
-        axScatter.annotate(f"r={np.round(spearman_r, 4)}", xy=(0, 0), 
+        axScatter.annotate(f"r={np.round(spearman_r, 4)}", xy=(2, 0), 
                             xycoords='data')
         axScatter.set_xlabel("ΔELBO")
-        axScatter.set_ylabel("ΔΔG")
+        axScatter.set_ylabel("growth rate \n at 2500 μg/ml of ampicillin")
         # now determine nice limits by hand:
         binwidth = 0.25
         xymax = np.max([np.max(np.fabs(delta_log_p)), np.max(np.fabs(test_y))])
         lim = (int(xymax/binwidth) + 1) * binwidth
         axScatter.set_xlim((-lim, lim/4))
-        axScatter.set_ylim((-lim/2, lim/2))
+        axScatter.set_ylim((-lim/4, lim/12))
 
         bins = np.arange(-lim, lim + binwidth, binwidth)
         axHistx.hist(delta_log_p, bins=bins, alpha=0.75)

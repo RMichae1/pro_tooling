@@ -10,12 +10,11 @@ import mlflow
 from parse_data import parse_BLAT, parse_UBQ, parse_PGA, parse_TLL
 from visualization import plot_SVAE_matrix, plot_VAE_kernel_values, plot_eigenvalues
 
-# DATA_DICT = {"blat": "2lzm", "sp400": "", "ubq": "1ubq", 
-#             "pga": "1pga", "hexo": ""}
-DATA_DICT = {"blat": "2lzm",
-             "ubq": "1ubq",
-             "pga": "1pga",
+DATA_DICT = {"pga": "1pga",
+             #"ubq": "1ubq",
+             #"blat": "1fqg",
              }
+
 VAE_TYPES = list(DATA_DICT.keys())
 PDB_FILES = list(DATA_DICT.values())
 VAE_PARAMETERS = {"LATENT_DIM": 55, "ENCODER_DIM": [1700],
@@ -29,9 +28,11 @@ def run_and_plot_S_matrix(vae_type, vae, sequences, run_suffix=""):
     """
     s_k = VaeKernel(vae)
     # S_mat_fam = s_k.compute_S_matrix(sequences[:1000, :], normalize=False)
-    # plot_SVAE_matrix(S_mat_fam, name_suffix=vae_type.upper(), run_suffix=run_suffix+" not normalized")
+    # plot_SVAE_matrix(S_mat_fam, name_suffix=vae_type.upper(), 
+    #             run_suffix=run_suffix+" not normalized")
     S_mat_fam_norm = s_k.compute_S_matrix(sequences[:1000, :], normalize=True)
-    plot_SVAE_matrix(S_mat_fam_norm, name_suffix=vae_type.upper(), run_suffix=run_suffix+" normalized")
+    plot_SVAE_matrix(S_mat_fam_norm, name_suffix=vae_type.upper(), 
+                run_suffix=run_suffix+" normalized")
 
 
 def run_and_plot_kernel(vae_type, vae, family_seqs, test_seqs, adjacencies,
@@ -40,12 +41,12 @@ def run_and_plot_kernel(vae_type, vae, family_seqs, test_seqs, adjacencies,
     test_seqs = test_seqs[:subset_n, :] if subset_n else test_seqs
 
     v_k = VaeKernel(vae, normalize_S=normalize_S, eigen=True)
-    s_vae_val_fam = v_k.k(family_seqs, adjacencies=adjacencies, normalize_k=normalize_k)
+    s_vae_val_fam = v_k.k(family_seqs[:1000, :], adjacencies=adjacencies, normalize_k=normalize_k)
     s_fam_eigen = v_k.eigen_values
     v_k.eigen_values = []
     fam_eigen_vec_real = np.stack([eig.real for eig in s_fam_eigen]).flatten()
     fam_eigen_vec_imag = np.stack([eig.imag for eig in s_fam_eigen]).flatten()
-    s_vae_val_test = v_k.k(test_seqs, adjacencies=adjacencies, normalize_k=normalize_k)
+    s_vae_val_test = v_k.k(test_seqs[:1000, :], adjacencies=adjacencies, normalize_k=normalize_k)
     s_test_eigen = v_k.eigen_values
     v_k.eigen_values = []
     test_eigen_vec_real = np.stack([eig.real for eig in s_test_eigen]).flatten()
@@ -81,8 +82,8 @@ def experiment_routine(vae_type, family_seqs, test_seqs):
     vae.eval()
     pdb_name = DATA_DICT.get(vae_type)
     # DERIVE S MATRIX
-    run_and_plot_S_matrix(vae_type=vae_type, vae=vae, sequences=family_seqs, run_suffix="MSA ")
-    run_and_plot_S_matrix(vae_type=vae_type, vae=vae, sequences=test_seqs, run_suffix="SSL ")
+    # run_and_plot_S_matrix(vae_type=vae_type, vae=vae, sequences=family_seqs, run_suffix="MSA ")
+    # run_and_plot_S_matrix(vae_type=vae_type, vae=vae, sequences=test_seqs, run_suffix="SSL ")
     # TEST KERNEL
     contact_map = ContactMapper(pdb_file=f"./pdb/{pdb_name}.pdb", tri_dist=True)
     ref_adj = contact_map.adjacency
@@ -99,26 +100,14 @@ def experiment_routine(vae_type, family_seqs, test_seqs):
     # run_and_plot_kernel(vae_type=vae_type, vae=vae, family_seqs=family_seqs,
     #                     test_seqs=test_seqs, adjacencies=ref_adj,
     #                     normalize_S=True, normalize_k=True, marginal_not_i=False, subset_n=100)
-    # # MARGINAL LIKELIHOOD P_X_NOT_I
-    # run_and_plot_kernel(vae_type=vae_type, vae=vae, family_seqs=family_seqs,
-    #                     test_seqs=test_seqs, adjacencies=ref_adj,
-    #                     normalize_S=False, normalize_k=False, marginal_not_i=True, subset_n=100)
-    # run_and_plot_kernel(vae_type=vae_type, vae=vae, family_seqs=family_seqs,
-    #                     test_seqs=test_seqs, adjacencies=ref_adj,
-    #                     normalize_S=True, normalize_k=False, marginal_not_i=True, subset_n=100)
-    # # run_and_plot_kernel(vae_type=vae_type, vae=vae, family_seqs=family_seqs,
-    # #                     test_seqs=test_seqs, adjacencies=ref_adj,
-    # #                     normalize_S=False, normalize_k=True, marginal_not_i=True)
-    run_and_plot_kernel(vae_type=vae_type, vae=vae, family_seqs=family_seqs,
-                        test_seqs=test_seqs, adjacencies=ref_adj,
-                        normalize_S=True, normalize_k=True, subset_n=100)
     # select subset for plotting DIFFs
     # run_and_plot_kernel(vae_type=vae_type, vae=vae, family_seqs=family_seqs,
     #                     test_seqs=test_seqs, adjacencies=ref_adj,
-    #                     normalize_S=False, normalize_k=False, marginal_not_i=True, subset_n=20)
-    # run_and_plot_kernel(vae_type=vae_type, vae=vae, family_seqs=family_seqs,
-    #                     test_seqs=test_seqs, adjacencies=ref_adj,
-    #                     normalize_S=True, normalize_k=True, marginal_not_i=True, subset_n=20)
+    #                     normalize_S=True, normalize_k=False, subset_n=20)
+    run_and_plot_kernel(vae_type=vae_type, vae=vae, family_seqs=family_seqs,
+                        test_seqs=test_seqs, adjacencies=ref_adj,
+                        normalize_S=True, normalize_k=True, 
+                        subset_n=20)
 
 
 if __name__ == "__main__":
@@ -135,8 +124,6 @@ if __name__ == "__main__":
     for v in args.vae_type:
         if v == "blat":
             family_seqs, test_seqs, _ = parse_BLAT()
-        elif v == "sp400":
-            family_seqs, test_seqs, _ = parse_TLL()
         elif v == "pga":
             family_seqs, test_seqs, _ = parse_PGA()
         elif v == "ubq":

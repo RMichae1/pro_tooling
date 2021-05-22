@@ -1,6 +1,7 @@
 import pickle
 import os
 import numpy as np
+from numpy.lib import save
 import torch
 from numpy.core.shape_base import atleast_1d
 from scipy.io import loadmat
@@ -195,7 +196,7 @@ def plot_mean_over_weights(proteins: list, save_fig="./fig", dir="./results/", s
     plt.show()
 
 
-def generate_results_table(df, cvs=["pos.lvl.", "mut.lvl."], 
+def generate_mGPfusion_results_table(df, cvs=["pos.lvl.", "mut.lvl."], 
     method=["mGPfusion", "2σ mGPfusion", "NO mGPfusion", "NO 2σ mGPfusion"], measures=["ρ", "rmse"]) -> None:
     """
     extract rho rmse from result directory structure
@@ -248,8 +249,130 @@ def generate_results_table(df, cvs=["pos.lvl.", "mut.lvl."],
         rmse = compute_rmse(sub_df.y, sub_df.mu)
         results_df.loc[(p, "2σ mGPfusion"), ("ρ", "mut.lvl.")] = rho
         results_df.loc[(p, "2σ mGPfusion"), ("rmse", "mut.lvl.")] = rmse
-        # mGP
-        # TODO
+    return results_df
+
+
+def generate_results_table(df, cvs=["25% pos.lvl.", "50% pos.lvl.", "100% pos.lvl."], 
+    method=["mGP", "mGP+ΔELBO", "mGP+DES-kernel", "mGP+ΔE+DK"], measures=["ρ", "rmse", "r"]) -> None:
+    """
+    """
+    proteins = df.pdb.unique()
+    idx = pd.MultiIndex.from_product([proteins, method], 
+        names=["Protein", "Method"])
+    cols = pd.MultiIndex.from_product([measures, cvs], names=["measure", "CV"])
+    results_df = pd.DataFrame(data=np.zeros([len(idx), len(cols)]), index=idx, columns=cols)
+    for p in proteins:
+        # pos lvl CV 25% uniform sample from training data
+        sub_df = df[(df.pdb==p) & (df.method=="mGP") & (df.CV == "pos_lvl") & (df.fraction == "0.25")]
+        rho = compute_ρ(sub_df.y, sub_df.mu)
+        r = spearmanr(sub_df.y, sub_df.mu).correlation
+        rmse = compute_rmse(sub_df.y, sub_df.mu)
+        results_df.loc[(p, "mGP"), ("ρ", "25% pos.lvl.")] = rho
+        results_df.loc[(p, "mGP"), ("r", "25% pos.lvl.")] = r
+        results_df.loc[(p, "mGP"), ("rmse", "25% pos.lvl.")] = rmse
+        sub_df = df[(df.pdb==p) & (df.method=="mGP_dELBO") & (df.CV == "pos_lvl") & (df.fraction == "0.25")]
+        rho = compute_ρ(sub_df.y, sub_df.mu)
+        r = spearmanr(sub_df.y, sub_df.mu).correlation
+        rmse = compute_rmse(sub_df.y, sub_df.mu)
+        results_df.loc[(p, "mGP+ΔELBO"), ("ρ", "25% pos.lvl.")] = rho
+        results_df.loc[(p, "mGP+ΔELBO"), ("r", "25% pos.lvl.")] = r
+        results_df.loc[(p, "mGP+ΔELBO"), ("rmse", "25% pos.lvl.")] = rmse
+        sub_df = df[(df.pdb==p) & (df.method=="mGP_DESkernel") & (df.CV == "pos_lvl") & (df.fraction == "0.25")]
+        rho = compute_ρ(sub_df.y, sub_df.mu)
+        r = spearmanr(sub_df.y, sub_df.mu).correlation
+        rmse = compute_rmse(sub_df.y, sub_df.mu)
+        results_df.loc[(p, "mGP+DES-kernel"), ("ρ", "25% pos.lvl.")] = rho
+        results_df.loc[(p, "mGP+DES-kernel"), ("r", "25% pos.lvl.")] = r
+        results_df.loc[(p, "mGP+DES-kernel"), ("rmse", "25% pos.lvl.")] = rmse
+        sub_df = df[(df.pdb==p) & (df.method=="mGP_dELBO_DESkernel") & (df.CV == "pos_lvl") & (df.fraction == "0.25")]
+        rho = compute_ρ(sub_df.y, sub_df.mu)
+        r = spearmanr(sub_df.y, sub_df.mu).correlation
+        rmse = compute_rmse(sub_df.y, sub_df.mu)
+        results_df.loc[(p, "mGP+ΔE+DK"), ("ρ", "25% pos.lvl.")] = rho
+        results_df.loc[(p, "mGP+ΔE+DK"), ("r", "25% pos.lvl.")] = r
+        results_df.loc[(p, "mGP+ΔE+DK"), ("rmse", "25% pos.lvl.")] = rmse
+
+        # pos lvl CV 50% uniform sample from training data
+        sub_df = df[(df.pdb==p) & (df.method=="mGP") & (df.CV == "pos_lvl") & (df.fraction == "0.5")]
+        rho = compute_ρ(sub_df.y, sub_df.mu)
+        rmse = compute_rmse(sub_df.y, sub_df.mu)
+        r = spearmanr(sub_df.y, sub_df.mu).correlation
+        results_df.loc[(p, "mGP"), ("ρ", "50% pos.lvl.")] = rho
+        results_df.loc[(p, "mGP"), ("rmse", "50% pos.lvl.")] = rmse
+        results_df.loc[(p, "mGP"), ("r", "50% pos.lvl.")] = r
+        sub_df = df[(df.pdb==p) & (df.method=="mGP_dELBO") & (df.CV == "pos_lvl") & (df.fraction == "0.5")]
+        rho = compute_ρ(sub_df.y, sub_df.mu)
+        rmse = compute_rmse(sub_df.y, sub_df.mu)
+        r = spearmanr(sub_df.y, sub_df.mu).correlation
+        results_df.loc[(p, "mGP+ΔELBO"), ("ρ", "50% pos.lvl.")] = rho
+        results_df.loc[(p, "mGP+ΔELBO"), ("rmse", "50% pos.lvl.")] = rmse
+        results_df.loc[(p, "mGP+ΔELBO"), ("r", "50% pos.lvl.")] = r
+        sub_df = df[(df.pdb==p) & (df.method=="mGP_DESkernel") & (df.CV == "pos_lvl") & (df.fraction == "0.5")]
+        rho = compute_ρ(sub_df.y, sub_df.mu)
+        rmse = compute_rmse(sub_df.y, sub_df.mu)
+        r = spearmanr(sub_df.y, sub_df.mu).correlation
+        results_df.loc[(p, "mGP+DES-kernel"), ("ρ", "50% pos.lvl.")] = rho
+        results_df.loc[(p, "mGP+DES-kernel"), ("rmse", "50% pos.lvl.")] = rmse
+        results_df.loc[(p, "mGP+DES-kernel"), ("r", "50% pos.lvl.")] = r
+        sub_df = df[(df.pdb==p) & (df.method=="mGP_dELBO_DESkernel") & (df.CV == "pos_lvl") & (df.fraction == "0.5")]
+        rho = compute_ρ(sub_df.y, sub_df.mu)
+        rmse = compute_rmse(sub_df.y, sub_df.mu)
+        r = spearmanr(sub_df.y, sub_df.mu).correlation
+        results_df.loc[(p, "mGP+ΔE+DK"), ("ρ", "50% pos.lvl.")] = rho
+        results_df.loc[(p, "mGP+ΔE+DK"), ("rmse", "50% pos.lvl.")] = rmse
+        results_df.loc[(p, "mGP+ΔE+DK"), ("r", "50% pos.lvl.")] = r
+
+        # pos lvl CV 50% uniform sample from training data
+        sub_df = df[(df.pdb==p) & (df.method=="mGP") & (df.CV == "pos_lvl") & (df.fraction == "1.0")]
+        rho = compute_ρ(sub_df.y, sub_df.mu)
+        rmse = compute_rmse(sub_df.y, sub_df.mu)
+        r = spearmanr(sub_df.y, sub_df.mu).correlation
+        results_df.loc[(p, "mGP"), ("ρ", "100% pos.lvl.")] = rho
+        results_df.loc[(p, "mGP"), ("rmse", "100% pos.lvl.")] = rmse
+        results_df.loc[(p, "mGP"), ("r", "100% pos.lvl.")] = r
+        sub_df = df[(df.pdb==p) & (df.method=="mGP_dELBO") & (df.CV == "pos_lvl") & (df.fraction == "1.0")]
+        rho = compute_ρ(sub_df.y, sub_df.mu)
+        rmse = compute_rmse(sub_df.y, sub_df.mu)
+        r = spearmanr(sub_df.y, sub_df.mu).correlation
+        results_df.loc[(p, "mGP+ΔELBO"), ("ρ", "100% pos.lvl.")] = rho
+        results_df.loc[(p, "mGP+ΔELBO"), ("rmse", "100% pos.lvl.")] = rmse
+        results_df.loc[(p, "mGP+ΔELBO"), ("r", "100% pos.lvl.")] = r
+        sub_df = df[(df.pdb==p) & (df.method=="mGP_DESkernel") & (df.CV == "pos_lvl") & (df.fraction == "1.0")]
+        rho = compute_ρ(sub_df.y, sub_df.mu)
+        rmse = compute_rmse(sub_df.y, sub_df.mu)
+        r = spearmanr(sub_df.y, sub_df.mu).correlation
+        results_df.loc[(p, "mGP+DES-kernel"), ("ρ", "100% pos.lvl.")] = rho
+        results_df.loc[(p, "mGP+DES-kernel"), ("rmse", "100% pos.lvl.")] = rmse
+        results_df.loc[(p, "mGP+DES-kernel"), ("r", "100% pos.lvl.")] = r
+        sub_df = df[(df.pdb==p) & (df.method=="mGP_dELBO_DESkernel") & (df.CV == "pos_lvl") & (df.fraction == "1.0")]
+        rho = compute_ρ(sub_df.y, sub_df.mu)
+        rmse = compute_rmse(sub_df.y, sub_df.mu)
+        r = spearmanr(sub_df.y, sub_df.mu).correlation
+        results_df.loc[(p, "mGP+ΔE+DK"), ("ρ", "100% pos.lvl.")] = rho
+        results_df.loc[(p, "mGP+ΔE+DK"), ("rmse", "100% pos.lvl.")] = rmse
+        results_df.loc[(p, "mGP+ΔE+DK"), ("r", "100% pos.lvl.")] = r
+
+        # # mut lvl CV
+        # sub_df = df[(df.pdb==p) & (df.reference==False) & (df.optimization==False) & (df.CV == "mut_lvl")]
+        # rho = compute_ρ(sub_df.y, sub_df.mu)
+        # rmse = compute_rmse(sub_df.y, sub_df.mu)
+        # results_df.loc[(p, "NO mGPfusion"), ("ρ", "mut.lvl.")] = rho
+        # results_df.loc[(p, "NO mGPfusion"), ("rmse", "mut.lvl.")] = rmse
+        # sub_df = df[(df.pdb==p) & (df.reference==True) & (df.optimization==False) & (df.CV == "mut_lvl")]
+        # rho = compute_ρ(sub_df.y, sub_df.mu)
+        # rmse = compute_rmse(sub_df.y, sub_df.mu)
+        # results_df.loc[(p, "NO 2σ mGPfusion"), ("ρ", "mut.lvl.")] = rho
+        # results_df.loc[(p, "NO 2σ mGPfusion"), ("rmse", "mut.lvl.")] = rmse
+        # sub_df = df[(df.pdb==p) & (df.reference==False) & (df.optimization==True) & (df.CV == "mut_lvl")]
+        # rho = compute_ρ(sub_df.y, sub_df.mu)
+        # rmse = compute_rmse(sub_df.y, sub_df.mu)
+        # results_df.loc[(p, "mGPfusion"), ("ρ", "mut.lvl.")] = rho
+        # results_df.loc[(p, "mGPfusion"), ("rmse", "mut.lvl.")] = rmse
+        # sub_df = df[(df.pdb==p) & (df.reference==True) & (df.optimization==True) & (df.CV == "mut_lvl")]
+        # rho = compute_ρ(sub_df.y, sub_df.mu)
+        # rmse = compute_rmse(sub_df.y, sub_df.mu)
+        # results_df.loc[(p, "2σ mGPfusion"), ("ρ", "mut.lvl.")] = rho
+        # results_df.loc[(p, "2σ mGPfusion"), ("rmse", "mut.lvl.")] = rmse
     return results_df
 
 # def get_all_predictions_and_ys(pdbs, dir):
@@ -271,7 +394,7 @@ def root_mean_squared_error(y, pred):
     return np.sqrt(mean_squared_error(y, pred))
 
 
-def plot_results_table(df, save_fig="./fig/"):
+def plot_mGPfusion_results_table(df, save_fig="./fig/"):
     df.reset_index(inplace=True)
     fig, ax = plt.subplots(1, 2)
     f1 = sns.boxenplot(y=df["ρ", "pos.lvl."], x=df["Method"], ax=ax[0])
@@ -280,15 +403,47 @@ def plot_results_table(df, save_fig="./fig/"):
     f2.set_xticklabels(f2.get_xticklabels(), rotation=30, ha='right')
     plt.tight_layout()
     #plt.suptitle(f"GP Methods\n (pos-lvl CV)")
-    plt.savefig(f"{save_fig}/method_results_boxen.png")
+    plt.savefig(f"{save_fig}/mGPfusion_method_results_boxen.png")
     plt.show()
 
 
-def plot_pos_lvl_gpr_individual(df, opt: bool, ref: bool, save_fig="./fig/", suffix="", y_n=3, x_n=4, x_range=(-11, 6), y_range=(-11,6)) -> None:
-    df = df[(df.optimization == opt) & (df.reference == ref) & (df.CV == "pos_lvl")]
+def plot_results_table(df, save_fig="./fig/"):
+    df.reset_index(inplace=True)
+    fig, ax = plt.subplots(1, 3, figsize=(15, 10))
+    for i, metric in enumerate(["ρ", "r", "rmse"]):
+        _df = df[["Protein", "Method", metric]]
+        _df = pd.melt(df[["Protein", "Method", metric]], id_vars=["Protein", "Method"], var_name=[metric], value_name="value")
+        f = sns.boxenplot(y=_df["value"], x=_df["Protein"], hue=_df["Method"], ax=ax[i])
+        f.legend([])
+        f.set_xticklabels(f.get_xticklabels(), rotation=30, ha='right')
+        ax[i].set_title(f"{metric}")
+    plt.legend(bbox_to_anchor=(1.05, 1), loc=2, borderaxespad=0.)
+    plt.suptitle(f"GP Methods \n (computed over all predictions from pos-lvl CV)")
+    plt.tight_layout()
+    plt.savefig(f"{save_fig}/total_method_results_boxen_ALL_predictions.png")
+    plt.show()
+
+
+def plot_metric_results_table(df, save_fig="./fig/"):
+    fig, ax = plt.subplots(1, 2, figsize=(15, 10))
+    f1 = sns.boxenplot(y=df["spearman r"], x=df["pdb"], hue=df["method"], ax=ax[0])
+    f2 = sns.boxenplot(y=df["mse"], x=df["pdb"], hue=df["method"], ax=ax[1])
+    f1.set_xticklabels(f1.get_xticklabels(), rotation=30, ha='right')
+    f1.legend([])
+    f2.set_xticklabels(f2.get_xticklabels(), rotation=30, ha='right')
+    f2.legend([])
+    plt.legend(bbox_to_anchor=(1.05, 1), loc=2, borderaxespad=0.)
+    plt.suptitle(f"GP Methods \n (position metrics, pos-lvl CV)")
+    plt.tight_layout()
+    plt.savefig(f"{save_fig}/total_method_results_position_metrics_boxen.png")
+    plt.show()
+
+
+def plot_pos_lvl_gpr_individual(df, method: str, save_fig="./fig/", suffix="", y_n=3, x_n=4, x_range=(-11, 6), y_range=(-11,6)) -> None:
+    df = df[(df.method == method) & (df.CV == "pos_lvl") & (df.fraction == "1.0")]
     proteins = df.pdb.unique()
     assert x_n*y_n >= len(proteins)
-    filename = os.path.join(save_fig, f"gpr_pos_lvl_individual_opt{opt}_ref{ref}_{suffix}.png")
+    filename = os.path.join(save_fig, f"{method}_gpr_pos_lvl_individual_{suffix}.png")
     fig, ax = plt.subplots(y_n, x_n, figsize=(15,15))
     index = [(i,j) for i in range(y_n) for j in range(x_n)]
     for (i,j), p in zip(index, proteins):
@@ -300,23 +455,33 @@ def plot_pos_lvl_gpr_individual(df, opt: bool, ref: bool, save_fig="./fig/", suf
         y = df[df.pdb==p].y
         mutations = df[df.pdb==p].mutations
         mapped_color = [colormap[mut-1] for mut in mutations]
-        ax[i, j].scatter(y, mu, s=100., color=mapped_color, edgecolors="darkgrey")
+        ax[i, j].scatter(y, mu, s=50., color=mapped_color, edgecolors="darkgrey", alpha=0.25)
         ax[i, j].set_title(f"{p}", fontsize=12)
-    # TODO delete axes from a range of diff values between proteins and provided last axis length
-    fig.delaxes(ax[2][3])
-    fig.delaxes(ax[2][2])
+    #fig.delaxes(ax[2][3])
+    #fig.delaxes(ax[2][2])
     fig.legend(handles=mutation_legend_handle, loc="lower right", title="Number of mutations")
     for i in range(y_n):
-        ax[i,0].set_ylabel("predicted ΔΔG", fontsize=12)
+        ax[i,0].set_ylabel("predicted property", fontsize=12)
     for i in range(x_n):
-        ax[y_n-1,i].set_xlabel("experimental ΔΔG", fontsize=12)
-    plt.suptitle(f"GP Regression\n (pos-lvl CV optimization:{opt} 2σ:{ref})\n{suffix}")
+        ax[y_n-1,i].set_xlabel("experimental property", fontsize=12)
+    plt.suptitle(f"GP Regression\n ({method}) \n{suffix}")
+    plt.savefig(filename)
+    plt.show()
+
+def plot_uncertainty_prediction_gpr(df, method: str, save_fig="./fig/", pdb="1fqg"):
+    df = df[(df.method==method) & (df.fraction=="1.0") & (df.fraction==pdb.upper())].iloc[:5, :]
+    fig, ax = plt.subplots(1, 1, figsize=(5,5))
+    ax.errorbar(x=df.y, y=df.mu, yerr=df.cov, fmt="o")
+    ax.set_xlabel("predicted value")
+    ax.set_ylabel("experimental observation")
+    plt.title(f"Individual Predictions \n β-Lactamase, {method}")
+    filename = os.path.join(save_fig, f"{method}_gpr_individual_predictions_certainty.png")
     plt.savefig(filename)
     plt.show()
 
 
 def plot_mut_lvl_gpr_individual(df, opt: bool, ref: bool, save_fig="./fig/", suffix="", y_n=3, x_n=4, x_range=(-11,6), y_range=(-11,6)) -> None:
-    df = df[(df.optimization == opt) & (df.reference == ref) & (df.CV == "mut_lvl")]
+    df = df[(df.method == opt) & (df.reference == ref) & (df.CV == "mut_lvl")]
     proteins = df.pdb.unique()
     assert x_n*y_n >= len(proteins)
     filename = os.path.join(save_fig, f"gpr_mut_lvl_individual_opt{opt}_ref{ref}_{suffix}.png")
@@ -342,11 +507,12 @@ def plot_mut_lvl_gpr_individual(df, opt: bool, ref: bool, save_fig="./fig/", suf
     plt.savefig(filename)
     plt.show()
 
-def plot_pos_lvl_gpr_total(df, opt: bool, ref: bool, results_dir="./results/mGPfusion", 
+
+def plot_pos_lvl_gpr_total(df, method: str, results_dir="./results/mGPfusion", 
     save_fig="./fig/", suffix="", title="") -> None:
-    df = df[(df.optimization == opt) & (df.reference == ref)]
+    df = df[(df.method == method) & (df.fraction == "1.0")]
     proteins = df.pdb.unique()
-    filename = os.path.join(save_fig, f"gpr_pos_lvl_total_opt{opt}_ref{ref}_{suffix}.png")
+    filename = os.path.join(save_fig, f"{method}_gpr_pos_lvl_total_{suffix}.png")
     fig, ax = plt.subplots(1,1, figsize=(10,10))
     ax.axline((-4, -4), (4, 4), color="grey", linestyle="--")
     ax.grid(True)
@@ -365,14 +531,52 @@ def plot_pos_lvl_gpr_total(df, opt: bool, ref: bool, results_dir="./results/mGPf
         mut = stacked_measures[2, equal_idx][0]
         ax.plot([x, x], [y_min, y_max], color=colormap[int(mut-1)], alpha=0.25, linewidth=8)
     mapped_color = [colormap[mut-1] for mut in mutations]
-    ax.scatter(ys, predictions, s=100., color=mapped_color, edgecolors="darkgrey")
+    ax.scatter(ys, predictions, s=100., color=mapped_color, edgecolors="darkgrey", alpha=0.5)
     fig.legend(handles=mutation_legend_handle, loc="lower right", title="Number of mutations")
-    ax.set_xlabel("experimental ΔΔG", fontsize=18)
-    ax.set_ylabel("predicted ΔΔG", fontsize=18)
+    ax.set_xlabel("experimental property", fontsize=18)
+    ax.set_ylabel("predicted property", fontsize=18)
     ax.legend()
-    plt.title(f"GP Regression Results \n (position lvl CV) {suffix}")
+    plt.title(f"GP Regression Results \n ({method} position lvl CV) {suffix}")
     if title:
         plt.title(title)
+    plt.savefig(filename)
+    plt.show()
+
+
+def plot_metrics_method(df, method: str, save_fig="./fig/", fraction=None, pos=100) -> None:
+    df = df[(df.method == method)]
+    if fraction:
+        df = df[df.fraction == fraction]
+    if method:
+        df = df[df.method == method]
+    fig, ax = plt.subplots(1, 2, figsize=(15, 8))
+    for p, col in zip(df.pdb.unique(), ["k", "b", "g"]):
+        _df = df[df.pdb == p]
+        x = _df.position.unique()
+        x.sort()
+        y_r = _df[["position", "spearman r"]].groupby("position").mean()
+        y_r_low = np.array([v[0] for v in _df[["position", "spearman r"]].groupby("position").min().values])
+        y_r_up = np.array([v[0] for v in _df[["position", "spearman r"]].groupby("position").max().values])
+        y_mse = _df[["position", "mse"]].groupby("position").mean()
+        y_mse_low = np.array([v[0] for v in _df[["position", "mse"]].groupby("position").min().values])
+        y_mse_up = np.array([v[0] for v in _df[["position", "mse"]].groupby("position").max().values])
+        ax[0].plot(x[:pos], y_r.values.flatten()[:pos], f'{col}o-', label=f"μ {p[1:].lower()}", alpha=1.)
+        ax[0].plot(x[:pos], y_r_low.flatten()[:pos], f'{col}+', alpha=0.5)
+        ax[0].plot(x[:pos], y_r_up.flatten()[:pos], f'{col}+', alpha=0.5)                        
+        ax[1].plot(x[:pos], y_mse.values.flatten()[:pos], f'{col}o-',
+                        label=f"μ {p[1:].lower()}", alpha=1.)
+        ax[1].plot(x[:pos], y_mse_low.flatten()[:pos], f'{col}+', alpha=0.5)
+        ax[1].plot(x[:pos], y_mse_up.flatten()[:pos], f'{col}+', alpha=0.5)            
+    ax[0].set_title("Spearman r")
+    ax[0].set_xlabel("position")
+    ax[0].set_ylabel("r")
+    ax[0].legend()
+    ax[1].set_title("MSE")
+    ax[1].set_xlabel("position")
+    ax[1].set_xlabel("mse")
+    ax[1].legend()
+    plt.suptitle(f"Position-wise metrics \n {method}")
+    filename = os.path.join(save_fig, f"{method}_metrics_over_positions_{fraction}.png")
     plt.savefig(filename)
     plt.show()
     
@@ -433,7 +637,6 @@ def plot_log_prob(lml, mutations, x_test, y) -> None:
 
 
 def plot_covariance_matrices(pcol, mats) -> None:
-    
     labels = ["".join([m for m in mut]) for mut in pcol.mutation_ids[:10]]
     for mat in mats:
         fig, ax = plt.subplots(1, 1, figsize=(10,10))
