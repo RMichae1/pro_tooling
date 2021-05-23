@@ -3,7 +3,7 @@ import pandas as pd
 from protein_representation import ProteinCollection
 from contact_mapper import ContactMapper
 import pickle
-from utility import convert_aa_sequence
+from utility import convert_aa_sequence, parse_mutations
 
 
 def parse_alignment(a2m_filename: str, drop_lowercase=True) -> pd.DataFrame:
@@ -59,6 +59,20 @@ def parse_BLAT():
     test_seqs = convert_aa_sequence(test_blat_df.sequences)
     test_y = np.array(test_blat_df.assay, dtype=float)
     return family_seqs, test_seqs, test_y
+
+
+def parse_BLAT_exp_all():
+    cm = ContactMapper(pdb_file="./pdb/1fqg.pdb", pdb_ID="1FQG")
+    blat_df = pd.read_csv("./data/blat/BLAT_ECOLX_Ranganathan2015.csv")
+    blat_df["growth"] = blat_df["2500"].astype(float)
+    blat_df["mutation_idx"] = blat_df.mutant.str[1:-1].astype(int) - 23
+    blat_df["mutant"] = blat_df.mutant.str[0] + blat_df.mutation_idx.astype(str) + blat_df.mutant.str[-1]
+    mutations = list(zip(blat_df.mutant, blat_df.growth))
+    mutations_dict = {"1FQG": mutations}
+    p = ProteinCollection(contactmap=cm, pdb_ID="1FQG", mutations_exp=mutations_dict)
+    exp_seqs = ["".join(s) for s in p.mut_S_exp]
+    test_seqs = convert_aa_sequence(exp_seqs)
+    return test_seqs, p.ΔΔg_exp
 
 
 def parse_TLL():

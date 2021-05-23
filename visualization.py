@@ -469,13 +469,24 @@ def plot_pos_lvl_gpr_individual(df, method: str, save_fig="./fig/", suffix="", y
     plt.show()
 
 def plot_uncertainty_prediction_gpr(df, method: str, save_fig="./fig/", pdb="1fqg"):
-    df = df[(df.method==method) & (df.fraction=="1.0") & (df.fraction==pdb.upper())].iloc[:5, :]
+    specific_vals = ("-0.00978", "-1.0108", "-0.594")
+    val_select = ((df.y.astype(str).str.startswith(specific_vals[0])) | (df.y.astype(str).str.startswith(specific_vals[1])) | (df.y.astype(str).str.startswith(specific_vals[2])))
+    df = df[(df.method==method) & (df.fraction=="1.0") & 
+            (df.pdb==pdb.upper()) & val_select].sort_values(by=['y'])
     fig, ax = plt.subplots(1, 1, figsize=(5,5))
-    ax.errorbar(x=df.y, y=df.mu, yerr=df.cov, fmt="o")
+    ax.set_xlim((-3, 1.5))
+    ax.set_ylim((-3, 1.5))
+    ax.errorbar(x=df["y"].values, y=df["mu"].values, yerr=df["cov"].values, 
+                fmt="ro", capsize=2, markeredgecolor="grey", markersize=10.)
+    for idx, (mu, var, y) in enumerate(zip(df["mu"].values, df["cov"].values, df["y"].values)):
+        xx = np.arange(-3, 3, 0.1)
+        f = norm.pdf(xx, mu, np.sqrt(var))
+        x_vals = np.array(y+f)
+        ax.plot(x_vals, xx, "k--", alpha=0.25)
     ax.set_xlabel("predicted value")
     ax.set_ylabel("experimental observation")
     plt.title(f"Individual Predictions \n β-Lactamase, {method}")
-    filename = os.path.join(save_fig, f"{method}_gpr_individual_predictions_certainty.png")
+    filename = os.path.join(save_fig, f"{method}_{pdb}_gpr_individual_predictions_certainty.png")
     plt.savefig(filename)
     plt.show()
 
@@ -668,6 +679,29 @@ def plot_SVAE_matrix(mat, name_suffix="", run_suffix="") -> None:
     ax.set_yticklabels(aas)
     plt.suptitle(f"S Matrix {name_suffix}")
     plt.savefig(f"./fig/kernel/S_mat_{name_suffix}_{run_suffix}.png".replace(' ', '_'))
+    plt.show()
+
+
+def plot_substitution_matrices() -> None:
+    fig, ax = plt.subplots(1, 2, figsize=(9, 5))
+    matrices = loadmat("./data/mgp/subMats.mat").get('subMats')
+    pam_mat = matrices[0][0]  # PAM by Benner 1994
+    blosum_mat = matrices[3][0]  # BLOSUM45 by Henikoff-Henikoff 1992
+    aas = [index2aa(i) for i in range(len(blosum_mat))]
+    sns.heatmap(pam_mat, ax=ax[0])
+    sns.heatmap(blosum_mat, ax=ax[1])
+    tick_set = np.arange(len(blosum_mat))+0.5
+    ax[0].set_title(f"22-29 PAM")
+    ax[0].set_xticks(tick_set)
+    ax[0].set_yticks(tick_set)
+    ax[0].set_xticklabels(aas)
+    ax[0].set_yticklabels(aas)
+    ax[1].set_title(f"BLOSUM45")
+    ax[1].set_xticks(tick_set)
+    ax[1].set_yticks(tick_set)
+    ax[1].set_xticklabels(aas)
+    ax[1].set_yticklabels(aas)
+    plt.savefig(f"./fig/substitution_matrices_original.png")
     plt.show()
 
 

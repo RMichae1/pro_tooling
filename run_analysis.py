@@ -129,8 +129,9 @@ def compute_metrics(parsed_results: list):
 
 
 def plot_regression_results(df):
-    # plot individual position lvl
     plot_uncertainty_prediction_gpr(df, method="mGP")
+    plot_uncertainty_prediction_gpr(df, method="mGP_dELBO")
+    plot_uncertainty_prediction_gpr(df, method="mGP_DESkernel")
     plot_pos_lvl_gpr_individual(df, method="mGP", x_range=(-5, 5), y_range=(-5, 5), x_n=3)
     plot_pos_lvl_gpr_individual(df, method="mGP_dELBO", x_range=(-5, 5), y_range=(-5, 5), x_n=3)
     plot_pos_lvl_gpr_individual(df, method="mGP_DESkernel", x_range=(-5, 5), y_range=(-5, 5), x_n=3)
@@ -143,6 +144,7 @@ def plot_regression_results(df):
 
 
 def plot_metrics_results(df):
+    # plot individual position lvl
     plot_metrics_method(df, method="mGP")
     plot_metrics_method(df, method="mGP_dELBO")
     plot_metrics_method(df, method="mGP_DESkernel")

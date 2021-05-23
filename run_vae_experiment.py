@@ -22,6 +22,7 @@ import seaborn as sns
 import matplotlib.pyplot as plt
 import random
 from parse_data import parse_BLAT, parse_UBQ, parse_PGA, parse_TLL, parse_HEX, parse_alignment, filter_alignment
+from parse_data import parse_BLAT_exp_all
 import os
 
 os.environ['KMP_DUPLICATE_LIB_OK'] = 'True'  # TODO figure out what caused OMP Error #15
@@ -63,6 +64,8 @@ if __name__ == "__main__":
 
     if args.type == "blat":
         family_seqs, test_seqs, test_y = parse_BLAT()
+        # parsing all available experimental data, no exclusion
+        test_seqs, test_y = parse_BLAT_exp_all()
     elif args.type == "sp400":
         family_seqs, test_seqs, test_y = parse_TLL(msa_filename="./data/lipase_v2/sp400family/SP400.nr.tree.aln")
     elif args.type == "pga":
@@ -171,7 +174,7 @@ if __name__ == "__main__":
         kld_values.append(loss[2].detach().numpy())
 
     delta_log_p = np.array([(l - wt_log_prob) for l in log_likelihoods], dtype=float)
-    spearman_r = spearmanr(delta_log_p, test_y).correlation
+    spearman_r = spearmanr(delta_log_p.flatten(), test_y).correlation
     print(f"Corr. (spearman) Δ ELBO and data: {spearman_r}")
 
 
