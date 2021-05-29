@@ -413,7 +413,7 @@ def plot_results_table(df, save_fig="./fig/"):
     for i, metric in enumerate(["ρ", "r", "rmse"]):
         _df = df[["Protein", "Method", metric]]
         _df = pd.melt(df[["Protein", "Method", metric]], id_vars=["Protein", "Method"], var_name=[metric], value_name="value")
-        f = sns.boxenplot(y=_df["value"], x=_df["Protein"], hue=_df["Method"], ax=ax[i])
+        f = sns.swarmplot(y=_df["value"], x=_df["Protein"], hue=_df["Method"], ax=ax[i])
         f.legend([])
         f.set_xticklabels(f.get_xticklabels(), rotation=30, ha='right')
         ax[i].set_title(f"{metric}")
@@ -560,8 +560,14 @@ def plot_metrics_method(df, method: str, save_fig="./fig/", fraction=None, pos=1
         df = df[df.fraction == fraction]
     if method:
         df = df[df.method == method]
-    fig, ax = plt.subplots(1, 2, figsize=(15, 8))
-    for p, col in zip(df.pdb.unique(), ["k", "b", "g"]):
+    fig, ax = plt.subplots(3, 2, figsize=(15, 8))
+    ax[0, 0].set_title("Spearman r")
+    ax[2, 0].set_xlabel("position")
+    ax[1, 0].set_ylabel("r")
+    ax[0, 1].set_title("MSE")
+    ax[2, 1].set_xlabel("position")
+    ax[1, 1].set_ylabel("mse")
+    for i, (p, col) in enumerate(zip(df.pdb.unique(), ["k", "b", "g"])):
         _df = df[df.pdb == p]
         x = _df.position.unique()
         x.sort()
@@ -571,21 +577,19 @@ def plot_metrics_method(df, method: str, save_fig="./fig/", fraction=None, pos=1
         y_mse = _df[["position", "mse"]].groupby("position").mean()
         y_mse_low = np.array([v[0] for v in _df[["position", "mse"]].groupby("position").min().values])
         y_mse_up = np.array([v[0] for v in _df[["position", "mse"]].groupby("position").max().values])
-        ax[0].plot(x[:pos], y_r.values.flatten()[:pos], f'{col}o-', label=f"μ {p[1:].lower()}", alpha=1.)
-        ax[0].plot(x[:pos], y_r_low.flatten()[:pos], f'{col}+', alpha=0.5)
-        ax[0].plot(x[:pos], y_r_up.flatten()[:pos], f'{col}+', alpha=0.5)                        
-        ax[1].plot(x[:pos], y_mse.values.flatten()[:pos], f'{col}o-',
+        ax[i, 0].plot(x[:pos], y_r.values.flatten()[:pos], f'{col}o', label=f"μ {p[1:].lower()}", alpha=1.)
+        ax[i, 0].plot(x[:pos], y_r_low.flatten()[:pos], f'{col}+', alpha=0.5)
+        ax[i, 0].plot(x[:pos], y_r_up.flatten()[:pos], f'{col}+', alpha=0.5)
+        ax[i, 0].set_ylim((-1,1))
+        ax[i, 0].grid(axis = 'y')                        
+        ax[i, 1].plot(x[:pos], y_mse.values.flatten()[:pos], f'{col}o',
                         label=f"μ {p[1:].lower()}", alpha=1.)
-        ax[1].plot(x[:pos], y_mse_low.flatten()[:pos], f'{col}+', alpha=0.5)
-        ax[1].plot(x[:pos], y_mse_up.flatten()[:pos], f'{col}+', alpha=0.5)            
-    ax[0].set_title("Spearman r")
-    ax[0].set_xlabel("position")
-    ax[0].set_ylabel("r")
-    ax[0].legend()
-    ax[1].set_title("MSE")
-    ax[1].set_xlabel("position")
-    ax[1].set_xlabel("mse")
-    ax[1].legend()
+        ax[i, 1].plot(x[:pos], y_mse_low.flatten()[:pos], f'{col}+', alpha=0.5)
+        ax[i, 1].plot(x[:pos], y_mse_up.flatten()[:pos], f'{col}+', alpha=0.5)
+        ax[i, 1].set_ylim((-0.1,10))
+        ax[i, 1].grid(axis = 'y')            
+        ax[i, 0].legend()
+        ax[i, 1].legend()
     plt.suptitle(f"Position-wise metrics \n {method}")
     filename = os.path.join(save_fig, f"{method}_metrics_over_positions_{fraction}.png")
     plt.savefig(filename)
@@ -688,8 +692,8 @@ def plot_substitution_matrices() -> None:
     pam_mat = matrices[0][0]  # PAM by Benner 1994
     blosum_mat = matrices[3][0]  # BLOSUM45 by Henikoff-Henikoff 1992
     aas = [index2aa(i) for i in range(len(blosum_mat))]
-    sns.heatmap(pam_mat, ax=ax[0])
-    sns.heatmap(blosum_mat, ax=ax[1])
+    sns.heatmap(pam_mat, ax=ax[0], linewidths=.5, cmap="YlGnBu")
+    sns.heatmap(blosum_mat, ax=ax[1], linewidths=.5, cmap="YlGnBu")
     tick_set = np.arange(len(blosum_mat))+0.5
     ax[0].set_title(f"22-29 PAM")
     ax[0].set_xticks(tick_set)
