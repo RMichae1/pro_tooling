@@ -6,7 +6,8 @@ from os.path import isfile
 import pickle
 from copy import deepcopy
 from contact_mapper import ContactMapper
-from graphkernel import MatrixKernel, KernelLoader
+from kernel.s_kernel import MatrixKernel
+from kernel.kernel_loader import KernelLoader
 from data_scaler import BayesScaler
 from utility import aa2index, parse_mutations, convert_aa_sequence
 from typing import Tuple

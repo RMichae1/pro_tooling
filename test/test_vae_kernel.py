@@ -1,6 +1,6 @@
 import numpy as np
 from contact_mapper import ContactMapper
-from graphkernel import VaeKernel
+from kernel.vae_kernel import VaeKernel
 from utility import WeightedMSADataset, seq_collate
 from parse_data import parse_UBQ
 import torch.nn.functional as F
@@ -179,7 +179,7 @@ def get_min_max_S_vals(sequences, vae, sample_size=1, fixed_sample=False):
         for q in range(n):
             for idx in range(sequences.shape[1]):
                 s_val = S_stable(vae, seq_x=sequences[p], seq_y=sequences[q], idx=idx, n_samples=sample_size,
-                          fixed_sample=fixed_sample)
+                          fixed_sample=fixed_sample)  #stable computation required - else NaN
                 s_min = np.float(s_val) if s_val <= s_min else s_min
                 s_max = np.float(s_val) if s_val >= s_max else s_max
     return s_min, s_max
@@ -246,6 +246,9 @@ def test_naive_VAE_kernel():
 
 
 def test_naive_S_properties():
+    """
+    Test if operation with normalizing constant, sum of mean comes down to to 1
+    """
     seqs = test_dummy_sequences[0]
     seq_x = seqs
     seq_y = seqs
@@ -311,7 +314,7 @@ def test_vectorized_normalized_VAE_kernel():
     sequences = test_dummy_sequences[:3]
     naive_vae_val = naive_v_K(sequences, adj, vae, sample_size=10, fixed_sample=True, normalize_S=True)
     v_k = VaeKernel(vae, sample_size=10, fixed_sample=True, normalize_S=True)
-    s_vae_val = v_k.k(sequences, adjacencies=adj, normalize_k=False)
+    s_vae_val = v_k.k(sequences, adjacencies=adj, normalize_k=True)
     # manual normalization for better comparison
     norm = np.sqrt(np.diag(s_vae_val))
     norm_s_vae_val = s_vae_val / norm.dot(norm.T)
@@ -348,4 +351,4 @@ def test_vectorized_VAE_kernel_normalized_on_UBQ():
     v_k = VaeKernel(vae, sample_size=5, fixed_sample=True, normalize_S=True)
     s_vae_val = v_k.k(sequences, adjacencies=ref_adj, normalize_k=False)
     # TEST NOT NORMALIZED
-    np.testing.assert_almost_equal(naive_vae_val, s_vae_val, decimal=4)
+    np.testing.assert_almost_equal(naive_vae_val, s_vae_val, decimal=3)

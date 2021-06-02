@@ -1,11 +1,8 @@
 import os
-import pytest
 import numpy as np
-import random
-import string
 from utility import convert_graph_from_matlab_file, get_sequence_and_contact_graph
 from utility import parse_mutations, parse_matlab_mutation_file, convert_aa_sequence
-from graphkernel import MatrixKernel
+from kernel.s_kernel import MatrixKernel
 from scipy.io import loadmat
 from protein_representation import ProteinCollection
 from contact_mapper import ContactMapper
