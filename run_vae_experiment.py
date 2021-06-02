@@ -22,6 +22,7 @@ import seaborn as sns
 import matplotlib.pyplot as plt
 import random
 from parse_data import parse_BLAT, parse_UBQ, parse_PGA, parse_TLL, parse_HEX, parse_alignment, filter_alignment
+from parse_data import parse_BLAT_exp_all
 import os
 
 os.environ['KMP_DUPLICATE_LIB_OK'] = 'True'  # TODO figure out what caused OMP Error #15
@@ -54,7 +55,7 @@ if __name__ == "__main__":
     parser.add_argument("-d", "--dropout", type=float, default=0.065, help="Add Dropout layer with dropout probability.")
     parser.add_argument("-sw", "--sequence_weighting", action="store_false", # TODO reverse action
                         help="Weighing input sequences in the training procedure.")
-    parser.add_argument("-t", "--type", choices=VAE_TYPES, default="pga", help="Type ID of MSA used to create VAE.")
+    parser.add_argument("-t", "--type", choices=VAE_TYPES, default="blat", help="Type ID of MSA used to create VAE.")
     parser.add_argument("-p", "--plot", action="store_false", help="Plot low-latent-representation outputs and feature correlation.")
     parser.add_argument("--sample_vae", action="store_true", help="Prepare in-silico sample.")
     args = parser.parse_args()  # TODO change weighting to store_true
@@ -63,6 +64,8 @@ if __name__ == "__main__":
 
     if args.type == "blat":
         family_seqs, test_seqs, test_y = parse_BLAT()
+        # parsing all available experimental data, no exclusion
+        test_seqs, test_y = parse_BLAT_exp_all()
     elif args.type == "sp400":
         family_seqs, test_seqs, test_y = parse_TLL(msa_filename="./data/lipase_v2/sp400family/SP400.nr.tree.aln")
     elif args.type == "pga":
@@ -171,7 +174,7 @@ if __name__ == "__main__":
         kld_values.append(loss[2].detach().numpy())
 
     delta_log_p = np.array([(l - wt_log_prob) for l in log_likelihoods], dtype=float)
-    spearman_r = spearmanr(delta_log_p, test_y).correlation
+    spearman_r = spearmanr(delta_log_p.flatten(), test_y).correlation
     print(f"Corr. (spearman) Δ ELBO and data: {spearman_r}")
 
 
@@ -208,16 +211,16 @@ if __name__ == "__main__":
         # draw corr-coeff into plot - as 1degree polynomial
         y = np.poly1d(np.polyfit(delta_log_p.flatten(), np.array(test_y), 1))(xx)
         axScatter.plot(xx, y, "r--")
-        axScatter.annotate(f"r={np.round(spearman_r, 4)}", xy=(0, 0), 
+        axScatter.annotate(f"r={np.round(spearman_r, 4)}", xy=(2, 0), 
                             xycoords='data')
         axScatter.set_xlabel("ΔELBO")
-        axScatter.set_ylabel("ΔΔG")
+        axScatter.set_ylabel("growth rate \n at 2500 μg/ml of ampicillin")
         # now determine nice limits by hand:
         binwidth = 0.25
         xymax = np.max([np.max(np.fabs(delta_log_p)), np.max(np.fabs(test_y))])
         lim = (int(xymax/binwidth) + 1) * binwidth
         axScatter.set_xlim((-lim, lim/4))
-        axScatter.set_ylim((-lim/2, lim/2))
+        axScatter.set_ylim((-lim/4, lim/12))
 
         bins = np.arange(-lim, lim + binwidth, binwidth)
         axHistx.hist(delta_log_p, bins=bins, alpha=0.75)
