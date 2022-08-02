@@ -117,7 +117,7 @@ def parse_PGA():
     test_df = pd.read_csv("./data/pga/Nisthal_Mayo_2019_updated_3xESLyS9.csv", delimiter=",")
     test_df = test_df[~test_df["Assay/Protocol"].str.contains("SD ")]  # exclude standard-deviation
     test_df = test_df[test_df.Units == "kcal/mol"]
-    test_df = test_df[test_df["Assay/Protocol"].str.contains("^ddG")]  # select only ddG values
+    test_df = test_df[test_df["Assay/Protocol"].str.contains("^ddG\(mAvg\)")]  # select only ddG values
     test_df = test_df[["Sequence", "Data", "Assay/Protocol"]].dropna()  # select relevant columns
     pga_df = filter_alignment("./data/pga/FINAL_PGA_n1133.a3m")
     family_seqs = np.array([s for s in pga_df.seq])
